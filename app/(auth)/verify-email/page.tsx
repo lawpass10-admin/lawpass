@@ -1,3 +1,12 @@
+import { Suspense } from "react";
+
+import OtpForm from "./_components/otp-form";
+
 export default function VerifyEmailPage() {
-  return <div className="text-center">OTP verification (Phase 3)</div>;
+  // Suspense boundary required because OtpForm uses useSearchParams.
+  return (
+    <Suspense fallback={null}>
+      <OtpForm />
+    </Suspense>
+  );
 }
