@@ -1,3 +1,5 @@
+import ForgotPasswordForm from "./_components/forgot-password-form";
+
 export default function ForgotPasswordPage() {
-  return <div className="text-center">Forgot password (Phase 4)</div>;
+  return <ForgotPasswordForm />;
 }
