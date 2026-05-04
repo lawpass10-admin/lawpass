@@ -75,6 +75,27 @@ function mapAuthError(
 }
 
 /**
+ * Clears every sb-* prefixed cookie from the request. Used at the start of
+ * session-establishing actions (verifyOtpAction, signInAction,
+ * resetPasswordAction) and at the end of signOutAction so the Supabase SDK
+ * never has to write a new session into a cookie state littered with chunks
+ * from a previous user.
+ *
+ * Defends against two real bugs observed in production:
+ *   - Stale-JWT lockout: a JWT cookie for a deleted user keeps getting sent
+ *     until something explicitly deletes it.
+ *   - Chunk persistence: sb-…-auth-token splits into .0/.1/.2 chunks; if the
+ *     new session has fewer chunks than the old, surviving chunks corrupt
+ *     JWT decoding back to the previous user.
+ */
+async function clearStaleAuthCookies(): Promise<void> {
+  const cookieStore = await cookies();
+  for (const c of cookieStore.getAll()) {
+    if (c.name.startsWith("sb-")) cookieStore.delete(c.name);
+  }
+}
+
+/**
  * Validates auth.user_metadata read back in verifyOtpAction. This is the
  * contract between signUpAction (writer) and verifyOtpAction (reader); a
  * mismatch means metadata was tampered with or the writer changed shape.
@@ -120,9 +141,18 @@ async function createProfile(input: {
     .maybeSingle();
 
   if (selectError) {
+    // TODO(slice-7): replace these console.* with a structured logger.
+    // See debugging session 2026-05-04 (Phase 3 manual test).
+    console.error(
+      `[profile] select FAILED user=${input.user_id} code=${
+        (selectError as { code?: string }).code
+      } message=${selectError.message}`
+    );
     return { ok: false, error: "שגיאה בקריאת פרופיל. נסה שוב" };
   }
   if (existing) {
+    // TODO(slice-7): replace with structured logger.
+    console.info(`[profile] skip (exists) user=${input.user_id}`);
     return { ok: true };
   }
 
@@ -142,13 +172,25 @@ async function createProfile(input: {
     // Unique-violation race: another concurrent verifyOtpAction beat us to the
     // insert. Treat as success.
     if ((insertError as { code?: string }).code === "23505") {
+      // TODO(slice-7): replace with structured logger.
+      console.info(`[profile] skip (duplicate 23505) user=${input.user_id}`);
       return { ok: true };
     }
+    // TODO(slice-7): replace with structured logger.
+    console.error(
+      `[profile] insert FAILED user=${input.user_id} code=${
+        (insertError as { code?: string }).code
+      } message=${insertError.message}`
+    );
     return {
       ok: false,
       error: "אירעה שגיאה ביצירת הפרופיל. נסה שוב או פנה לתמיכה",
     };
   }
+  // TODO(slice-7): replace with structured logger.
+  console.info(
+    `[profile] created user=${input.user_id} signup_source=${input.signup_source}`
+  );
   return { ok: true };
 }
 
@@ -230,6 +272,9 @@ export async function verifyOtpAction(input: {
     };
   }
   const data = parsed.data;
+
+  // Wipe any stale sb-* cookies before Supabase writes the new session.
+  await clearStaleAuthCookies();
 
   const supabase = await createClient();
   const { data: verifyData, error } = await supabase.auth.verifyOtp({
@@ -342,6 +387,9 @@ export async function signInAction(input: {
   }
   const data = parsed.data;
 
+  // Wipe any stale sb-* cookies before Supabase writes the new session.
+  await clearStaleAuthCookies();
+
   const supabase = await createClient();
   const { error } = await supabase.auth.signInWithPassword({
     email: data.email,
@@ -418,6 +466,9 @@ export async function resetPasswordAction(input: {
   }
   const data = parsed.data;
 
+  // Wipe any stale sb-* cookies before the recovery session writes new ones.
+  await clearStaleAuthCookies();
+
   const supabase = await createClient();
   const { error: verifyError } = await supabase.auth.verifyOtp({
     email: data.email,
@@ -451,6 +502,10 @@ export async function resetPasswordAction(input: {
 export async function signOutAction(): Promise<ActionResult> {
   const supabase = await createClient();
   await supabase.auth.signOut();
+  // Belt-and-suspenders: ensure no sb-* cookie chunk survives the signOut.
+  // The SDK's setAll callback should clear them, but a missed chunk could
+  // re-authenticate the next request to a stale session.
+  await clearStaleAuthCookies();
   revalidatePath("/", "layout");
   redirect("/login");
 }

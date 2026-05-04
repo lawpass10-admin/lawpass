@@ -1,3 +1,4 @@
+import type { User } from "@supabase/supabase-js";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 
@@ -25,9 +26,18 @@ export default async function AppLayout({
 
   // Defense in depth — middleware should already have redirected unauthed
   // users to /login. Belt-and-suspenders here in case a route slips past.
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  // The try/catch handles AuthApiError thrown by the auto-refresh path when
+  // the refresh_token was revoked (e.g., admin-deleted user). Without it,
+  // the throw bubbles out of this Server Component as a Next runtime error
+  // visible to the user. Middleware should have cleared cookies already; if
+  // we still landed here without a session, just bounce.
+  let user: User | null = null;
+  try {
+    const result = await supabase.auth.getUser();
+    user = result.data.user;
+  } catch {
+    redirect("/login");
+  }
   if (!user) redirect("/login");
 
   const { data: profile } = await supabase
