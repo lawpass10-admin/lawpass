@@ -133,29 +133,28 @@ async function createProfile(input: {
 }): Promise<ActionResult> {
   const supabase = await createClient();
 
-  // Idempotency: skip insert if profile already exists.
-  const { data: existing, error: selectError } = await supabase
-    .from("profiles")
-    .select("id")
-    .eq("id", input.user_id)
-    .maybeSingle();
-
-  if (selectError) {
-    // TODO(slice-7): replace these console.* with a structured logger.
-    // See debugging session 2026-05-04 (Phase 3 manual test).
-    console.error(
-      `[profile] select FAILED user=${input.user_id} code=${
-        (selectError as { code?: string }).code
-      } message=${selectError.message}`
-    );
-    return { ok: false, error: "שגיאה בקריאת פרופיל. נסה שוב" };
-  }
-  if (existing) {
-    // TODO(slice-7): replace with structured logger.
-    console.info(`[profile] skip (exists) user=${input.user_id}`);
-    return { ok: true };
-  }
-
+  // INSERT-and-handle-23505 — no SELECT-then-INSERT.
+  //
+  // We previously did SELECT for idempotency, but the SELECT triggered RLS
+  // evaluation of admins_view_all_profiles which calls public.is_admin().
+  // Migration 0011_security_hardening.sql line 5 REVOKEs EXECUTE on that
+  // function from `authenticated`, so the SELECT fails with code 42501
+  // ("permission denied for function is_admin"). INSERT only evaluates
+  // users_insert_own_profile which doesn't reference is_admin().
+  //
+  // TODO(slice-7): the proper fix is a one-line migration —
+  //   GRANT EXECUTE ON FUNCTION public.is_admin() TO authenticated;
+  // SECURITY DEFINER bounds what the function can do regardless of who
+  // calls it; the EXECUTE revoke was an over-correction of a Supabase
+  // security advisor finding (commented as "should only be callable from
+  // inside RLS policies"). RLS policy evaluation runs in the caller's
+  // role context, so callers MUST have EXECUTE — otherwise every RLS
+  // policy that uses is_admin() fails for non-admin users. Same applies
+  // to has_active_subscription() (also revoked in 0011 line 6). Once
+  // that migration lands we can restore the SELECT-then-INSERT idempotency
+  // here for clearer telemetry, but the INSERT-only approach below is
+  // functionally equivalent — concurrent races and re-runs both end up
+  // hitting the 23505 path and returning ok.
   const { error: insertError } = await supabase.from("profiles").insert({
     id: input.user_id,
     full_name: input.full_name,
@@ -169,8 +168,8 @@ async function createProfile(input: {
   });
 
   if (insertError) {
-    // Unique-violation race: another concurrent verifyOtpAction beat us to the
-    // insert. Treat as success.
+    // Unique-violation: profile already exists (concurrent insert OR a
+    // re-run of verifyOtpAction). Treat as success.
     if ((insertError as { code?: string }).code === "23505") {
       // TODO(slice-7): replace with structured logger.
       console.info(`[profile] skip (duplicate 23505) user=${input.user_id}`);
