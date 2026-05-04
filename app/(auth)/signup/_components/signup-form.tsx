@@ -483,6 +483,15 @@ function Step2({
           <FormItem>
             <FormLabel>מגדר</FormLabel>
             <FormControl>
+              {/* TODO(slice-7): RadioGroupItem fires Base UI's "uncontrolled →
+                  controlled value state" warning on first gender selection
+                  even with value={field.value ?? ""} on the RadioGroup. The
+                  warning originates inside each Radio.Root's internal
+                  useControlled (see node_modules/@base-ui/utils/esm/useControlled.js).
+                  Non-blocking — flow completes correctly. Resolution candidates:
+                  pass an explicit defaultValue="" to RadioGroup, refactor to a
+                  custom Radio that reads the group context's controlled value,
+                  or upstream a Base UI fix. */}
               <RadioGroup
                 value={field.value ?? ""}
                 onValueChange={field.onChange}
