@@ -111,15 +111,18 @@ const userMetadataSchema = z.object({
 });
 
 /**
- * Inserts a row into profiles for the authenticated user.
+ * Calls the public.complete_user_profile RPC to create the profiles row for
+ * the authenticated user. Centralizes the contract — same RPC will be used
+ * by Phase 5's OAuth completion flow.
  *
- * Hardening Rule #2: uses the SSR client (lib/supabase/server.ts) which
- * carries the user's auth cookies. The INSERT satisfies the RLS policy
- * "users_insert_own_profile" with WITH CHECK ((SELECT auth.uid()) = id).
- * Does NOT use createAdminClient.
+ * Hardening Rule #2: uses the SSR client (carries the user's auth cookies).
+ * The RPC is SECURITY DEFINER so the body can read auth.users.email_confirmed_at
+ * and INSERT into profiles, but it derives the target row's id from
+ * (SELECT auth.uid()) — never from a parameter — so a caller can only ever
+ * create their own profile.
  *
- * Idempotent: if the profile already exists (e.g. user calls verifyOtp twice,
- * or two requests race) the function returns ok without re-inserting.
+ * Idempotency: ON CONFLICT (id) DO NOTHING in the RPC body. Concurrent calls
+ * and re-runs both succeed silently.
  */
 async function createProfile(input: {
   user_id: string;
@@ -133,62 +136,32 @@ async function createProfile(input: {
 }): Promise<ActionResult> {
   const supabase = await createClient();
 
-  // INSERT-and-handle-23505 — no SELECT-then-INSERT.
-  //
-  // We previously did SELECT for idempotency, but the SELECT triggered RLS
-  // evaluation of admins_view_all_profiles which calls public.is_admin().
-  // Migration 0011_security_hardening.sql line 5 REVOKEs EXECUTE on that
-  // function from `authenticated`, so the SELECT fails with code 42501
-  // ("permission denied for function is_admin"). INSERT only evaluates
-  // users_insert_own_profile which doesn't reference is_admin().
-  //
-  // TODO(slice-7): the proper fix is a one-line migration —
-  //   GRANT EXECUTE ON FUNCTION public.is_admin() TO authenticated;
-  // SECURITY DEFINER bounds what the function can do regardless of who
-  // calls it; the EXECUTE revoke was an over-correction of a Supabase
-  // security advisor finding (commented as "should only be callable from
-  // inside RLS policies"). RLS policy evaluation runs in the caller's
-  // role context, so callers MUST have EXECUTE — otherwise every RLS
-  // policy that uses is_admin() fails for non-admin users. Same applies
-  // to has_active_subscription() (also revoked in 0011 line 6). Once
-  // that migration lands we can restore the SELECT-then-INSERT idempotency
-  // here for clearer telemetry, but the INSERT-only approach below is
-  // functionally equivalent — concurrent races and re-runs both end up
-  // hitting the 23505 path and returning ok.
-  const { error: insertError } = await supabase.from("profiles").insert({
-    id: input.user_id,
-    full_name: input.full_name,
-    phone: input.phone,
-    gender: input.gender,
-    birth_date: input.birth_date,
-    exam_date_planned: input.exam_date_planned,
-    terms_accepted_at: input.terms_accepted_at,
-    signup_source: input.signup_source,
-    // is_admin defaults to FALSE; created_at / updated_at default to NOW().
+  const { error } = await supabase.rpc("complete_user_profile", {
+    p_full_name: input.full_name,
+    p_phone: input.phone,
+    p_gender: input.gender,
+    p_birth_date: input.birth_date,
+    p_exam_date_planned: input.exam_date_planned,
+    p_terms_accepted_at: input.terms_accepted_at,
+    p_signup_source: input.signup_source,
   });
 
-  if (insertError) {
-    // Unique-violation: profile already exists (concurrent insert OR a
-    // re-run of verifyOtpAction). Treat as success.
-    if ((insertError as { code?: string }).code === "23505") {
-      // TODO(slice-7): replace with structured logger.
-      console.info(`[profile] skip (duplicate 23505) user=${input.user_id}`);
-      return { ok: true };
-    }
+  if (error) {
     // TODO(slice-7): replace with structured logger.
     console.error(
-      `[profile] insert FAILED user=${input.user_id} code=${
-        (insertError as { code?: string }).code
-      } message=${insertError.message}`
+      `[profile] rpc FAILED user=${input.user_id} code=${
+        (error as { code?: string }).code ?? "unknown"
+      } message=${error.message}`
     );
     return {
       ok: false,
       error: "אירעה שגיאה ביצירת הפרופיל. נסה שוב או פנה לתמיכה",
     };
   }
+
   // TODO(slice-7): replace with structured logger.
   console.info(
-    `[profile] created user=${input.user_id} signup_source=${input.signup_source}`
+    `[profile] rpc OK user=${input.user_id} signup_source=${input.signup_source}`
   );
   return { ok: true };
 }
@@ -316,6 +289,15 @@ export async function verifyOtpAction(input: {
     signup_source: "email",
   });
   if (!profileResult.ok) {
+    // Fail-recovery: don't leave the user in a half-authenticated state with
+    // no profile row. Without this, the next request would land on
+    // (app)/layout.tsx, hit the missing-profile branch, and redirect to
+    // /onboarding/complete-profile (a Phase 5 placeholder) with no recovery
+    // path. Sign them out and wipe cookies so they're back to a clean slate
+    // and can retry signup. The auth.users orphan remains until admin cleanup
+    // or until Phase 5 wires /onboarding/complete-profile to recover from it.
+    await supabase.auth.signOut();
+    await clearStaleAuthCookies();
     return profileResult;
   }
 

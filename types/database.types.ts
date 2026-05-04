@@ -349,8 +349,8 @@ export type Database = {
           final_score?: number | null
           id?: string
           last_activity_at?: string
-          passed?: boolean | null
           paused_at?: string | null
+          passed?: boolean | null
           question_list?: Json
           questions_answered?: number
           questions_correct?: number
@@ -950,6 +950,19 @@ export type Database = {
       }
     }
     Functions: {
+      complete_user_profile: {
+        Args: {
+          p_birth_date: string
+          p_exam_date_planned: string
+          p_full_name: string
+          p_gender: string
+          p_phone: string
+          p_signup_source: string
+          p_terms_accepted_at: string
+        }
+        Returns: undefined
+      }
+      grant_mock_subscription: { Args: never; Returns: string }
       has_active_subscription: { Args: never; Returns: boolean }
       is_admin: { Args: never; Returns: boolean }
     }
@@ -1084,4 +1097,3 @@ export const Constants = {
     Enums: {},
   },
 } as const
-
