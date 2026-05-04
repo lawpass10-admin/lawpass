@@ -484,7 +484,7 @@ function Step2({
             <FormLabel>מגדר</FormLabel>
             <FormControl>
               <RadioGroup
-                value={field.value}
+                value={field.value ?? ""}
                 onValueChange={field.onChange}
                 className="grid grid-cols-2 gap-2"
               >
@@ -655,7 +655,7 @@ function Step3({
               <div className="flex items-start gap-2">
                 <Checkbox
                   id="terms_accepted"
-                  checked={field.value === true}
+                  checked={field.value ?? false}
                   onCheckedChange={(v) => field.onChange(v === true)}
                   className="mt-0.5"
                 />
