@@ -349,7 +349,16 @@ export async function signInAction(input: {
   });
 
   if (error) {
-    // SPEC §6.4: never reveal whether the email exists.
+    // SPEC §6.4 step 3: pending_verification → /verify-email. Supabase only
+    // returns this code when the email + password ARE valid but the email is
+    // unverified, so we know it's safe to surface the email back. The leak
+    // ("this credential pair is valid but unverified") is the trade-off SPEC
+    // accepts in exchange for letting legitimate users recover from an
+    // abandoned signup.
+    if ((error as { code?: string }).code === "email_not_confirmed") {
+      redirect(`/verify-email?email=${encodeURIComponent(data.email)}`);
+    }
+    // SPEC §6.4: never reveal whether the email exists for any other failure.
     return { ok: false, error: "פרטי ההתחברות שגויים" };
   }
 
