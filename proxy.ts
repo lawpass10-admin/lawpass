@@ -49,6 +49,14 @@ export const config = {
     // Excludes:
     //   _next/static, _next/image, favicon.ico — Next.js internals
     //   api/webhooks — server-to-server callbacks (signature-verified, no auth)
+    //   auth/google — OAuth start route handler. Must bypass middleware for
+    //     the same reason as auth/callback: signInWithOAuth writes the PKCE
+    //     code_verifier cookie via the SSR client's setAll callback, and
+    //     updateSession's "no user → wipe sb-* cookies" branch would clobber
+    //     it before the redirect to Google leaves the server. The user is
+    //     unauthenticated by definition when starting OAuth, so the
+    //     /login redirect for unauthed users would also short-circuit the
+    //     handler.
     //   auth/callback — Google OAuth redirect target. Must bypass middleware
     //     entirely: (a) the route handler runs exchangeCodeForSession, which
     //     reads the PKCE code_verifier cookie set during signInWithOAuth — if
@@ -57,6 +65,6 @@ export const config = {
     //     unauthed-user → /login redirect to swallow the OAuth code before
     //     the route handler can use it.
     //   image extensions — static assets
-    "/((?!_next/static|_next/image|favicon.ico|api/webhooks|auth/callback|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)",
+    "/((?!_next/static|_next/image|favicon.ico|api/webhooks|auth/callback|auth/google|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)",
   ],
 };

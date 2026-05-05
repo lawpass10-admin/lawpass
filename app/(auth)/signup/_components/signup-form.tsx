@@ -13,7 +13,7 @@ import {
 } from "react-hook-form";
 import { toast } from "sonner";
 
-import { signInWithGoogleAction, signUpAction } from "@/app/(auth)/_actions";
+import { signUpAction } from "@/app/(auth)/_actions";
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
 import {
@@ -337,26 +337,15 @@ export default function SignupForm() {
               variant="outline"
               className="w-full"
               disabled={oauthSubmitting}
-              onClick={async () => {
+              onClick={() => {
+                // Navigate to the /auth/google Route Handler, which calls
+                // signInWithOAuth server-side and returns
+                // NextResponse.redirect with the PKCE verifier cookie
+                // attached. Server Actions delivered Set-Cookie unreliably
+                // in Vercel production; a same-origin Route Handler
+                // redirect is the reliable path.
                 setOauthSubmitting(true);
-                try {
-                  const result = await signInWithGoogleAction();
-                  // Server Action returns { ok: true, url } or
-                  // { ok: false, error }. We navigate client-side via
-                  // window.location instead of having the action redirect —
-                  // Next.js + Vercel drops Set-Cookie headers on Server
-                  // Action responses that redirect to an external URL,
-                  // which loses the PKCE verifier cookie.
-                  if (!result.ok) {
-                    toast.error(result.error);
-                    setOauthSubmitting(false);
-                    return;
-                  }
-                  window.location.href = result.url;
-                } catch {
-                  toast.error("אירעה שגיאה. נסה שוב");
-                  setOauthSubmitting(false);
-                }
+                window.location.href = "/auth/google";
               }}
             >
               {oauthSubmitting ? "מעביר ל-Google..." : "המשך עם Google"}
