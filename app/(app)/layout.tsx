@@ -3,6 +3,7 @@ import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 
 import { AppSidebar } from "@/components/app/app-sidebar";
+import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { createClient } from "@/lib/supabase/server";
 
 // Routes inside (app) that don't require an active subscription. The user
@@ -48,7 +49,7 @@ export default async function AppLayout({
 
   const { data: profile } = await supabase
     .from("profiles")
-    .select("id")
+    .select("id, full_name, exam_date_planned")
     .eq("id", user.id)
     .maybeSingle();
 
@@ -78,23 +79,53 @@ export default async function AppLayout({
   const headerList = await headers();
   const pathname = headerList.get("x-pathname") ?? "";
 
-  if (!isSubscriptionExempt(pathname)) {
-    const { data: subscription } = await supabase
-      .from("subscriptions")
-      .select("id")
-      .eq("user_id", user.id)
-      .eq("is_current", true)
-      .eq("status", "active")
-      .gt("ends_at", new Date().toISOString())
-      .maybeSingle();
+  // Subscription SELECT runs ALWAYS (the sidebar needs plan_type + ends_at
+  // to render the subscription card). The redirect-to-/pricing gate below
+  // still only fires for non-exempt routes.
+  const { data: subscription } = await supabase
+    .from("subscriptions")
+    .select("id, plan_type, ends_at")
+    .eq("user_id", user.id)
+    .eq("is_current", true)
+    .eq("status", "active")
+    .gt("ends_at", new Date().toISOString())
+    .maybeSingle();
 
-    if (!subscription) redirect("/pricing");
+  if (!subscription && !isSubscriptionExempt(pathname)) {
+    redirect("/pricing");
   }
 
+  // Counts for sidebar badges. Both tables' RLS policies require
+  // has_active_subscription(); for users on subscription-exempt routes
+  // (without a sub), RLS returns 0 rows → count is 0 (no error).
+  // head:true skips returning rows — server only returns the count integer.
+  const [bookmarksResult, mistakesResult] = await Promise.all([
+    supabase
+      .from("bookmarks")
+      .select("*", { count: "exact", head: true })
+      .eq("user_id", user.id),
+    supabase
+      .from("mistakes")
+      .select("*", { count: "exact", head: true })
+      .eq("user_id", user.id)
+      .eq("manually_removed", false),
+  ]);
+  const bookmarksCount = bookmarksResult.count ?? 0;
+  const mistakesCount = mistakesResult.count ?? 0;
+
   return (
-    <div className="flex min-h-full flex-1">
-      <AppSidebar />
-      <main className="flex-1 p-6">{children}</main>
-    </div>
+    <SidebarProvider>
+      <AppSidebar
+        userEmail={user.email ?? ""}
+        profileFullName={profile.full_name}
+        subscription={subscription}
+        bookmarksCount={bookmarksCount}
+        mistakesCount={mistakesCount}
+        pathname={pathname}
+      />
+      <SidebarInset>
+        <main className="flex-1 p-6">{children}</main>
+      </SidebarInset>
+    </SidebarProvider>
   );
 }
