@@ -25,33 +25,84 @@ import { createClient } from "@/lib/supabase/server";
  *   - oauth_failed       → "התרחשה שגיאה. נסה שוב או הירשם עם מייל"
  *   - oauth_no_code      → same as oauth_failed (defensive — shouldn't hit
  *                          this branch in normal Google + Supabase flow)
+ *
+ * TODO(slice-7): the [oauth-callback] console.error logs below are
+ * temporary diagnostic instrumentation added while debugging a production
+ * OAuth failure. Once the underlying issue is identified and fixed,
+ * downgrade to console.info or wrap in a debug-mode gate.
  */
 export async function GET(request: Request) {
   const requestUrl = new URL(request.url);
   const code = requestUrl.searchParams.get("code");
   const oauthError = requestUrl.searchParams.get("error");
+  const oauthErrorDescription = requestUrl.searchParams.get("error_description");
+
+  console.error("[oauth-callback] start", {
+    url: request.url,
+    origin: requestUrl.origin,
+    pathname: requestUrl.pathname,
+    hasCode: code !== null,
+    codeLength: code?.length ?? 0,
+    hasError: oauthError !== null,
+    errorParam: oauthError,
+    errorDescription: oauthErrorDescription,
+    // Reveal which cookies the request carries so we can verify the PKCE
+    // code_verifier survived the round-trip from signInWithOAuth → Google →
+    // Supabase → us. Cookie VALUES are sensitive; log only NAMES.
+    cookieNames: request.headers
+      .get("cookie")
+      ?.split(";")
+      .map((c) => c.trim().split("=")[0])
+      .filter(Boolean) ?? [],
+  });
 
   if (oauthError) {
+    console.error("[oauth-callback] redirect oauth_cancelled", {
+      errorParam: oauthError,
+      errorDescription: oauthErrorDescription,
+    });
     return NextResponse.redirect(
       new URL("/login?error=oauth_cancelled", requestUrl.origin)
     );
   }
 
   if (!code) {
+    console.error("[oauth-callback] redirect oauth_no_code", {
+      reason: "no ?code= param on the callback URL",
+    });
     return NextResponse.redirect(
       new URL("/login?error=oauth_no_code", requestUrl.origin)
     );
   }
 
+  console.error("[oauth-callback] attempting exchangeCodeForSession", {
+    codeLength: code.length,
+  });
+
   const supabase = await createClient();
-  const { error: exchangeError } =
+  const { data, error: exchangeError } =
     await supabase.auth.exchangeCodeForSession(code);
 
   if (exchangeError) {
+    console.error("[oauth-callback] exchangeCodeForSession FAILED", {
+      name: exchangeError.name,
+      message: exchangeError.message,
+      status: (exchangeError as { status?: number }).status,
+      code: (exchangeError as { code?: string }).code,
+      stack: exchangeError.stack,
+    });
     return NextResponse.redirect(
       new URL("/login?error=oauth_failed", requestUrl.origin)
     );
   }
+
+  console.error("[oauth-callback] exchangeCodeForSession OK", {
+    userId: data.user?.id,
+    userEmail: data.user?.email,
+    hasSession: data.session !== null,
+    provider: data.user?.app_metadata?.provider,
+    providers: data.user?.app_metadata?.providers,
+  });
 
   return NextResponse.redirect(new URL("/dashboard", requestUrl.origin));
 }
