@@ -341,19 +341,21 @@ export default function SignupForm() {
                 setOauthSubmitting(true);
                 try {
                   const result = await signInWithGoogleAction();
-                  // Server Action redirects to Google on success — throws
-                  // NEXT_REDIRECT, doesn't reach here. Only failure paths
-                  // return ActionResult.
-                  if (result?.ok === false) {
+                  // Server Action returns { ok: true, url } or
+                  // { ok: false, error }. We navigate client-side via
+                  // window.location instead of having the action redirect —
+                  // Next.js + Vercel drops Set-Cookie headers on Server
+                  // Action responses that redirect to an external URL,
+                  // which loses the PKCE verifier cookie.
+                  if (!result.ok) {
                     toast.error(result.error);
                     setOauthSubmitting(false);
+                    return;
                   }
-                } catch (err) {
-                  if (!isNextRedirect(err)) {
-                    toast.error("אירעה שגיאה. נסה שוב");
-                    setOauthSubmitting(false);
-                  }
-                  throw err;
+                  window.location.href = result.url;
+                } catch {
+                  toast.error("אירעה שגיאה. נסה שוב");
+                  setOauthSubmitting(false);
                 }
               }}
             >

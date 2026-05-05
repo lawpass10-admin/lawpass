@@ -30,6 +30,17 @@ import {
 
 type ActionResult = { ok: true } | { ok: false; error: string };
 
+/**
+ * Return shape for the Google OAuth start action. Differs from ActionResult
+ * because we need to surface the OAuth URL back to the client — the action
+ * cannot redirect server-side (Next.js + Vercel drop Set-Cookie headers
+ * from Server Action responses that redirect to an external URL, which
+ * loses the PKCE verifier cookie). Client navigates via window.location.
+ */
+type OAuthStartResult =
+  | { ok: true; url: string }
+  | { ok: false; error: string };
+
 // =============================================================================
 // Helpers (not exported — internal to this file)
 // =============================================================================
@@ -409,7 +420,7 @@ export async function signInAction(input: {
  *
  * Hardening Rule #2: SSR client only — never createAdminClient.
  */
-export async function signInWithGoogleAction(): Promise<ActionResult> {
+export async function signInWithGoogleAction(): Promise<OAuthStartResult> {
   console.error("[oauth-start] begin");
 
   const supabase = await createClient();
@@ -444,7 +455,17 @@ export async function signInWithGoogleAction(): Promise<ActionResult> {
     return { ok: false, error: "אירעה שגיאה. נסה שוב" };
   }
 
-  redirect(data.url);
+  // CRITICAL: Do NOT call redirect(data.url) here.
+  // Next.js + Vercel production drops Set-Cookie headers from Server
+  // Action responses that redirect to an external URL. The PKCE verifier
+  // cookie set by signInWithOAuth's setAll callback was being written to
+  // the cookie store but never reaching the browser, causing the callback
+  // to fail with AuthPKCECodeVerifierMissingError. Workaround: return the
+  // URL, let the client do window.location.href = result.url. A
+  // non-redirect Server Action response reliably carries Set-Cookie
+  // headers, so the verifier cookie reaches the browser before the
+  // navigation to Google starts.
+  return { ok: true, url: data.url };
 }
 
 /**
