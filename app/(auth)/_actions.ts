@@ -41,6 +41,20 @@ type OAuthStartResult =
   | { ok: true; url: string }
   | { ok: false; error: string };
 
+/**
+ * Return shape for the OAuth completion action. Same shape as
+ * OAuthStartResult but distinct nominally for clarity at the callsite.
+ * The action returns a target URL ("/dashboard" if the user already has
+ * an active subscription, "/pricing" otherwise) and the client navigates
+ * via window.location.href. This avoids a Server-Action-initiated RSC
+ * redirect chain (action → /dashboard → layout-redirect → /pricing) that
+ * was racing with revalidatePath in Next.js 16 production and rendering
+ * /pricing empty on first paint until a hard refresh.
+ */
+type OAuthCompletionResult =
+  | { ok: true; url: string }
+  | { ok: false; error: string };
+
 // =============================================================================
 // Helpers (not exported — internal to this file)
 // =============================================================================
@@ -493,7 +507,7 @@ export async function signInWithGoogleAction(): Promise<OAuthStartResult> {
  */
 export async function completeGoogleOAuthSignup(
   input: OAuthCompletionInput
-): Promise<ActionResult> {
+): Promise<OAuthCompletionResult> {
   const parsed = oauthCompletionSchema.safeParse(input);
   if (!parsed.success) {
     return {
@@ -520,7 +534,7 @@ export async function completeGoogleOAuthSignup(
     .eq("id", user.id)
     .maybeSingle();
   if (existing) {
-    redirect("/dashboard");
+    return { ok: true, url: "/dashboard" };
   }
 
   // Source full_name from Google's user_metadata. Google typically populates
@@ -561,8 +575,27 @@ export async function completeGoogleOAuthSignup(
     return profileResult;
   }
 
+  // Flush the layout cache so the next page (/dashboard or /pricing)
+  // re-runs (app)/layout.tsx with the freshly-created profile + auth state.
   revalidatePath("/", "layout");
-  redirect("/dashboard");
+
+  // Decide the target client-side navigation URL based on subscription
+  // state — same query shape (app)/layout.tsx uses for its gate. By
+  // targeting /pricing directly when there's no sub, we skip the
+  // /dashboard hop that was previously triggering an RSC redirect chain
+  // (action → /dashboard → layout-redirect → /pricing) and rendering
+  // /pricing empty on first paint. Returning the URL + window.location
+  // navigation forces a full page load, eliminating the chain.
+  const { data: subscription } = await supabase
+    .from("subscriptions")
+    .select("id")
+    .eq("user_id", user.id)
+    .eq("is_current", true)
+    .eq("status", "active")
+    .gt("ends_at", new Date().toISOString())
+    .maybeSingle();
+
+  return { ok: true, url: subscription ? "/dashboard" : "/pricing" };
 }
 
 /**

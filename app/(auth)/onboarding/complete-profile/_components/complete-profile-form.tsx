@@ -71,19 +71,6 @@ function maxBirthDate(): Date {
   return d;
 }
 
-/** Returns true if a thrown value is the NEXT_REDIRECT marker. Server Actions
- *  signal redirects by throwing this; we let it propagate to Next instead of
- *  surfacing a toast. */
-function isNextRedirect(err: unknown): boolean {
-  return (
-    typeof err === "object" &&
-    err !== null &&
-    "digest" in err &&
-    typeof (err as { digest?: unknown }).digest === "string" &&
-    (err as { digest: string }).digest.startsWith("NEXT_REDIRECT")
-  );
-}
-
 export default function CompleteProfileForm() {
   const [submitting, setSubmitting] = useState(false);
   const [calendarOpen, setCalendarOpen] = useState(false);
@@ -130,23 +117,22 @@ export default function CompleteProfileForm() {
 
   async function onSubmit(values: OAuthCompletionInput) {
     setSubmitting(true);
-    try {
-      const result = await completeGoogleOAuthSignup(values);
-      // Server Action redirects on success (throws NEXT_REDIRECT). The merge
-      // guard inside the action also redirects /dashboard if a profile
-      // already exists, throwing NEXT_REDIRECT — same code path here.
-      if (result?.ok === false) {
-        toast.error(result.error);
-        setSubmitting(false);
-      }
-    } catch (err) {
-      if (!isNextRedirect(err)) {
-        toast.error("אירעה שגיאה. נסה שוב");
-        setSubmitting(false);
-      }
-      // NEXT_REDIRECT: re-throw so Next handles the navigation.
-      throw err;
+    // Server Action returns { ok: true, url } or { ok: false, error }. We
+    // navigate via window.location instead of having the action redirect
+    // because a Server-Action-initiated RSC redirect chain (action →
+    // /dashboard → layout-redirect → /pricing) was racing with
+    // revalidatePath in production and rendering /pricing empty on first
+    // paint. A full page load eliminates the chain.
+    const result = await completeGoogleOAuthSignup(values);
+    if (!result.ok) {
+      toast.error(result.error);
+      setSubmitting(false);
+      return;
     }
+    // .assign() is functionally equivalent to `window.location.href = ...`
+    // but the property-assignment form trips react-hooks/immutability
+    // when used inside a function declaration in the component body.
+    window.location.assign(result.url);
   }
 
   const currentYear = new Date().getFullYear();
