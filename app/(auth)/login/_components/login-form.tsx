@@ -7,7 +7,7 @@ import { useEffect, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
 
-import { signInAction } from "@/app/(auth)/_actions";
+import { signInAction, signInWithGoogleAction } from "@/app/(auth)/_actions";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -42,6 +42,7 @@ function isNextRedirect(err: unknown): boolean {
 
 export default function LoginForm() {
   const [submitting, setSubmitting] = useState(false);
+  const [oauthSubmitting, setOauthSubmitting] = useState(false);
   const searchParams = useSearchParams();
 
   // Show a one-time success toast when /reset-password redirects here with
@@ -51,6 +52,27 @@ export default function LoginForm() {
     if (searchParams.get("reset") === "1" && !resetFlashShown.current) {
       resetFlashShown.current = true;
       toast.success("הסיסמה עודכנה. התחבר עם הסיסמה החדשה");
+    }
+  }, [searchParams]);
+
+  // Show a one-time error toast when /auth/callback bounces a failed OAuth
+  // attempt back to /login?error=… (SPEC §6.2 edge cases). Discriminates on
+  // the error code: cancel vs technical failure.
+  const errorFlashShown = useRef(false);
+  useEffect(() => {
+    const error = searchParams.get("error");
+    if (!error || errorFlashShown.current) return;
+    errorFlashShown.current = true;
+    switch (error) {
+      case "oauth_cancelled":
+        toast.error("ההרשמה לא הושלמה");
+        break;
+      case "oauth_failed":
+      case "oauth_no_code":
+        toast.error("התרחשה שגיאה. נסה שוב או הירשם עם מייל");
+        break;
+      default:
+        toast.error("אירעה שגיאה. נסה שוב");
     }
   }, [searchParams]);
 
@@ -151,9 +173,28 @@ export default function LoginForm() {
           type="button"
           variant="outline"
           className="w-full"
-          onClick={() => toast.info("זמין בקרוב")}
+          disabled={oauthSubmitting}
+          onClick={async () => {
+            setOauthSubmitting(true);
+            try {
+              const result = await signInWithGoogleAction();
+              // Server Action redirects to Google on success — throws
+              // NEXT_REDIRECT, doesn't reach here. Only failure paths
+              // return ActionResult.
+              if (result?.ok === false) {
+                toast.error(result.error);
+                setOauthSubmitting(false);
+              }
+            } catch (err) {
+              if (!isNextRedirect(err)) {
+                toast.error("אירעה שגיאה. נסה שוב");
+                setOauthSubmitting(false);
+              }
+              throw err;
+            }
+          }}
         >
-          התחברות עם Google
+          {oauthSubmitting ? "מעביר ל-Google..." : "התחברות עם Google"}
         </Button>
 
         <p className="mt-4 text-center text-sm text-muted-foreground">

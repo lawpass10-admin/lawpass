@@ -178,3 +178,27 @@ export const resetPasswordSchema = z
     path: ["confirmPassword"],
   });
 export type ResetPasswordInput = z.infer<typeof resetPasswordSchema>;
+
+/**
+ * Google OAuth completion form payload (SPEC §6.2 step 5).
+ *
+ * Reuses the field-level schemas from the email-flow signup. The OAuth
+ * completion form does NOT collect:
+ *   - email — established by the OAuth session
+ *   - password — OAuth users don't have one
+ *   - full_name — Google provides it via auth.users.user_metadata
+ *
+ * Used by the /onboarding/complete-profile client form and re-validated
+ * server-side in completeGoogleOAuthSignup (SPEC §9.6.1, defense in depth
+ * per SPEC §9.5 layer 3).
+ */
+export const oauthCompletionSchema = z.object({
+  phone: phoneSchema,
+  gender: genderSchema,
+  birth_date: birthDateSchema,
+  exam_date_planned: examDatePlannedSchema,
+  terms_accepted: z.literal(true, {
+    message: "יש לאשר את התקנון ומדיניות הפרטיות",
+  }),
+});
+export type OAuthCompletionInput = z.infer<typeof oauthCompletionSchema>;

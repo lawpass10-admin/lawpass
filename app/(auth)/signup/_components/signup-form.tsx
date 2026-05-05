@@ -13,7 +13,7 @@ import {
 } from "react-hook-form";
 import { toast } from "sonner";
 
-import { signUpAction } from "@/app/(auth)/_actions";
+import { signInWithGoogleAction, signUpAction } from "@/app/(auth)/_actions";
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
 import {
@@ -148,6 +148,7 @@ function StepIndicator({ current }: { current: Step }) {
 export default function SignupForm() {
   const [step, setStep] = useState<Step>(1);
   const [submitting, setSubmitting] = useState(false);
+  const [oauthSubmitting, setOauthSubmitting] = useState(false);
   const [calendarOpen, setCalendarOpen] = useState(false);
 
   // Local mirrors for the month/year selects on step 3. Combined into a
@@ -335,9 +336,28 @@ export default function SignupForm() {
               type="button"
               variant="outline"
               className="w-full"
-              onClick={() => toast.info("זמין בקרוב")}
+              disabled={oauthSubmitting}
+              onClick={async () => {
+                setOauthSubmitting(true);
+                try {
+                  const result = await signInWithGoogleAction();
+                  // Server Action redirects to Google on success — throws
+                  // NEXT_REDIRECT, doesn't reach here. Only failure paths
+                  // return ActionResult.
+                  if (result?.ok === false) {
+                    toast.error(result.error);
+                    setOauthSubmitting(false);
+                  }
+                } catch (err) {
+                  if (!isNextRedirect(err)) {
+                    toast.error("אירעה שגיאה. נסה שוב");
+                    setOauthSubmitting(false);
+                  }
+                  throw err;
+                }
+              }}
             >
-              המשך עם Google
+              {oauthSubmitting ? "מעביר ל-Google..." : "המשך עם Google"}
             </Button>
             <p className="mt-4 text-center text-sm text-muted-foreground">
               כבר יש לך חשבון?{" "}

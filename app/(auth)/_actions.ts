@@ -396,6 +396,43 @@ export async function signInAction(input: {
 }
 
 /**
+ * SPEC §6.2 + §9.6.1: starts the Google OAuth flow.
+ *
+ * Calls supabase.auth.signInWithOAuth, which (a) writes a PKCE verifier
+ * cookie via our SSR client's setAll callback, and (b) returns the Google
+ * authorization URL. We redirect the browser to that URL; Google redirects
+ * back to Supabase's /auth/v1/callback, which then redirects to our own
+ * /auth/callback Route Handler (configured via NEXT_PUBLIC_SITE_URL +
+ * /auth/callback in the redirectTo option here).
+ *
+ * Hardening Rule #2: SSR client only — never createAdminClient.
+ */
+export async function signInWithGoogleAction(): Promise<ActionResult> {
+  // Wipe any stale sb-* cookies before the SDK writes a new pkce_verifier.
+  // The Google button is only reachable from /signup and /login (unauthed
+  // pages), so under normal flow there shouldn't be an active session to
+  // disrupt — defense in depth.
+  await clearStaleAuthCookies();
+
+  const supabase = await createClient();
+  const { data, error } = await supabase.auth.signInWithOAuth({
+    provider: "google",
+    options: {
+      redirectTo: `${process.env.NEXT_PUBLIC_SITE_URL}/auth/callback`,
+    },
+  });
+
+  if (error) {
+    return { ok: false, error: mapAuthError(error) };
+  }
+  if (!data?.url) {
+    return { ok: false, error: "אירעה שגיאה. נסה שוב" };
+  }
+
+  redirect(data.url);
+}
+
+/**
  * SPEC §6.5: triggers password-reset OTP email.
  *
  * Always proceeds to the OTP-entry screen regardless of whether the email

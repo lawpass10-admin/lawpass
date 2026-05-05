@@ -46,6 +46,17 @@ export async function proxy(request: NextRequest): Promise<NextResponse> {
 
 export const config = {
   matcher: [
-    "/((?!_next/static|_next/image|favicon.ico|api/webhooks|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)",
+    // Excludes:
+    //   _next/static, _next/image, favicon.ico — Next.js internals
+    //   api/webhooks — server-to-server callbacks (signature-verified, no auth)
+    //   auth/callback — Google OAuth redirect target. Must bypass middleware
+    //     entirely: (a) the route handler runs exchangeCodeForSession, which
+    //     reads the PKCE code_verifier cookie set during signInWithOAuth — if
+    //     updateSession's "no user → wipe sb-* cookies" branch fires here, the
+    //     verifier is wiped and the exchange fails; (b) we don't want the
+    //     unauthed-user → /login redirect to swallow the OAuth code before
+    //     the route handler can use it.
+    //   image extensions — static assets
+    "/((?!_next/static|_next/image|favicon.ico|api/webhooks|auth/callback|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)",
   ],
 };
