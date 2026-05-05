@@ -46,7 +46,28 @@ export default async function AppLayout({
     .eq("id", user.id)
     .maybeSingle();
 
-  if (!profile) redirect("/onboarding/complete-profile");
+  if (!profile) {
+    // /onboarding/complete-profile is the Google-OAuth completion route
+    // (SPEC §6.2 step 5). Only OAuth users land there. For email-flow users,
+    // verifyOtpAction's fail-recovery (Phase 4 — signOut + cookie sweep on
+    // createProfile failure) wipes orphans before they reach this layout, so
+    // the else branch below should be unreachable in normal flow. It's
+    // defensive — if we ever do see an authenticated user with no profile
+    // and no Google provider, signOut and bounce to /login rather than
+    // misroute them to a form that wasn't designed for them.
+    //
+    // app_metadata.providers shape verified live during Phase 5 planning:
+    // email user has providers: ["email"], merged user has both. Using the
+    // array (vs the singular `provider` which only reflects the most-recent
+    // login) handles the merge case correctly.
+    const isOAuthUser =
+      user.app_metadata?.providers?.includes("google") ?? false;
+    if (isOAuthUser) {
+      redirect("/onboarding/complete-profile");
+    }
+    await supabase.auth.signOut();
+    redirect("/login");
+  }
 
   const headerList = await headers();
   const pathname = headerList.get("x-pathname") ?? "";
