@@ -410,12 +410,6 @@ export async function signInAction(input: {
  * Hardening Rule #2: SSR client only — never createAdminClient.
  */
 export async function signInWithGoogleAction(): Promise<ActionResult> {
-  // Wipe any stale sb-* cookies before the SDK writes a new pkce_verifier.
-  // The Google button is only reachable from /signup and /login (unauthed
-  // pages), so under normal flow there shouldn't be an active session to
-  // disrupt — defense in depth.
-  await clearStaleAuthCookies();
-
   const supabase = await createClient();
   const { data, error } = await supabase.auth.signInWithOAuth({
     provider: "google",
