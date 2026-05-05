@@ -7,9 +7,19 @@ import {
   BookOpen,
   ClipboardList,
   LayoutDashboard,
+  LogOut,
+  Settings,
 } from "lucide-react";
 import Link from "next/link";
 
+import { signOutAction } from "@/app/(auth)/_actions";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import {
   Sidebar,
   SidebarContent,
@@ -66,6 +76,24 @@ function isPathActive(pathname: string, href: string): boolean {
   return pathname === href || pathname.startsWith(`${href}/`);
 }
 
+/** Active-state polish (per PM clarification): subtle blue tint + slight
+ *  font-medium bump. Each active button also renders a thin amber-400
+ *  vertical accent bar at the visual-end edge (RTL-left) — see the
+ *  conditional <span aria-hidden /> rendered inside each active button.
+ *  `relative` is required so the absolute-positioned accent bar pins to
+ *  the button itself. */
+const ACTIVE_BUTTON_CLS =
+  "relative data-[active=true]:bg-blue-50/60 data-[active=true]:font-medium dark:data-[active=true]:bg-blue-950/30";
+
+function ActiveAccentBar() {
+  return (
+    <span
+      aria-hidden
+      className="pointer-events-none absolute top-1.5 bottom-1.5 left-0 w-[2px] rounded-full bg-amber-400"
+    />
+  );
+}
+
 function daysUntil(future: Date, now: Date = new Date()): number {
   const ms = future.getTime() - now.getTime();
   return Math.max(0, Math.ceil(ms / (1000 * 60 * 60 * 24)));
@@ -117,9 +145,11 @@ export function AppSidebar({
                   <SidebarMenuButton
                     render={<Link href={item.href} />}
                     isActive={active}
+                    className={ACTIVE_BUTTON_CLS}
                   >
                     <Icon />
-                    <span>{item.label}</span>
+                    <span className="flex-1">{item.label}</span>
+                    {active && <ActiveAccentBar />}
                   </SidebarMenuButton>
                 </SidebarMenuItem>
               );
@@ -143,9 +173,11 @@ export function AppSidebar({
                   <SidebarMenuButton
                     render={<Link href={item.href} />}
                     isActive={active}
+                    className={ACTIVE_BUTTON_CLS}
                   >
                     <Icon />
-                    <span>{item.label}</span>
+                    <span className="flex-1">{item.label}</span>
+                    {active && <ActiveAccentBar />}
                   </SidebarMenuButton>
                   {/* Hide the badge when 0 to avoid showing a misleading
                       "0" pill for users who haven't bookmarked / made
@@ -165,22 +197,29 @@ export function AppSidebar({
             placeholder page note). */}
         <SidebarGroup>
           <SidebarMenu>
-            <SidebarMenuItem>
-              <SidebarMenuButton
-                render={<Link href="/statistics" />}
-                isActive={isPathActive(pathname, "/statistics")}
-              >
-                <BarChart3 />
-                <span>סטטיסטיקה</span>
-              </SidebarMenuButton>
-            </SidebarMenuItem>
+            {(() => {
+              const active = isPathActive(pathname, "/statistics");
+              return (
+                <SidebarMenuItem>
+                  <SidebarMenuButton
+                    render={<Link href="/statistics" />}
+                    isActive={active}
+                    className={ACTIVE_BUTTON_CLS}
+                  >
+                    <BarChart3 />
+                    <span className="flex-1">סטטיסטיקה</span>
+                    {active && <ActiveAccentBar />}
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              );
+            })()}
           </SidebarMenu>
         </SidebarGroup>
       </SidebarContent>
 
       <SidebarFooter>
         {subscription && <SubscriptionCard subscription={subscription} />}
-        <UserAreaDisplay
+        <UserAreaDropdown
           fullName={profileFullName}
           email={userEmail}
         />
@@ -247,9 +286,15 @@ function SubscriptionCard({
   );
 }
 
-/** Display-only user area for Commit 1. Commit 2 wraps this block in a
- *  DropdownMenu trigger with הגדרות / התנתק items. */
-function UserAreaDisplay({
+/** User-area block at the sidebar bottom. Click anywhere on the row opens
+ *  a dropdown above it (side="top") with two items: הגדרות (Link to
+ *  /account, with Settings gear icon) and התנתק (calls signOutAction,
+ *  with LogOut icon).
+ *
+ *  signOutAction is a Server Action — invoked via DropdownMenuItem onClick
+ *  rather than form action. The action's redirect("/login") is propagated
+ *  by Next.js's client-side navigation handling. */
+function UserAreaDropdown({
   fullName,
   email,
 }: {
@@ -257,16 +302,41 @@ function UserAreaDisplay({
   email: string;
 }) {
   return (
-    <div className="flex items-center gap-2 rounded-md p-2">
-      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary text-xs font-medium text-primary-foreground">
-        {initials(fullName)}
-      </div>
-      <div className="flex min-w-0 flex-col items-start text-start">
-        <div className="truncate text-sm font-medium">{fullName}</div>
-        <div className="truncate text-xs text-muted-foreground" dir="ltr">
-          {email}
+    <DropdownMenu>
+      <DropdownMenuTrigger
+        className={cn(
+          "flex w-full items-center gap-2 rounded-md p-2 text-start outline-none transition-colors",
+          "hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring/50"
+        )}
+      >
+        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary text-xs font-medium text-primary-foreground">
+          {initials(fullName)}
         </div>
-      </div>
-    </div>
+        <div className="flex min-w-0 flex-col items-start text-start">
+          <div className="truncate text-sm font-medium">{fullName}</div>
+          <div className="truncate text-xs text-muted-foreground" dir="ltr">
+            {email}
+          </div>
+        </div>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent side="top" align="start" className="w-(--anchor-width)">
+        <DropdownMenuItem render={<Link href="/account" />}>
+          <Settings />
+          <span>הגדרות</span>
+        </DropdownMenuItem>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem
+          onClick={async () => {
+            // Server Action: redirects to /login on success. Next handles
+            // the navigation client-side. Promise resolution after redirect
+            // is fine to ignore.
+            await signOutAction();
+          }}
+        >
+          <LogOut />
+          <span>התנתק</span>
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
