@@ -121,7 +121,6 @@ export default async function AppLayout({
         subscription={subscription}
         bookmarksCount={bookmarksCount}
         mistakesCount={mistakesCount}
-        pathname={pathname}
       />
       <SidebarInset>
         <main className="flex-1 p-6">{children}</main>

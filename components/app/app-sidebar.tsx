@@ -11,6 +11,7 @@ import {
   Settings,
 } from "lucide-react";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 
 import { signOutAction } from "@/app/(auth)/_actions";
 import {
@@ -124,15 +125,22 @@ export function AppSidebar({
   subscription,
   bookmarksCount,
   mistakesCount,
-  pathname,
 }: {
   userEmail: string;
   profileFullName: string;
   subscription: SubscriptionData;
   bookmarksCount: number;
   mistakesCount: number;
-  pathname: string;
 }) {
+  // usePathname (rather than a pathname prop from the layout): the layout
+  // is a shared Server Component that gets cached across client-side
+  // navigations within the (app) group. The x-pathname header chain only
+  // gives the value at the first layout render — subsequent navigations
+  // leave the prop stale, pinning the sidebar's active state to whichever
+  // route the user landed on first. usePathname re-runs on every
+  // navigation, so isActive tracks the current route correctly.
+  const pathname = usePathname() ?? "";
+
   return (
     <Sidebar side="right" collapsible="icon">
       <SidebarHeaderArea />
