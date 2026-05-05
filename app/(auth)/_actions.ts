@@ -15,10 +15,12 @@ import {
   fullNameSchema,
   genderSchema,
   loginSchema,
+  oauthCompletionSchema,
   otpSchema,
   phoneSchema,
   resetPasswordSchema,
   signupSchema,
+  type OAuthCompletionInput,
   type SignupInput,
 } from "@/lib/validators/auth";
 
@@ -430,6 +432,103 @@ export async function signInWithGoogleAction(): Promise<ActionResult> {
   }
 
   redirect(data.url);
+}
+
+/**
+ * SPEC §6.2 step 5 + §9.6.1: completes the Google OAuth signup by collecting
+ * the demographic fields Google doesn't provide (phone, gender, birth_date,
+ * exam_date_planned, terms_accepted) and creating the profiles row.
+ *
+ * full_name is sourced from auth.users.user_metadata (Google's payload), not
+ * collected on the form. Fallback chain: full_name → name → email-local-part →
+ * "User". The RPC requires it as NOT NULL, so we always supply something.
+ *
+ * Hardening Rule #2: SSR client only. The complete_user_profile RPC is
+ * SECURITY DEFINER and derives the profile id from (SELECT auth.uid()) — a
+ * caller can't create a profile for someone else regardless of what they pass.
+ *
+ * Defense-in-depth merge guard: if a profile already exists for the current
+ * user (typically because Supabase auto-merged this OAuth login into an
+ * existing email-flow account per SPEC §6.2 step 4), skip submission and
+ * redirect /dashboard. The RPC's ON CONFLICT DO NOTHING is the safety net,
+ * but UX-wise we want the no-op to happen *before* the user thinks they
+ * submitted successfully.
+ *
+ * Fail-recovery on RPC error mirrors verifyOtpAction: signOut + cookie sweep
+ * so the user isn't stranded in a half-authenticated state.
+ */
+export async function completeGoogleOAuthSignup(
+  input: OAuthCompletionInput
+): Promise<ActionResult> {
+  const parsed = oauthCompletionSchema.safeParse(input);
+  if (!parsed.success) {
+    return {
+      ok: false,
+      error: parsed.error.issues[0]?.message ?? "טופס לא תקין",
+    };
+  }
+  const data = parsed.data;
+
+  const supabase = await createClient();
+
+  const {
+    data: { user },
+    error: userError,
+  } = await supabase.auth.getUser();
+  if (userError || !user) {
+    return { ok: false, error: "אירעה שגיאה. נסה שוב" };
+  }
+
+  // Merge guard — see SPEC §6.2 step 4 (Supabase auto-merges by email).
+  const { data: existing } = await supabase
+    .from("profiles")
+    .select("id")
+    .eq("id", user.id)
+    .maybeSingle();
+  if (existing) {
+    redirect("/dashboard");
+  }
+
+  // Source full_name from Google's user_metadata. Google typically populates
+  // both full_name and name; we prefer full_name. Defensive fallbacks for the
+  // unlikely case Google returns no name (e.g. older Google account, scope
+  // misconfiguration). The RPC requires NOT NULL.
+  const metaFullName =
+    typeof user.user_metadata?.full_name === "string"
+      ? user.user_metadata.full_name
+      : null;
+  const metaName =
+    typeof user.user_metadata?.name === "string"
+      ? user.user_metadata.name
+      : null;
+  const fullName: string =
+    metaFullName ||
+    metaName ||
+    (user.email ?? "").split("@")[0] ||
+    "User";
+
+  const profileResult = await createProfile({
+    user_id: user.id,
+    full_name: fullName,
+    phone: data.phone,
+    gender: data.gender,
+    birth_date: data.birth_date,
+    exam_date_planned: data.exam_date_planned,
+    terms_accepted_at: new Date().toISOString(),
+    signup_source: "google",
+  });
+
+  if (!profileResult.ok) {
+    // Mirror verifyOtpAction's fail-recovery: don't strand the user in a
+    // half-authenticated state with no profile. SignOut + cookie sweep so
+    // they're back to /login and can retry (re-click Google, fresh attempt).
+    await supabase.auth.signOut();
+    await clearStaleAuthCookies();
+    return profileResult;
+  }
+
+  revalidatePath("/", "layout");
+  redirect("/dashboard");
 }
 
 /**
