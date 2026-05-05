@@ -6,10 +6,16 @@ import { AppSidebar } from "@/components/app/app-sidebar";
 import { createClient } from "@/lib/supabase/server";
 
 // Routes inside (app) that don't require an active subscription. The user
-// must be able to reach /pricing to subscribe, /onboarding to see the
-// welcome screen between mock-payment and dashboard, and /account/* to
-// manage profile + subscription even after expiry (SPEC 7.4).
-const SUBSCRIPTION_EXEMPT_PREFIXES = ["/pricing", "/onboarding", "/account"];
+// must be able to reach /pricing to choose a plan, /checkout to enter
+// payment details (Phase 6 placeholder; Tranzila iframe in Slice 4),
+// /onboarding to see the welcome screen between mock-payment and dashboard,
+// and /account/* to manage profile + subscription even after expiry (SPEC 7.4).
+const SUBSCRIPTION_EXEMPT_PREFIXES = [
+  "/pricing",
+  "/checkout",
+  "/onboarding",
+  "/account",
+];
 
 function isSubscriptionExempt(pathname: string): boolean {
   return SUBSCRIPTION_EXEMPT_PREFIXES.some(
