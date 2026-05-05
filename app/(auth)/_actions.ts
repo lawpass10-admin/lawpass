@@ -42,14 +42,22 @@ type OAuthStartResult =
   | { ok: false; error: string };
 
 /**
- * Return shape for the OAuth completion action. Same shape as
- * OAuthStartResult but distinct nominally for clarity at the callsite.
- * The action returns a target URL ("/dashboard" if the user already has
- * an active subscription, "/pricing" otherwise) and the client navigates
- * via window.location.href. This avoids a Server-Action-initiated RSC
- * redirect chain (action → /dashboard → layout-redirect → /pricing) that
- * was racing with revalidatePath in Next.js 16 production and rendering
- * /pricing empty on first paint until a hard refresh.
+ * Return shape for actions that establish an auth session and need to
+ * direct the client to a follow-up URL (currently /dashboard or /pricing).
+ * Used by completeGoogleOAuthSignup AND verifyOtpAction — both flows hit
+ * the same RSC redirect-chain bug when they tried to redirect("/dashboard")
+ * server-side: (app)/layout.tsx then layout-redirected to /pricing on the
+ * no-subscription branch, and the chained RSC redirects raced with the
+ * revalidatePath flush, rendering /pricing empty on first paint.
+ *
+ * Workaround: action returns the target URL, client does
+ * window.location.assign(url), full page load avoids the chain. As a
+ * bonus the action runs the subscription check itself and returns
+ * /pricing or /dashboard directly, skipping the /dashboard hop entirely.
+ *
+ * Name retained as OAuthCompletionResult for now even though
+ * verifyOtpAction is the email-OTP path — the shape is identical and a
+ * wider rename felt premature mid-debug-cycle.
  */
 type OAuthCompletionResult =
   | { ok: true; url: string }
@@ -262,7 +270,7 @@ export async function signUpAction(input: SignupInput): Promise<ActionResult> {
 export async function verifyOtpAction(input: {
   email: string;
   token: string;
-}): Promise<ActionResult> {
+}): Promise<OAuthCompletionResult> {
   const parsed = otpSchema.safeParse(input);
   if (!parsed.success) {
     return {
@@ -328,9 +336,27 @@ export async function verifyOtpAction(input: {
     return profileResult;
   }
 
-  // Commit cookies set by Supabase SSR before the redirect lands.
+  // Flush the layout cache so the next page (/dashboard or /pricing)
+  // re-runs (app)/layout.tsx with the freshly-created profile + auth state.
   revalidatePath("/", "layout");
-  redirect("/dashboard");
+
+  // Decide the target client-side navigation URL based on subscription
+  // state — same query shape (app)/layout.tsx uses for its gate. By
+  // targeting /pricing directly when there's no sub, we skip the
+  // /dashboard hop that was previously triggering an RSC redirect chain
+  // (action → /dashboard → layout-redirect → /pricing) and rendering
+  // /pricing empty on first paint. Returning the URL + window.location
+  // navigation forces a full page load, eliminating the chain.
+  const { data: subscription } = await supabase
+    .from("subscriptions")
+    .select("id")
+    .eq("user_id", userId)
+    .eq("is_current", true)
+    .eq("status", "active")
+    .gt("ends_at", new Date().toISOString())
+    .maybeSingle();
+
+  return { ok: true, url: subscription ? "/dashboard" : "/pricing" };
 }
 
 /**

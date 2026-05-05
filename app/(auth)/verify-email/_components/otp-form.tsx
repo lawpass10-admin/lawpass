@@ -32,19 +32,6 @@ import { otpSchema } from "@/lib/validators/auth";
 const RESEND_COOLDOWN_SECONDS = 60;
 const MAX_ATTEMPTS = 5;
 
-/** Returns true if a thrown value is the NEXT_REDIRECT marker. Server Actions
- *  signal redirects by throwing this; we let it propagate to Next instead of
- *  surfacing a toast. */
-function isNextRedirect(err: unknown): boolean {
-  return (
-    typeof err === "object" &&
-    err !== null &&
-    "digest" in err &&
-    typeof (err as { digest?: unknown }).digest === "string" &&
-    (err as { digest: string }).digest.startsWith("NEXT_REDIRECT")
-  );
-}
-
 /**
  * Masks an email like "alice@example.com" → "a****@example.com" for display
  * on the OTP entry screen. Keeps the first character of the local part and
@@ -118,24 +105,24 @@ export default function OtpForm() {
 
   async function onSubmit(values: { token: string }) {
     setSubmitting(true);
-    try {
-      const result = await verifyOtpAction({ email, token: values.token });
-      // Server Action either redirects on success (throws NEXT_REDIRECT) or
-      // returns { ok: false, error }. The redirect path doesn't reach here.
-      if (result?.ok === false) {
-        setAttempts((a) => a + 1);
-        toast.error(result.error);
-        form.setError("token", { message: result.error });
-        setSubmitting(false);
-      }
-    } catch (err) {
-      if (!isNextRedirect(err)) {
-        toast.error("אירעה שגיאה. נסה שוב");
-        setSubmitting(false);
-      }
-      // NEXT_REDIRECT: re-throw so Next handles the navigation.
-      throw err;
+    // Server Action returns { ok: true, url } or { ok: false, error }. We
+    // navigate via window.location instead of having the action redirect
+    // because a Server-Action-initiated RSC redirect chain (action →
+    // /dashboard → layout-redirect → /pricing) was racing with
+    // revalidatePath in production and rendering /pricing empty on first
+    // paint. A full page load eliminates the chain.
+    const result = await verifyOtpAction({ email, token: values.token });
+    if (!result.ok) {
+      setAttempts((a) => a + 1);
+      toast.error(result.error);
+      form.setError("token", { message: result.error });
+      setSubmitting(false);
+      return;
     }
+    // .assign() is functionally equivalent to `window.location.href = ...`
+    // but the property-assignment form trips react-hooks/immutability
+    // when used inside a function declaration in the component body.
+    window.location.assign(result.url);
   }
 
   async function handleResend() {
