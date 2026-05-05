@@ -410,12 +410,31 @@ export async function signInAction(input: {
  * Hardening Rule #2: SSR client only — never createAdminClient.
  */
 export async function signInWithGoogleAction(): Promise<ActionResult> {
+  console.error("[oauth-start] begin");
+
   const supabase = await createClient();
+
   const { data, error } = await supabase.auth.signInWithOAuth({
     provider: "google",
     options: {
       redirectTo: `${process.env.NEXT_PUBLIC_SITE_URL}/auth/callback`,
     },
+  });
+
+  console.error("[oauth-start] signInWithOAuth returned", {
+    hasUrl: !!data?.url,
+    urlOrigin: data?.url ? new URL(data.url).origin : null,
+    errorName: error?.name,
+    errorMessage: error?.message,
+  });
+
+  const cookieStore = await cookies();
+  const sbCookies = cookieStore
+    .getAll()
+    .filter((c) => c.name.startsWith("sb-"));
+  console.error("[oauth-start] post-signInWithOAuth cookie state", {
+    sbCookieNames: sbCookies.map((c) => c.name),
+    totalCookies: cookieStore.getAll().length,
   });
 
   if (error) {
