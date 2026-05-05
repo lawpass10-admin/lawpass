@@ -81,9 +81,14 @@ function isPathActive(pathname: string, href: string): boolean {
  *  vertical accent bar at the visual-end edge (RTL-left) — see the
  *  conditional <span aria-hidden /> rendered inside each active button.
  *  `relative` is required so the absolute-positioned accent bar pins to
- *  the button itself. */
+ *  the button itself.
+ *
+ *  `text-start` overrides the shadcn primitive's `text-left` (which is
+ *  baked into sidebarMenuButtonVariants and would otherwise push label
+ *  text to the visual-LEFT in RTL — opposite of where the icon sits).
+ *  text-start is RTL-aware via CSS logical properties. */
 const ACTIVE_BUTTON_CLS =
-  "relative data-[active=true]:bg-blue-50/60 data-[active=true]:font-medium dark:data-[active=true]:bg-blue-950/30";
+  "relative text-start data-[active=true]:bg-blue-50/60 data-[active=true]:font-medium dark:data-[active=true]:bg-blue-950/30";
 
 function ActiveAccentBar() {
   return (
@@ -148,7 +153,7 @@ export function AppSidebar({
                     className={ACTIVE_BUTTON_CLS}
                   >
                     <Icon />
-                    <span className="flex-1">{item.label}</span>
+                    <span>{item.label}</span>
                     {active && <ActiveAccentBar />}
                   </SidebarMenuButton>
                 </SidebarMenuItem>
@@ -176,7 +181,7 @@ export function AppSidebar({
                     className={ACTIVE_BUTTON_CLS}
                   >
                     <Icon />
-                    <span className="flex-1">{item.label}</span>
+                    <span>{item.label}</span>
                     {active && <ActiveAccentBar />}
                   </SidebarMenuButton>
                   {/* Hide the badge when 0 to avoid showing a misleading
@@ -207,7 +212,7 @@ export function AppSidebar({
                     className={ACTIVE_BUTTON_CLS}
                   >
                     <BarChart3 />
-                    <span className="flex-1">סטטיסטיקה</span>
+                    <span>סטטיסטיקה</span>
                     {active && <ActiveAccentBar />}
                   </SidebarMenuButton>
                 </SidebarMenuItem>
