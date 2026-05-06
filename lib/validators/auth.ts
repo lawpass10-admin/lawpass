@@ -52,15 +52,20 @@ export const birthDateSchema = z
   });
 
 /**
- * Phone — lenient pattern (digits, dashes, spaces, parens, optional +).
- * SPEC §8.2.2 stores it as TEXT (no format constraint at DB level).
+ * Phone — Israeli mobile only. Strict format: 10 digits starting with 05.
+ * SPEC §8.2.2 stores it as TEXT (no DB constraint), but we validate
+ * strictly at the form layer to keep DB data consistent.
+ *
+ * Valid examples:   0501234567, 0541234567
+ * Invalid examples: +972501234567 (international format), 03-1234567
+ *                   (landline), 050-123-4567 (formatted)
  */
 export const phoneSchema = z
   .string()
   .trim()
-  .min(9, { message: "מספר טלפון לא תקין" })
-  .max(20, { message: "מספר טלפון לא תקין" })
-  .regex(/^[\d\s+\-()]+$/, { message: "מספר טלפון לא תקין" });
+  .regex(/^05\d{8}$/, {
+    message: "מספר טלפון לא תקין. נייד ישראלי בפורמט 0501234567",
+  });
 
 /**
  * Exam date planned — optional, stored as YYYY-MM-01 (first of month) in DB

@@ -16,21 +16,17 @@ import { createClient } from "@/lib/supabase/server";
  * + Location header to Supabase = reliable.
  */
 export async function GET() {
-  console.error("[oauth-route] begin");
-
   const supabase = await createClient();
   const { data, error } = await supabase.auth.signInWithOAuth({
     provider: "google",
     options: {
       redirectTo: `${process.env.NEXT_PUBLIC_SITE_URL}/auth/callback`,
+      // prompt=select_account forces Google to show the account picker
+      // even when the user is already signed in to a single Google
+      // account. Without it, Google silently re-uses the only signed-in
+      // account, which makes account-switching impossible from our UI.
+      queryParams: { prompt: "select_account" },
     },
-  });
-
-  console.error("[oauth-route] signInWithOAuth returned", {
-    hasUrl: !!data?.url,
-    urlOrigin: data?.url ? new URL(data.url).origin : null,
-    errorName: error?.name,
-    errorMessage: error?.message,
   });
 
   if (error || !data?.url) {

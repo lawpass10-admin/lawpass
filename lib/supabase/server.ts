@@ -17,13 +17,9 @@ export async function createClient() {
             cookiesToSet.forEach(({ name, value, options }) =>
               cookieStore.set(name, value, options)
             );
-          } catch (err) {
-            // TODO(slice-7): remove once OAuth bug closed.
-            console.error("[supabase-server-cookies] setAll catch fired", {
-              err: String(err),
-              errName: (err as { name?: string })?.name,
-              cookieNames: cookiesToSet.map((c) => c.name),
-            });
+          } catch {
+            // setAll is called from Server Components where cookies can't be set.
+            // This is safe to ignore when the middleware refreshes the session.
           }
         },
       },

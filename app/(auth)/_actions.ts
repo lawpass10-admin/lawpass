@@ -31,17 +31,6 @@ import {
 type ActionResult = { ok: true } | { ok: false; error: string };
 
 /**
- * Return shape for the Google OAuth start action. Differs from ActionResult
- * because we need to surface the OAuth URL back to the client — the action
- * cannot redirect server-side (Next.js + Vercel drop Set-Cookie headers
- * from Server Action responses that redirect to an external URL, which
- * loses the PKCE verifier cookie). Client navigates via window.location.
- */
-type OAuthStartResult =
-  | { ok: true; url: string }
-  | { ok: false; error: string };
-
-/**
  * Return shape for actions that establish an auth session and need to
  * direct the client to a follow-up URL (currently /dashboard or /pricing).
  * Used by completeGoogleOAuthSignup AND verifyOtpAction — both flows hit
@@ -446,66 +435,6 @@ export async function signInAction(input: {
 
   revalidatePath("/", "layout");
   redirect("/dashboard");
-}
-
-/**
- * SPEC §6.2 + §9.6.1: starts the Google OAuth flow.
- *
- * Calls supabase.auth.signInWithOAuth, which (a) writes a PKCE verifier
- * cookie via our SSR client's setAll callback, and (b) returns the Google
- * authorization URL. We redirect the browser to that URL; Google redirects
- * back to Supabase's /auth/v1/callback, which then redirects to our own
- * /auth/callback Route Handler (configured via NEXT_PUBLIC_SITE_URL +
- * /auth/callback in the redirectTo option here).
- *
- * Hardening Rule #2: SSR client only — never createAdminClient.
- */
-export async function signInWithGoogleAction(): Promise<OAuthStartResult> {
-  console.error("[oauth-start] begin");
-
-  const supabase = await createClient();
-
-  const { data, error } = await supabase.auth.signInWithOAuth({
-    provider: "google",
-    options: {
-      redirectTo: `${process.env.NEXT_PUBLIC_SITE_URL}/auth/callback`,
-    },
-  });
-
-  console.error("[oauth-start] signInWithOAuth returned", {
-    hasUrl: !!data?.url,
-    urlOrigin: data?.url ? new URL(data.url).origin : null,
-    errorName: error?.name,
-    errorMessage: error?.message,
-  });
-
-  const cookieStore = await cookies();
-  const sbCookies = cookieStore
-    .getAll()
-    .filter((c) => c.name.startsWith("sb-"));
-  console.error("[oauth-start] post-signInWithOAuth cookie state", {
-    sbCookieNames: sbCookies.map((c) => c.name),
-    totalCookies: cookieStore.getAll().length,
-  });
-
-  if (error) {
-    return { ok: false, error: mapAuthError(error) };
-  }
-  if (!data?.url) {
-    return { ok: false, error: "אירעה שגיאה. נסה שוב" };
-  }
-
-  // CRITICAL: Do NOT call redirect(data.url) here.
-  // Next.js + Vercel production drops Set-Cookie headers from Server
-  // Action responses that redirect to an external URL. The PKCE verifier
-  // cookie set by signInWithOAuth's setAll callback was being written to
-  // the cookie store but never reaching the browser, causing the callback
-  // to fail with AuthPKCECodeVerifierMissingError. Workaround: return the
-  // URL, let the client do window.location.href = result.url. A
-  // non-redirect Server Action response reliably carries Set-Cookie
-  // headers, so the verifier cookie reaches the browser before the
-  // navigation to Google starts.
-  return { ok: true, url: data.url };
 }
 
 /**
