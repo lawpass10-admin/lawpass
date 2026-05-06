@@ -1,8 +1,7 @@
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
-import { he } from "date-fns/locale";
-import { Check, ChevronDownIcon } from "lucide-react";
+import { Check } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import {
@@ -15,7 +14,6 @@ import { toast } from "sonner";
 
 import { signUpAction } from "@/app/(auth)/_actions";
 import { Button } from "@/components/ui/button";
-import { Calendar } from "@/components/ui/calendar";
 import {
   Card,
   CardContent,
@@ -73,13 +71,28 @@ const STEP_FIELDS = {
   3: ["exam_date_planned", "terms_accepted"] as const,
 };
 
-/** Today − 18 years. Used by both the Calendar disabled matcher and as the
- *  upper bound for the captionLayout="dropdown" year selector. Mirrors the
- *  lexicographic compare in birthDateSchema. */
-function maxBirthDate(): Date {
-  const d = new Date();
-  d.setFullYear(d.getFullYear() - 18);
-  return d;
+// Birth-year range for the year dropdown. Lower bound 1940 mirrors the
+// previous Calendar's startMonth; upper bound enforces the 18+ rule (the
+// Zod schema does the strict comparison — this just keeps invalid years
+// out of the UI). Computed once at module load; staleness across a year
+// boundary self-corrects on the next deploy / hard refresh, acceptable
+// trade-off vs. the complexity of recomputing per-render.
+const MIN_BIRTH_YEAR = 1940;
+const MAX_BIRTH_YEAR = new Date().getFullYear() - 18;
+const yearOptions = Array.from(
+  { length: MAX_BIRTH_YEAR - MIN_BIRTH_YEAR + 1 },
+  (_, i) => MAX_BIRTH_YEAR - i
+);
+
+/** Days in a calendar month. month is 1-indexed (1=Jan, 12=Dec). Trick:
+ *  new Date(year, month, 0) returns the LAST day of (month-1) in JS's
+ *  0-indexed month convention, which equals the last day of the
+ *  1-indexed `month` we passed in. Used to truncate the day Select when
+ *  the user changes year/month and the previous day is now invalid
+ *  (e.g., Feb 30 → Feb 28/29 on month switch, Feb 29 in a leap year →
+ *  Feb 28 on year switch). */
+function daysInMonth(year: number, month: number): number {
+  return new Date(year, month, 0).getDate();
 }
 
 /** Returns true if a thrown value is the NEXT_REDIRECT marker. Server Actions
@@ -149,7 +162,6 @@ export default function SignupForm() {
   const [step, setStep] = useState<Step>(1);
   const [submitting, setSubmitting] = useState(false);
   const [oauthSubmitting, setOauthSubmitting] = useState(false);
-  const [calendarOpen, setCalendarOpen] = useState(false);
 
   // Local mirrors for the month/year selects on step 3. Combined into a
   // YYYY-MM-01 string and pushed into the form when both are set.
@@ -288,13 +300,7 @@ export default function SignupForm() {
             noValidate
           >
             {step === 1 && <Step1 form={form} />}
-            {step === 2 && (
-              <Step2
-                form={form}
-                calendarOpen={calendarOpen}
-                setCalendarOpen={setCalendarOpen}
-              />
-            )}
+            {step === 2 && <Step2 form={form} />}
             {step === 3 && (
               <Step3
                 form={form}
@@ -446,21 +452,9 @@ function Step1({ form }: { form: UseFormReturn<SignupInput> }) {
 
 function Step2({
   form,
-  calendarOpen,
-  setCalendarOpen,
 }: {
   form: UseFormReturn<SignupInput>;
-  calendarOpen: boolean;
-  setCalendarOpen: (v: boolean) => void;
 }) {
-  const birthDateValue = useWatch({
-    control: form.control,
-    name: "birth_date",
-  });
-  const selectedDate = birthDateValue
-    ? new Date(`${birthDateValue}T00:00:00Z`)
-    : undefined;
-
   return (
     <>
       <FormField
@@ -549,54 +543,105 @@ function Step2({
       <FormField
         control={form.control}
         name="birth_date"
-        render={({ field }) => (
-          <FormItem>
-            <FormLabel>תאריך לידה</FormLabel>
-            <FormControl>
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => setCalendarOpen(!calendarOpen)}
-                className={cn(
-                  "w-full justify-between font-normal",
-                  !field.value && "text-muted-foreground"
-                )}
-                aria-expanded={calendarOpen}
-              >
-                {field.value
-                  ? new Date(`${field.value}T00:00:00Z`).toLocaleDateString(
-                      "he-IL"
-                    )
-                  : "בחר תאריך לידה"}
-                <ChevronDownIcon className="h-4 w-4 opacity-50" />
-              </Button>
-            </FormControl>
-            {calendarOpen && (
-              <div className="mt-2 flex justify-center rounded-md border p-2">
-                <Calendar
-                  mode="single"
-                  selected={selectedDate}
-                  onSelect={(date) => {
-                    if (date) {
-                      // YYYY-MM-DD using UTC to match the Zod schema's compare.
-                      const iso = date.toISOString().slice(0, 10);
-                      field.onChange(iso);
-                      void form.trigger("birth_date");
-                      setCalendarOpen(false);
-                    }
-                  }}
-                  disabled={(d) => d > maxBirthDate()}
-                  captionLayout="dropdown"
-                  startMonth={new Date(1940, 0)}
-                  endMonth={maxBirthDate()}
-                  defaultMonth={selectedDate ?? new Date(2000, 0)}
-                  locale={he}
-                />
+        render={({ field }) => {
+          // field.value is "YYYY-MM-DD" (or "" before any selection).
+          // Splitting always yields 3 entries due to the YYYY-MM-DD shape;
+          // empty pieces map to "" placeholders in each Select.
+          const [year, month, day] = (field.value ?? "").split("-");
+          const dayCount =
+            year && month
+              ? daysInMonth(parseInt(year, 10), parseInt(month, 10))
+              : 31;
+          const dayOptions = Array.from(
+            { length: dayCount },
+            (_, i) => i + 1
+          );
+
+          // Compose a new ISO from the three parts. Truncate the day if
+          // the new (year, month) makes it invalid — switching from leap
+          // Feb 29 → non-leap Feb 28, or Jan 31 → April 30. The schema
+          // still validates 18+ on submit; this is just to avoid passing
+          // a non-existent calendar date through the form.
+          function update(nextYear: string, nextMonth: string, nextDay: string) {
+            const maxDay =
+              nextYear && nextMonth
+                ? daysInMonth(parseInt(nextYear, 10), parseInt(nextMonth, 10))
+                : 31;
+            const safeDay =
+              nextDay && parseInt(nextDay, 10) > maxDay
+                ? String(maxDay).padStart(2, "0")
+                : nextDay;
+            const iso =
+              nextYear && nextMonth && safeDay
+                ? `${nextYear}-${nextMonth}-${safeDay}`
+                : "";
+            field.onChange(iso);
+            void form.trigger("birth_date");
+          }
+
+          return (
+            <FormItem>
+              <FormLabel>תאריך לידה</FormLabel>
+              <div className="flex gap-2">
+                <Select
+                  value={year ?? ""}
+                  onValueChange={(v) =>
+                    update(v ?? "", month ?? "", day ?? "")
+                  }
+                >
+                  <SelectTrigger className="flex-1">
+                    <SelectValue placeholder="שנה" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {yearOptions.map((y) => (
+                      <SelectItem key={y} value={String(y)}>
+                        {y}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Select
+                  value={month ?? ""}
+                  onValueChange={(v) =>
+                    update(year ?? "", v ?? "", day ?? "")
+                  }
+                >
+                  <SelectTrigger className="flex-1">
+                    <SelectValue placeholder="חודש" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {HEBREW_MONTHS.map((m, i) => (
+                      <SelectItem
+                        key={m}
+                        value={String(i + 1).padStart(2, "0")}
+                      >
+                        {m}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Select
+                  value={day ?? ""}
+                  onValueChange={(v) =>
+                    update(year ?? "", month ?? "", v ?? "")
+                  }
+                >
+                  <SelectTrigger className="flex-1">
+                    <SelectValue placeholder="יום" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {dayOptions.map((d) => (
+                      <SelectItem key={d} value={String(d).padStart(2, "0")}>
+                        {d}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
-            )}
-            <FormMessage />
-          </FormItem>
-        )}
+              <FormMessage />
+            </FormItem>
+          );
+        }}
       />
     </>
   );
@@ -619,8 +664,11 @@ function Step3({
   examYear: string;
   setExamYear: (v: string) => void;
 }) {
+  // Year options for exam_date_planned — current year + next 3. Named
+  // examYearOptions to avoid colliding with the module-level birth-year
+  // `yearOptions` const used by Step2's birth_date FormField.
   const currentYear = new Date().getFullYear();
-  const yearOptions = [
+  const examYearOptions = [
     currentYear,
     currentYear + 1,
     currentYear + 2,
@@ -662,7 +710,7 @@ function Step3({
                   <SelectValue placeholder="שנה" />
                 </SelectTrigger>
                 <SelectContent>
-                  {yearOptions.map((y) => (
+                  {examYearOptions.map((y) => (
                     <SelectItem key={y} value={String(y)}>
                       {y}
                     </SelectItem>
