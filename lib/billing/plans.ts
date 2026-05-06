@@ -6,12 +6,12 @@
  * single source of truth for plan IDs, prices, durations, and feature
  * lists used by /pricing, /checkout, and grantMockSubscriptionAction.
  *
- * Important: the grant_mock_subscription RPC currently ignores the chosen
- * plan and always grants a 3-month/90-day subscription (see migration
- * 20260504000001). The plan id passed through /checkout is cosmetic for
- * Phase 6 — it drives the displayed price + plan name on the order
- * summary only. Slice 4 will pass the actual choice to the real Tranzila
- * flow.
+ * The PlanId values here ("plan_3m" / "plan_6m") are the URL-safe client
+ * identifiers used in /checkout?plan=… query params. They map 1:1 to the
+ * DB-level plan_type literals ("3_months" / "6_months") inside
+ * grantMockSubscriptionAction (app/(app)/_actions.ts) before being passed
+ * to grant_mock_subscription's p_plan_type argument. Mapping lives in
+ * the action so the DB literals don't leak into the client bundle.
  *
  * TODO(slice-4): align route name. SPEC §7.0.1 line 1539 calls the plan-
  * selection screen `/subscription` (the Sidebar "רכוש מנוי" button

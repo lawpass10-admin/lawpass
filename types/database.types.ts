@@ -962,7 +962,10 @@ export type Database = {
         }
         Returns: undefined
       }
-      grant_mock_subscription: { Args: never; Returns: string }
+      grant_mock_subscription: {
+        Args: { p_plan_type: string }
+        Returns: string
+      }
       has_active_subscription: { Args: never; Returns: boolean }
       is_admin: { Args: never; Returns: boolean }
     }
