@@ -156,16 +156,24 @@ export default function SignupForm() {
   const [examMonth, setExamMonth] = useState<string>("");
   const [examYear, setExamYear] = useState<string>("");
 
-  const defaultValues: DefaultValues<SignupInput> = {
+  // gender is initialized to "" (not undefined) so the form is controlled
+  // from first render — same string the RadioGroup sees via field.value ?? "".
+  // The cast is necessary because SignupInput["gender"] is a strict enum;
+  // Zod still rejects "" on submit (z.enum's allowlist), which is the
+  // intended UX (user must pick one before submit).
+  // terms_accepted stays undefined — Zod requires literal(true), so undefined
+  // and false both fail submit; the controlled state question doesn't apply
+  // to a Checkbox the same way.
+  const defaultValues = {
     email: "",
     password: "",
     confirmPassword: "",
     full_name: "",
     phone: "",
+    gender: "",
     birth_date: "",
     exam_date_planned: null,
-    // gender and terms_accepted intentionally undefined — user must select.
-  };
+  } as unknown as DefaultValues<SignupInput>;
 
   const form = useForm<SignupInput>({
     resolver: zodResolver(signupSchema),
