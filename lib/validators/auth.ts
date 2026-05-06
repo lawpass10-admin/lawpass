@@ -191,13 +191,17 @@ export type ResetPasswordInput = z.infer<typeof resetPasswordSchema>;
  * completion form does NOT collect:
  *   - email — established by the OAuth session
  *   - password — OAuth users don't have one
- *   - full_name — Google provides it via auth.users.user_metadata
+ *
+ * full_name IS collected here even though Google supplies it: the form
+ * pre-fills with Google's value but lets the user edit before submit, so
+ * whatever they type is what lands in profiles.full_name.
  *
  * Used by the /onboarding/complete-profile client form and re-validated
  * server-side in completeGoogleOAuthSignup (SPEC §9.6.1, defense in depth
  * per SPEC §9.5 layer 3).
  */
 export const oauthCompletionSchema = z.object({
+  full_name: fullNameSchema,
   phone: phoneSchema,
   gender: genderSchema,
   birth_date: birthDateSchema,

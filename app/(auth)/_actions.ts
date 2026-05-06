@@ -492,27 +492,15 @@ export async function completeGoogleOAuthSignup(
     return { ok: true, url: "/dashboard" };
   }
 
-  // Source full_name from Google's user_metadata. Google typically populates
-  // both full_name and name; we prefer full_name. Defensive fallbacks for the
-  // unlikely case Google returns no name (e.g. older Google account, scope
-  // misconfiguration). The RPC requires NOT NULL.
-  const metaFullName =
-    typeof user.user_metadata?.full_name === "string"
-      ? user.user_metadata.full_name
-      : null;
-  const metaName =
-    typeof user.user_metadata?.name === "string"
-      ? user.user_metadata.name
-      : null;
-  const fullName: string =
-    metaFullName ||
-    metaName ||
-    (user.email ?? "").split("@")[0] ||
-    "User";
-
+  // full_name now comes from the form (the user can edit Google's
+  // pre-filled value before submit). The OAuth completion schema enforces
+  // non-empty, so by the time we reach here it's a validated string. The
+  // page-level fallback to user_metadata.full_name / name / email-prefix
+  // happens in app/(auth)/onboarding/complete-profile/page.tsx; the user
+  // sees and can override it.
   const profileResult = await createProfile({
     user_id: user.id,
-    full_name: fullName,
+    full_name: data.full_name,
     phone: data.phone,
     gender: data.gender,
     birth_date: data.birth_date,

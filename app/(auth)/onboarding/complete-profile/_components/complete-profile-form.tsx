@@ -18,7 +18,6 @@ import { Calendar } from "@/components/ui/calendar";
 import {
   Card,
   CardContent,
-  CardDescription,
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
@@ -71,7 +70,11 @@ function maxBirthDate(): Date {
   return d;
 }
 
-export default function CompleteProfileForm() {
+export default function CompleteProfileForm({
+  defaultFullName,
+}: {
+  defaultFullName: string;
+}) {
   const [submitting, setSubmitting] = useState(false);
   const [calendarOpen, setCalendarOpen] = useState(false);
 
@@ -82,6 +85,7 @@ export default function CompleteProfileForm() {
   const [examYear, setExamYear] = useState<string>("");
 
   const defaultValues: DefaultValues<OAuthCompletionInput> = {
+    full_name: defaultFullName,
     phone: "",
     birth_date: "",
     exam_date_planned: null,
@@ -147,9 +151,6 @@ export default function CompleteProfileForm() {
     <Card>
       <CardHeader>
         <CardTitle className="text-center">השלמת הרשמה</CardTitle>
-        <CardDescription className="text-center">
-          כדי להמשיך, נשלים כמה פרטים נוספים
-        </CardDescription>
       </CardHeader>
       <CardContent>
         <Form {...form}>
@@ -158,6 +159,20 @@ export default function CompleteProfileForm() {
             className="space-y-4"
             noValidate
           >
+            <FormField
+              control={form.control}
+              name="full_name"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>שם מלא</FormLabel>
+                  <FormControl>
+                    <Input autoComplete="name" {...field} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
             <FormField
               control={form.control}
               name="phone"
@@ -367,13 +382,15 @@ export default function CompleteProfileForm() {
               )}
             />
 
-            <Button
-              type="submit"
-              className="w-full"
-              disabled={submitting || termsAccepted !== true}
-            >
-              {submitting ? "שולח..." : "המשך"}
-            </Button>
+            <div className="flex items-center gap-2 pt-2">
+              <Button
+                type="submit"
+                className="ms-auto"
+                disabled={submitting || termsAccepted !== true}
+              >
+                {submitting ? "שולח..." : "הרשם"}
+              </Button>
+            </div>
           </form>
         </Form>
       </CardContent>
