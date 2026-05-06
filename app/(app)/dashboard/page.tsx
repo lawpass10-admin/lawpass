@@ -11,6 +11,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { requireActiveSubscription } from "@/lib/auth/subscription-gate";
 import { getHebrewGreeting } from "@/lib/greetings";
 import { createClient } from "@/lib/supabase/server";
 import { cn } from "@/lib/utils";
@@ -28,9 +29,12 @@ import { cn } from "@/lib/utils";
  * Hidden until practice data exists (Slice 2+): "המשך מאיפה שעצרת" 3 action
  * cards and the 3 weak chapters block from SPEC §7.1.
  *
- * Note: profile + subscription queries here run in addition to the same
- * queries in (app)/layout.tsx. React/Next dedupe via the request-scoped
- * cache so the second invocation is free (no extra round-trip).
+ * Subscription gate: requireActiveSubscription() runs first. It reproduces
+ * the auth + subscription checks from (app)/layout.tsx to defend against
+ * Next.js Router Cache reusing the rendered layout segment between sibling
+ * <Link> navigations without re-running the layout's server-side gate.
+ * Profile + subscription queries here are deduped against the layout's via
+ * React's request-scoped cache.
  */
 
 const KPI_CARDS = [
@@ -76,32 +80,22 @@ function formatDateHeLong(d: Date): string {
 }
 
 export default async function DashboardPage() {
+  // Subscription gate. Re-runs on every navigation (unlike the layout) and
+  // returns the user + subscription rows so we don't refetch them below.
+  const { user, subscription } = await requireActiveSubscription();
+
   const supabase = await createClient();
 
-  // Defensive — (app)/layout.tsx already redirects unauthed / missing
-  // profile / missing subscription users. These returns are unreachable in
-  // normal flow but keep TS happy + cover a race-condition gap.
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) redirect("/login");
-
+  // Defensive — (app)/layout.tsx already redirects users with no profile to
+  // /onboarding/complete-profile (OAuth) or /login (email orphan). This
+  // branch covers the race where the layout's check passed but the row got
+  // deleted between then and now.
   const { data: profile } = await supabase
     .from("profiles")
     .select("full_name, exam_date_planned")
     .eq("id", user.id)
     .maybeSingle();
   if (!profile) redirect("/onboarding/complete-profile");
-
-  const { data: subscription } = await supabase
-    .from("subscriptions")
-    .select("plan_type, ends_at, created_at")
-    .eq("user_id", user.id)
-    .eq("is_current", true)
-    .eq("status", "active")
-    .gt("ends_at", new Date().toISOString())
-    .maybeSingle();
-  if (!subscription) redirect("/pricing");
 
   const greeting = getHebrewGreeting();
   const today = new Date();
