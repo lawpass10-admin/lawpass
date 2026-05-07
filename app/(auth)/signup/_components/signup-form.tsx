@@ -543,105 +543,16 @@ function Step2({
       <FormField
         control={form.control}
         name="birth_date"
-        render={({ field }) => {
-          // field.value is "YYYY-MM-DD" (or "" before any selection).
-          // Splitting always yields 3 entries due to the YYYY-MM-DD shape;
-          // empty pieces map to "" placeholders in each Select.
-          const [year, month, day] = (field.value ?? "").split("-");
-          const dayCount =
-            year && month
-              ? daysInMonth(parseInt(year, 10), parseInt(month, 10))
-              : 31;
-          const dayOptions = Array.from(
-            { length: dayCount },
-            (_, i) => i + 1
-          );
-
-          // Compose a new ISO from the three parts. Truncate the day if
-          // the new (year, month) makes it invalid — switching from leap
-          // Feb 29 → non-leap Feb 28, or Jan 31 → April 30. The schema
-          // still validates 18+ on submit; this is just to avoid passing
-          // a non-existent calendar date through the form.
-          function update(nextYear: string, nextMonth: string, nextDay: string) {
-            const maxDay =
-              nextYear && nextMonth
-                ? daysInMonth(parseInt(nextYear, 10), parseInt(nextMonth, 10))
-                : 31;
-            const safeDay =
-              nextDay && parseInt(nextDay, 10) > maxDay
-                ? String(maxDay).padStart(2, "0")
-                : nextDay;
-            const iso =
-              nextYear && nextMonth && safeDay
-                ? `${nextYear}-${nextMonth}-${safeDay}`
-                : "";
-            field.onChange(iso);
-            void form.trigger("birth_date");
-          }
-
-          return (
-            <FormItem>
-              <FormLabel>תאריך לידה</FormLabel>
-              <div className="flex gap-2">
-                <Select
-                  value={year ?? ""}
-                  onValueChange={(v) =>
-                    update(v ?? "", month ?? "", day ?? "")
-                  }
-                >
-                  <SelectTrigger className="flex-1">
-                    <SelectValue placeholder="שנה" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {yearOptions.map((y) => (
-                      <SelectItem key={y} value={String(y)}>
-                        {y}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <Select
-                  value={month ?? ""}
-                  onValueChange={(v) =>
-                    update(year ?? "", v ?? "", day ?? "")
-                  }
-                >
-                  <SelectTrigger className="flex-1">
-                    <SelectValue placeholder="חודש" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {HEBREW_MONTHS.map((m, i) => (
-                      <SelectItem
-                        key={m}
-                        value={String(i + 1).padStart(2, "0")}
-                      >
-                        {m}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <Select
-                  value={day ?? ""}
-                  onValueChange={(v) =>
-                    update(year ?? "", month ?? "", v ?? "")
-                  }
-                >
-                  <SelectTrigger className="flex-1">
-                    <SelectValue placeholder="יום" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {dayOptions.map((d) => (
-                      <SelectItem key={d} value={String(d).padStart(2, "0")}>
-                        {d}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <FormMessage />
-            </FormItem>
-          );
-        }}
+        render={({ field }) => (
+          <FormItem>
+            <FormLabel>תאריך לידה</FormLabel>
+            <BirthDateSelects
+              value={field.value ?? ""}
+              onChange={field.onChange}
+            />
+            <FormMessage />
+          </FormItem>
+        )}
       />
     </>
   );
@@ -763,5 +674,134 @@ function Step3({
         )}
       />
     </>
+  );
+}
+
+// =============================================================================
+// Birth-date 3-Select sub-component
+// =============================================================================
+
+/**
+ * Three-Select date picker (year / month / day) backed by local state per
+ * part. Commits to the parent form's birth_date field as "YYYY-MM-DD" only
+ * when all three parts are set; otherwise commits "" so partial selections
+ * don't trip the schema regex on submit. Validation timing is handled by
+ * react-hook-form's mode setting on the parent form — this component does
+ * NOT call form.trigger.
+ *
+ * Day truncation: when the user changes year or month and the previously-
+ * selected day exceeds the new month's max (Feb 29 in a leap year →
+ * non-leap, Jan 31 → April 30), the day is truncated before commit.
+ */
+function BirthDateSelects({
+  value,
+  onChange,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+}) {
+  const initialParts = value.split("-");
+  const [yearPart, setYearPart] = useState<string>(initialParts[0] ?? "");
+  const [monthPart, setMonthPart] = useState<string>(initialParts[1] ?? "");
+  const [dayPart, setDayPart] = useState<string>(initialParts[2] ?? "");
+
+  function commitIfComplete(y: string, m: string, d: string) {
+    if (y && m && d) {
+      onChange(`${y}-${m}-${d}`);
+    } else {
+      onChange("");
+    }
+  }
+
+  const dayCount =
+    yearPart && monthPart
+      ? daysInMonth(parseInt(yearPart, 10), parseInt(monthPart, 10))
+      : 31;
+  const dayOptions = Array.from({ length: dayCount }, (_, i) =>
+    String(i + 1).padStart(2, "0")
+  );
+
+  return (
+    <div className="flex gap-2">
+      <Select
+        value={yearPart}
+        onValueChange={(raw) => {
+          const y = raw ?? "";
+          setYearPart(y);
+          let newDay = dayPart;
+          if (y && monthPart && newDay) {
+            const maxDay = daysInMonth(
+              parseInt(y, 10),
+              parseInt(monthPart, 10)
+            );
+            if (parseInt(newDay, 10) > maxDay) {
+              newDay = String(maxDay).padStart(2, "0");
+              setDayPart(newDay);
+            }
+          }
+          commitIfComplete(y, monthPart, newDay);
+        }}
+      >
+        <SelectTrigger className="flex-1">
+          <SelectValue placeholder="שנה" />
+        </SelectTrigger>
+        <SelectContent>
+          {yearOptions.map((y) => (
+            <SelectItem key={y} value={String(y)}>
+              {y}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+      <Select
+        value={monthPart}
+        onValueChange={(raw) => {
+          const m = raw ?? "";
+          setMonthPart(m);
+          let newDay = dayPart;
+          if (yearPart && m && newDay) {
+            const maxDay = daysInMonth(
+              parseInt(yearPart, 10),
+              parseInt(m, 10)
+            );
+            if (parseInt(newDay, 10) > maxDay) {
+              newDay = String(maxDay).padStart(2, "0");
+              setDayPart(newDay);
+            }
+          }
+          commitIfComplete(yearPart, m, newDay);
+        }}
+      >
+        <SelectTrigger className="flex-1">
+          <SelectValue placeholder="חודש" />
+        </SelectTrigger>
+        <SelectContent>
+          {HEBREW_MONTHS.map((m, i) => (
+            <SelectItem key={m} value={String(i + 1).padStart(2, "0")}>
+              {m}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+      <Select
+        value={dayPart}
+        onValueChange={(raw) => {
+          const d = raw ?? "";
+          setDayPart(d);
+          commitIfComplete(yearPart, monthPart, d);
+        }}
+      >
+        <SelectTrigger className="flex-1">
+          <SelectValue placeholder="יום" />
+        </SelectTrigger>
+        <SelectContent>
+          {dayOptions.map((d) => (
+            <SelectItem key={d} value={d}>
+              {parseInt(d, 10)}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    </div>
   );
 }
