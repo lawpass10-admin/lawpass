@@ -47,11 +47,28 @@ export default async function AppLayout({
   }
   if (!user) redirect("/login");
 
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("id, full_name, exam_date_planned")
-    .eq("id", user.id)
-    .maybeSingle();
+  // profiles + subscriptions both depend only on user.id — fetch in
+  // parallel to shave one DB round-trip off every protected-route render.
+  // The subscription SELECT runs ALWAYS (the sidebar needs plan_type +
+  // ends_at to render the subscription card); the redirect-to-/pricing
+  // gate further down still only fires for non-exempt routes.
+  const [profileResult, subscriptionResult] = await Promise.all([
+    supabase
+      .from("profiles")
+      .select("id, full_name, exam_date_planned")
+      .eq("id", user.id)
+      .maybeSingle(),
+    supabase
+      .from("subscriptions")
+      .select("id, plan_type, ends_at")
+      .eq("user_id", user.id)
+      .eq("is_current", true)
+      .eq("status", "active")
+      .gt("ends_at", new Date().toISOString())
+      .maybeSingle(),
+  ]);
+  const profile = profileResult.data;
+  const subscription = subscriptionResult.data;
 
   if (!profile) {
     // /onboarding/complete-profile is the Google-OAuth completion route
@@ -79,18 +96,9 @@ export default async function AppLayout({
   const headerList = await headers();
   const pathname = headerList.get("x-pathname") ?? "";
 
-  // Subscription SELECT runs ALWAYS (the sidebar needs plan_type + ends_at
-  // to render the subscription card). The redirect-to-/pricing gate below
-  // still only fires for non-exempt routes.
-  const { data: subscription } = await supabase
-    .from("subscriptions")
-    .select("id, plan_type, ends_at")
-    .eq("user_id", user.id)
-    .eq("is_current", true)
-    .eq("status", "active")
-    .gt("ends_at", new Date().toISOString())
-    .maybeSingle();
-
+  // The redirect-to-/pricing gate fires only for non-exempt routes.
+  // `subscription` was already fetched above in the Promise.all alongside
+  // the profile query.
   if (!subscription && !isSubscriptionExempt(pathname)) {
     redirect("/pricing");
   }
