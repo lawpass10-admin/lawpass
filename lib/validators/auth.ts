@@ -72,11 +72,19 @@ export const phoneSchema = z
  * because the prototype UI captures month + year only. The form layer is
  * responsible for converting (month, year) → "YYYY-MM-01" before submitting,
  * or sending null when no date is picked.
+ *
+ * .nullish() (= .nullable().optional()) is intentional and matches Supabase's
+ * auth-service behavior: when this field is written to user_metadata via
+ * supabase.auth.signUp({ options: { data: { exam_date_planned: null } } }),
+ * Supabase persists the metadata blob to auth.users.raw_user_meta_data with
+ * null-valued keys STRIPPED. On read-back in verifyOtpAction the field is
+ * therefore undefined, not null. .nullable() alone rejects undefined and
+ * stranded users mid-signup; .nullish() accepts both.
  */
 export const examDatePlannedSchema = z
   .string()
   .regex(/^\d{4}-\d{2}-01$/, { message: "תאריך לא תקין" })
-  .nullable();
+  .nullish();
 
 export const emailSchema = z
   .string()

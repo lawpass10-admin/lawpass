@@ -222,6 +222,10 @@ export async function signUpAction(input: SignupInput): Promise<ActionResult> {
     password: data.password,
     options: {
       // Stored on auth.users.raw_user_meta_data; read back in verifyOtpAction.
+      // Note: Supabase auth-service drops null-valued keys from user_metadata
+      // on persistence; the read-back schema must accept undefined for
+      // nullable fields (see examDatePlannedSchema.nullish() in
+      // lib/validators/auth.ts).
       data: {
         full_name: data.full_name,
         phone: data.phone,
@@ -289,6 +293,13 @@ export async function verifyOtpAction(input: {
   const userId = verifyData.user?.id;
   const meta = verifyData.user?.user_metadata;
   if (!userId || !meta) {
+    // Post-verify the user has a live session — without signOut + cookie
+    // sweep, the form's toast is the only failure signal and middleware
+    // sees the next request as authed (orphan: auth.users row exists, no
+    // public.profiles row). Same pattern as the createProfile failure
+    // branch below.
+    await supabase.auth.signOut();
+    await clearStaleAuthCookies();
     return { ok: false, error: "אירעה שגיאה. נסה שוב" };
   }
 
@@ -296,6 +307,11 @@ export async function verifyOtpAction(input: {
   // any drift between signUpAction (writer) and here (reader).
   const metaParsed = userMetadataSchema.safeParse(meta);
   if (!metaParsed.success) {
+    // See comment on the !userId || !meta branch above. The captured
+    // production bug (May 8 2026) was a metadata-parse fail leaving a user
+    // stranded with email_confirmed_at set but no profile row.
+    await supabase.auth.signOut();
+    await clearStaleAuthCookies();
     return {
       ok: false,
       error: "פרטי ההרשמה אינם זמינים. נסה להירשם מחדש",
@@ -308,7 +324,10 @@ export async function verifyOtpAction(input: {
     phone: metaParsed.data.phone,
     gender: metaParsed.data.gender,
     birth_date: metaParsed.data.birth_date,
-    exam_date_planned: metaParsed.data.exam_date_planned,
+    // ?? null because examDatePlannedSchema is now .nullish() — Supabase
+    // strips null keys from user_metadata so undefined is the on-disk
+    // shape; the createProfile RPC stores it as a real null.
+    exam_date_planned: metaParsed.data.exam_date_planned ?? null,
     terms_accepted_at: metaParsed.data.terms_accepted_at,
     signup_source: "email",
   });
@@ -504,7 +523,10 @@ export async function completeGoogleOAuthSignup(
     phone: data.phone,
     gender: data.gender,
     birth_date: data.birth_date,
-    exam_date_planned: data.exam_date_planned,
+    // ?? null per the same reasoning as in verifyOtpAction above —
+    // examDatePlannedSchema is .nullish() so the form value can be
+    // undefined; createProfile RPC needs string | null.
+    exam_date_planned: data.exam_date_planned ?? null,
     terms_accepted_at: new Date().toISOString(),
     signup_source: "google",
   });
@@ -613,6 +635,13 @@ export async function resetPasswordAction(input: {
     password: data.password,
   });
   if (updateError) {
+    // Recovery session is live by this point. Without signOut + cookie
+    // sweep the user is left with an authenticated session that wasn't
+    // intentionally established. Lower-risk than verifyOtpAction's
+    // sister-bug (no DB orphan, recovery session is short-lived) but
+    // worth the consistency.
+    await supabase.auth.signOut();
+    await clearStaleAuthCookies();
     return { ok: false, error: mapAuthError(updateError) };
   }
 
