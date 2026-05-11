@@ -1,5 +1,6 @@
 import { requireActiveSubscription } from "@/lib/auth/subscription-gate";
 import { createClient } from "@/lib/supabase/server";
+import { parsePracticeSetupPrefill } from "@/lib/urls";
 
 import { PracticeSetupForm } from "./_components/practice-setup-form";
 import { ResumePrompt } from "./_components/resume-prompt";
@@ -70,9 +71,27 @@ async function loadActiveSession(
  *    Over). If it's older than 24h, silently abandon it and proceed
  *    straight to the setup form.
  */
-export default async function PracticePage() {
+export default async function PracticePage({
+  searchParams,
+}: {
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
+}) {
   const { user } = await requireActiveSubscription();
   const supabase = await createClient();
+
+  // Parse optional ?prefill from the "תרגול נוסף" CTA on the summary
+  // page. Defensive: parsePracticeSetupPrefill drops invalid uuids /
+  // out-of-range integers silently, so invalid prefill simply falls
+  // back to form defaults.
+  const rawParams = (await searchParams) ?? {};
+  const flatParams = new URLSearchParams();
+  for (const [key, value] of Object.entries(rawParams)) {
+    if (typeof value === "string") flatParams.set(key, value);
+    else if (Array.isArray(value) && typeof value[0] === "string") {
+      flatParams.set(key, value[0]);
+    }
+  }
+  const initialValues = parsePracticeSetupPrefill(flatParams);
 
   const [chaptersResult, subtopicsResult, activeSession] = await Promise.all([
     supabase
@@ -157,7 +176,11 @@ export default async function PracticePage() {
           בחר נושאים, כמה שאלות מקור, וכמה זוויות לכל מקור.
         </p>
       </header>
-      <PracticeSetupForm chapters={chapters} subtopics={subtopics} />
+      <PracticeSetupForm
+        chapters={chapters}
+        subtopics={subtopics}
+        initialValues={initialValues}
+      />
     </div>
   );
 }

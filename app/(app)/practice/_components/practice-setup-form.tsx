@@ -15,6 +15,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import type { PrefillInput } from "@/lib/urls";
 import { cn } from "@/lib/utils";
 
 // =============================================================================
@@ -77,20 +78,64 @@ function selectionFingerprint(
   return [...chapterIds].sort().join(",") + "|" + (subtopicId ?? "*");
 }
 
+function isSourceCount(n: number): n is SourceCount {
+  return (SOURCE_COUNT_CHOICES as readonly number[]).includes(n);
+}
+
+function isAngleCount(n: number): n is AngleCount {
+  return (ANGLE_CHOICES as readonly number[]).includes(n);
+}
+
 export function PracticeSetupForm({
   chapters,
   subtopics,
+  initialValues,
 }: {
   chapters: Chapter[];
   subtopics: Subtopic[];
+  initialValues?: PrefillInput | null;
 }) {
-  const [selectedChapterIds, setSelectedChapterIds] = useState<string[]>([]);
-  const [rawSubtopicId, setRawSubtopicId] = useState<string | null>(null);
-  const [rawSourceCount, setRawSourceCount] = useState<SourceCount>(
-    DEFAULT_SOURCE_COUNT
+  // Seed state from prefill where provided; validate each value against
+  // the same constraint set the form itself enforces (the prefill parser
+  // already drops invalid uuids/integers, but we re-narrow here for the
+  // TypeScript types). Unknown chapter/subtopic ids are kept — the form
+  // will simply not visibly select them since they don't match any
+  // rendered chapter button; that's a soft degradation.
+  const initialChapters =
+    initialValues?.chapters?.filter((id) =>
+      chapters.some((c) => c.id === id)
+    ) ?? [];
+  const initialSubtopic =
+    initialValues?.subtopic &&
+    initialChapters.length === 1 &&
+    subtopics.some(
+      (s) => s.id === initialValues.subtopic && s.chapter_id === initialChapters[0]
+    )
+      ? initialValues.subtopic
+      : null;
+  const initialSourceCount: SourceCount =
+    initialValues?.sourceCount !== undefined &&
+    isSourceCount(initialValues.sourceCount)
+      ? initialValues.sourceCount
+      : DEFAULT_SOURCE_COUNT;
+  const initialAngles: AngleCount =
+    initialValues?.angles !== undefined && isAngleCount(initialValues.angles)
+      ? initialValues.angles
+      : DEFAULT_ANGLES;
+  const initialTime: number =
+    initialValues?.timePerQuestion !== undefined
+      ? Math.min(300, Math.max(60, initialValues.timePerQuestion))
+      : DEFAULT_TIME_SECONDS;
+
+  const [selectedChapterIds, setSelectedChapterIds] =
+    useState<string[]>(initialChapters);
+  const [rawSubtopicId, setRawSubtopicId] = useState<string | null>(
+    initialSubtopic
   );
-  const [angles, setAngles] = useState<AngleCount>(DEFAULT_ANGLES);
-  const [timeSeconds, setTimeSeconds] = useState<number>(DEFAULT_TIME_SECONDS);
+  const [rawSourceCount, setRawSourceCount] =
+    useState<SourceCount>(initialSourceCount);
+  const [angles, setAngles] = useState<AngleCount>(initialAngles);
+  const [timeSeconds, setTimeSeconds] = useState<number>(initialTime);
 
   // Availability response carries the fingerprint it was computed for.
   // Reading code below clears it implicitly when the fingerprint doesn't
