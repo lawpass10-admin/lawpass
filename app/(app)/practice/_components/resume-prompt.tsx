@@ -13,6 +13,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { practicePlayUrl } from "@/lib/urls";
 import { cn } from "@/lib/utils";
 
 const RELATIVE_FORMATTER = new Intl.RelativeTimeFormat("he", {
@@ -57,7 +58,7 @@ export function ResumePrompt({
   totalQuestions: number;
 }) {
   const [abandoning, setAbandoning] = useState(false);
-  const resumeUrl = `/practice/play/${nextPosition}?session=${sessionId}`;
+  const resumeUrl = practicePlayUrl(sessionId, nextPosition);
   const relative = relativeTimeHe(startedAt);
   const progress =
     totalQuestions > 0

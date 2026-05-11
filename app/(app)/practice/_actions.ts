@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 
 import { requireActiveSubscription } from "@/lib/auth/subscription-gate";
 import { createClient } from "@/lib/supabase/server";
+import { practicePlayUrl } from "@/lib/urls";
 import {
   createPracticeSessionSchema,
   getAvailableQuestionCountSchema,
@@ -251,7 +252,7 @@ export async function createPracticeSession(
 
     return {
       ok: true,
-      url: `/practice/play/0?session=${inserted.id}`,
+      url: practicePlayUrl(inserted.id, 0),
     };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
