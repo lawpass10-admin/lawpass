@@ -40,26 +40,33 @@ function formatMinSec(total: number): string {
  */
 export function Timer({ initialSeconds, running, onExpired }: TimerProps) {
   const [seconds, setSeconds] = useState(initialSeconds);
-  const expiredFired = useRef(false);
+  // Tracks the `initialSeconds` value the last `onExpired` was fired
+  // for. Compare with the current `initialSeconds` at fire time — if
+  // they differ, the parent advanced to a new question (different
+  // key) and we should be allowed to fire again. Initialized to -1
+  // (impossible session value) so the first expiry always fires.
+  const lastFiredFor = useRef<number>(-1);
 
   // Reset whenever the parent passes a new initialSeconds (e.g., the
   // user advanced to a new question). Synchronous in render: the next
-  // setInterval tick will use the new value.
+  // setInterval tick will use the new value. The expiredFired ref is
+  // not touched here — its reset happens implicitly via the key
+  // comparison inside the effect.
   const [keyedFrom, setKeyedFrom] = useState(initialSeconds);
   if (keyedFrom !== initialSeconds) {
     setKeyedFrom(initialSeconds);
     setSeconds(initialSeconds);
-    expiredFired.current = false;
   }
 
   useEffect(() => {
     if (!running) return;
     if (seconds <= 0) {
-      // Fire onExpired exactly once when the countdown crosses 0 while
-      // the timer is running. expiredFired ref guards against re-entry
-      // from a stale interval tick or parent re-render.
-      if (!expiredFired.current && onExpired) {
-        expiredFired.current = true;
+      // Fire onExpired exactly once per question. lastFiredFor key
+      // guards against re-entry from a stale interval tick or parent
+      // re-render. The key naturally re-arms on position change because
+      // the parent passes a new `initialSeconds` per position.
+      if (lastFiredFor.current !== initialSeconds && onExpired) {
+        lastFiredFor.current = initialSeconds;
         onExpired();
       }
       return;
@@ -68,7 +75,7 @@ export function Timer({ initialSeconds, running, onExpired }: TimerProps) {
       setSeconds((prev) => (prev > 0 ? prev - 1 : 0));
     }, 1000);
     return () => clearInterval(id);
-  }, [running, seconds, onExpired]);
+  }, [running, seconds, onExpired, initialSeconds]);
 
   const low = seconds < LOW_TIME_THRESHOLD_SECONDS;
 

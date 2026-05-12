@@ -1,19 +1,44 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 
+import { BatchPracticeButton } from "@/components/practice/batch-practice-button";
+import {
+  ChapterFilterChips,
+  type ChapterChip,
+} from "@/components/practice/chapter-filter-chips";
 import type { MistakeListRow } from "@/lib/db/practice";
 
 import { MistakeRow } from "./mistake-row";
 
 /**
- * Client wrapper that owns the optimistic-remove state. Mirror of
- * BookmarksList — kept separate per Phase 4 spec to preserve the
- * per-route action symmetry.
+ * Client-side list mirror of BookmarksList. Same optimistic-remove +
+ * filter pattern. Counts may go stale post-remove until next navigation;
+ * acceptable per Phase 5 spec.
  */
-export function MistakesList({ mistakes }: { mistakes: MistakeListRow[] }) {
+export function MistakesList({
+  mistakes,
+  chapterCounts,
+}: {
+  mistakes: MistakeListRow[];
+  chapterCounts: ChapterChip[];
+}) {
   const [removedIds, setRemovedIds] = useState<Set<string>>(() => new Set());
-  const visible = mistakes.filter((m) => !removedIds.has(m.mistakeId));
+  const [activeChapter, setActiveChapter] = useState<string | null>(null);
+
+  const visible = useMemo(() => {
+    return mistakes.filter((m) => {
+      if (removedIds.has(m.mistakeId)) return false;
+      if (activeChapter === null) return true;
+      const chapterId =
+        m.questionType === "source"
+          ? m.sourceQuestion.chapterId
+          : m.angleQuestion.chapterId;
+      return chapterId === activeChapter;
+    });
+  }, [mistakes, removedIds, activeChapter]);
+
+  const totalCount = mistakes.length - removedIds.size;
 
   function markRemoved(id: string) {
     setRemovedIds((prev) => {
@@ -24,12 +49,28 @@ export function MistakesList({ mistakes }: { mistakes: MistakeListRow[] }) {
   }
 
   return (
-    <ul className="space-y-3">
-      {visible.map((m) => (
-        <li key={m.mistakeId}>
-          <MistakeRow mistake={m} onRemoved={markRemoved} />
-        </li>
-      ))}
-    </ul>
+    <div className="space-y-4">
+      <div className="flex items-start justify-between gap-3">
+        <ChapterFilterChips
+          chapters={chapterCounts}
+          totalCount={totalCount}
+          active={activeChapter}
+          onChange={setActiveChapter}
+        />
+        <BatchPracticeButton
+          source="mistakes"
+          chapterIdFilter={activeChapter}
+          totalInScope={visible.length}
+        />
+      </div>
+
+      <ul className="space-y-2">
+        {visible.map((m) => (
+          <li key={m.mistakeId}>
+            <MistakeRow mistake={m} onRemoved={markRemoved} />
+          </li>
+        ))}
+      </ul>
+    </div>
   );
 }

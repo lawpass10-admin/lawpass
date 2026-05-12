@@ -1,23 +1,27 @@
 "use client";
 
-import { Loader2, X } from "lucide-react";
+import { Bookmark, ChevronLeft, Loader2 } from "lucide-react";
 import { useState, useTransition } from "react";
 import { toast } from "sonner";
 
 import { createReviewSession } from "@/app/(app)/practice/_actions";
 import type { BookmarkListRow } from "@/lib/db/practice";
+import { formatHebrewDateShort } from "@/lib/format/hebrew-date";
 import { cn } from "@/lib/utils";
 
 import { removeBookmark } from "../_actions";
 
 /**
- * One bookmark in the /bookmarks list. The whole row is clickable
- * (creates a review session and navigates to /practice/play/0). The
- * trailing X button is a separate target with stopPropagation so it
- * doesn't fire the parent click.
+ * One bookmark in the /bookmarks list, Phase 5 layout. Three clusters:
+ *   - RTL-start: chapter title + subtopic chip + type chip
+ *   - center:    truncated question preview (or "הוסר זמנית" badge)
+ *   - RTL-end:   bookmark-icon remove button + date + chevron
  *
- * Archived bookmarks (where the source/angle row is RLS-hidden) render
- * as a faded, non-clickable card with the "הוסר זמנית" badge.
+ * Whole row is a button for keyboard activation; the bookmark icon is
+ * a child button with stopPropagation so it doesn't double-fire.
+ * Archived bookmarks render with the row click disabled and chevron
+ * hidden, but the icon button still works (so the user can clean up
+ * orphan bookmarks for questions whose content got pulled).
  */
 export function BookmarkRow({
   bookmark,
@@ -34,6 +38,20 @@ export function BookmarkRow({
       ? bookmark.sourceQuestion.isArchived
       : bookmark.angleQuestion.isArchived;
 
+  const chapterTitle =
+    bookmark.questionType === "source"
+      ? bookmark.sourceQuestion.chapterTitle
+      : bookmark.angleQuestion.chapterTitle;
+  const subtopicTitle =
+    bookmark.questionType === "source"
+      ? bookmark.sourceQuestion.subtopicTitle
+      : bookmark.angleQuestion.subtopicTitle;
+  const preview =
+    bookmark.questionType === "source"
+      ? bookmark.sourceQuestion.questionText
+      : bookmark.angleQuestion.questionText;
+  const dateLabel = formatHebrewDateShort(bookmark.createdAt);
+
   function handleRemove(e: React.MouseEvent) {
     e.stopPropagation();
     if (removing) return;
@@ -43,9 +61,6 @@ export function BookmarkRow({
       const result = await removeBookmark({ bookmarkId: bookmark.bookmarkId });
       if (!result.ok) {
         toast.error(result.error);
-        // No way to "un-remove" from the row's local POV; the parent
-        // list owns optimistic state. The next router refresh will
-        // restore the row from the server.
         setRemoving(false);
       }
     })();
@@ -86,27 +101,56 @@ export function BookmarkRow({
         }
       }}
       className={cn(
-        "group relative rounded-lg border bg-background p-4 shadow-sm transition-colors",
+        "flex items-center gap-3 rounded-lg border bg-background p-3 shadow-sm transition-colors",
         isArchived
           ? "cursor-not-allowed opacity-60"
           : "cursor-pointer hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50",
         opening && "opacity-70"
       )}
     >
-      <div className="flex items-start gap-3">
-        <div className="min-w-0 flex-1 space-y-2">
-          <RowHeader bookmark={bookmark} isArchived={isArchived} />
-          {!isArchived && (
-            <p
-              dir="auto"
-              className="line-clamp-3 text-sm leading-relaxed text-foreground/85"
-            >
-              {bookmark.questionType === "source"
-                ? bookmark.sourceQuestion.questionText
-                : bookmark.angleQuestion.questionText}
-            </p>
-          )}
-        </div>
+      {/* RTL-start cluster: tags */}
+      <div className="flex shrink-0 items-center gap-2 text-xs">
+        {chapterTitle && (
+          <span className="text-sm text-muted-foreground" dir="auto">
+            {chapterTitle}
+          </span>
+        )}
+        {subtopicTitle && (
+          <span
+            dir="auto"
+            className="rounded-full bg-muted px-2 py-0.5 font-medium text-foreground/75"
+          >
+            {subtopicTitle}
+          </span>
+        )}
+        {bookmark.questionType === "source" ? (
+          <span className="rounded-full bg-amber-100 px-2 py-0.5 font-medium text-amber-700">
+            מקור
+          </span>
+        ) : (
+          <span className="rounded-full bg-primary/10 px-2 py-0.5 font-medium text-primary">
+            זווית {bookmark.angleQuestion.angleLetter}
+          </span>
+        )}
+      </div>
+
+      {/* CENTER: preview */}
+      <p
+        className={cn(
+          "min-w-0 flex-1 truncate text-sm",
+          isArchived ? "" : "text-foreground/85"
+        )}
+        dir="auto"
+      >
+        {isArchived ? (
+          <span className="font-medium text-destructive">הוסר זמנית</span>
+        ) : (
+          preview
+        )}
+      </p>
+
+      {/* RTL-end cluster: icon, date, chevron */}
+      <div className="flex shrink-0 items-center gap-2">
         <button
           type="button"
           aria-label="הסר מהסימניות"
@@ -114,8 +158,8 @@ export function BookmarkRow({
           onClick={handleRemove}
           disabled={removing}
           className={cn(
-            "flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors",
-            "hover:bg-destructive/10 hover:text-destructive",
+            "flex h-8 w-8 items-center justify-center rounded-md text-amber-500 transition-colors",
+            "hover:bg-amber-100",
             "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50",
             removing && "opacity-50"
           )}
@@ -123,72 +167,19 @@ export function BookmarkRow({
           {removing ? (
             <Loader2 className="size-4 animate-spin" aria-hidden />
           ) : (
-            <X className="size-4" aria-hidden />
+            <Bookmark className="size-4 fill-current" aria-hidden />
           )}
         </button>
+        {dateLabel && (
+          <span className="text-xs text-muted-foreground">{dateLabel}</span>
+        )}
+        {!isArchived && (
+          <ChevronLeft
+            className="size-4 text-muted-foreground"
+            aria-hidden
+          />
+        )}
       </div>
-    </div>
-  );
-}
-
-function RowHeader({
-  bookmark,
-  isArchived,
-}: {
-  bookmark: BookmarkListRow;
-  isArchived: boolean;
-}) {
-  const chapter =
-    bookmark.questionType === "source"
-      ? bookmark.sourceQuestion.chapterTitle
-      : bookmark.angleQuestion.chapterTitle;
-  const subtopic =
-    bookmark.questionType === "source"
-      ? bookmark.sourceQuestion.subtopicTitle
-      : bookmark.angleQuestion.subtopicTitle;
-  const externalId =
-    bookmark.questionType === "source"
-      ? bookmark.sourceQuestion.externalId
-      : bookmark.angleQuestion.parentSourceExternalId;
-
-  return (
-    <div className="flex flex-wrap items-center gap-2 text-xs">
-      {bookmark.questionType === "source" ? (
-        <span className="rounded-full bg-amber-100 px-2 py-0.5 font-medium text-amber-700">
-          שאלת מקור
-        </span>
-      ) : (
-        <span className="rounded-full bg-primary/10 px-2 py-0.5 font-medium text-primary">
-          זווית {bookmark.angleQuestion.angleLetter}
-        </span>
-      )}
-      {isArchived ? (
-        <span className="rounded-full bg-destructive/10 px-2 py-0.5 font-medium text-destructive">
-          הוסר זמנית
-        </span>
-      ) : (
-        <>
-          {chapter && (
-            <span className="text-muted-foreground">
-              {chapter}
-              {subtopic && (
-                <>
-                  <span className="mx-1">/</span>
-                  {subtopic}
-                </>
-              )}
-            </span>
-          )}
-          {externalId && (
-            <span
-              dir="auto"
-              className="font-mono text-[11px] text-muted-foreground/80"
-            >
-              {externalId}
-            </span>
-          )}
-        </>
-      )}
     </div>
   );
 }

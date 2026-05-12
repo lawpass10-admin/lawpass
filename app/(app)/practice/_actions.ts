@@ -3,9 +3,11 @@
 import { revalidatePath } from "next/cache";
 
 import { requireActiveSubscription } from "@/lib/auth/subscription-gate";
+import { getUserBookmarks, getUserMistakes } from "@/lib/db/practice";
 import { createClient } from "@/lib/supabase/server";
 import { practicePlayUrl } from "@/lib/urls";
 import {
+  createBatchReviewSessionSchema,
   createPracticeSessionSchema,
   createReviewSessionSchema,
   getAvailableQuestionCountSchema,
@@ -414,5 +416,142 @@ export async function createReviewSession(
       } message=${message}`
     );
     return { ok: false, error: "לא ניתן לפתוח את השאלה. נסה שוב" };
+  }
+}
+
+// =============================================================================
+// createBatchReviewSession — multi-question review from /bookmarks or /mistakes
+// =============================================================================
+
+const BATCH_SIZE_MAX = 50;
+
+/**
+ * Builds a multi-question practice_session from the user's bookmarks or
+ * mistakes (most-recent first, capped at BATCH_SIZE_MAX). Optional
+ * chapter filter applies the same way it does in the client filter
+ * chips — items whose underlying question belongs to a different chapter
+ * are excluded. Archived items are excluded silently (they're already
+ * RLS-hidden upstream in getUserBookmarks/getUserMistakes).
+ *
+ * Same `practice_sessions` table as createPracticeSession; the
+ * batch-review flavour is implicit:
+ *   - selected_chapters: []
+ *   - selected_subtopics: []
+ *   - source_count_target: <count of source items in batch>
+ *   - angles_per_source: 0
+ *   - question_list: built array of up to N items in source order
+ *
+ * Returns `{ok:false, error:"empty_list"}` when the filtered set is
+ * empty; the caller surfaces a Hebrew toast.
+ */
+export async function createBatchReviewSession(
+  input: unknown
+): Promise<{ ok: true; url: string } | { ok: false; error: string }> {
+  const parsed = createBatchReviewSessionSchema.safeParse(input);
+  if (!parsed.success) {
+    return {
+      ok: false,
+      error: parsed.error.issues[0]?.message ?? "פרמטרים לא תקינים",
+    };
+  }
+  const { source, chapterIdFilter } = parsed.data;
+
+  const { user } = await requireActiveSubscription();
+  const supabase = await createClient();
+
+  try {
+    // Pull the full list using the existing helpers — they already
+    // filter by user_id (RLS) and resolve archived/non-current rows
+    // into `isArchived=true` markers we can drop here.
+    const rows =
+      source === "bookmarks"
+        ? await getUserBookmarks(supabase, user.id)
+        : await getUserMistakes(supabase, user.id);
+
+    type BatchItem = { type: "source" | "angle"; id: string };
+    const items: BatchItem[] = [];
+    for (const r of rows) {
+      const isArchived =
+        r.questionType === "source"
+          ? r.sourceQuestion.isArchived
+          : r.angleQuestion.isArchived;
+      if (isArchived) continue;
+
+      const chapterId =
+        r.questionType === "source"
+          ? r.sourceQuestion.chapterId
+          : r.angleQuestion.chapterId;
+      if (chapterIdFilter && chapterId !== chapterIdFilter) continue;
+
+      if (r.questionType === "source") {
+        // sourceQuestion.id is the current source_questions.id resolved
+        // from the bookmark/mistake's question_group_id by the loader.
+        items.push({ type: "source", id: r.sourceQuestion.id });
+      } else {
+        items.push({ type: "angle", id: r.angleQuestion.id });
+      }
+
+      if (items.length >= BATCH_SIZE_MAX) break;
+    }
+
+    if (items.length === 0) {
+      console.info(
+        `[practice] create_batch_review_session EMPTY user=${user.id} source=${source} chapter=${chapterIdFilter ?? "*"}`
+      );
+      return { ok: false, error: "empty_list" };
+    }
+
+    // Abandon any active session for this user before swapping in the
+    // new one (same pattern as createPracticeSession / createReviewSession).
+    await supabase
+      .from("practice_sessions")
+      .update({
+        status: "abandoned",
+        last_activity_at: new Date().toISOString(),
+      })
+      .eq("user_id", user.id)
+      .eq("status", "active");
+
+    const questionList = items.map((it, idx) => ({
+      type: it.type,
+      id: it.id,
+      position: idx,
+    }));
+
+    const sourceCount = items.filter((it) => it.type === "source").length;
+
+    const { data: inserted, error: insertError } = await supabase
+      .from("practice_sessions")
+      .insert({
+        user_id: user.id,
+        selected_chapters: [],
+        selected_subtopics: [],
+        // source_count_target reflects only the source-typed items so the
+        // summary page's "source vs angle" breakdown stays sensible even
+        // for batches dominated by angle picks (mostly mistakes lists).
+        source_count_target: sourceCount,
+        angles_per_source: 0,
+        time_per_question_seconds: 150,
+        question_list: questionList,
+        status: "active",
+      })
+      .select("id")
+      .single();
+    if (insertError) throw insertError;
+
+    console.info(
+      `[practice] create_batch_review_session OK user=${user.id} session=${inserted.id} count=${items.length} source=${source} chapter=${chapterIdFilter ?? "*"}`
+    );
+    revalidatePath("/", "layout");
+    return { ok: true, url: practicePlayUrl(inserted.id, 0) };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    const code = (err as { code?: string }).code;
+    console.error(
+      `[practice] create_batch_review_session FAILED user=${user.id} code=${
+        code ?? "unknown"
+      } message=${message}`
+    );
+    return { ok: false, error: "לא ניתן לפתוח את התרגול. נסה שוב" };
   }
 }

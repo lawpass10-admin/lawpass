@@ -1,22 +1,22 @@
 "use client";
 
-import { Loader2, X } from "lucide-react";
+import { ChevronLeft, Loader2, X } from "lucide-react";
 import { useState, useTransition } from "react";
 import { toast } from "sonner";
 
 import { createReviewSession } from "@/app/(app)/practice/_actions";
 import type { MistakeListRow } from "@/lib/db/practice";
+import { formatHebrewDateShort } from "@/lib/format/hebrew-date";
 import { cn } from "@/lib/utils";
 
 import { removeMistake } from "../_actions";
 
 /**
- * Single mistake row in /mistakes. Functionally identical to
- * BookmarkRow except for the small {count} טעות/טעויות badge and the
- * different remove tooltip + action. Kept as a separate component
- * rather than a parametrised one — the divergence is small but
- * lives in tight loops (icon labels, copy) where over-abstraction
- * tends to slow PRs.
+ * One mistake in the /mistakes list, Phase 5 layout. Mirrors
+ * BookmarkRow with two differences:
+ *   - icon is a red X (soft-remove via manually_removed=true)
+ *   - date column shows the last-mistake date (most recent error,
+ *     more relevant than first time)
  */
 export function MistakeRow({
   mistake,
@@ -32,6 +32,20 @@ export function MistakeRow({
     mistake.questionType === "source"
       ? mistake.sourceQuestion.isArchived
       : mistake.angleQuestion.isArchived;
+
+  const chapterTitle =
+    mistake.questionType === "source"
+      ? mistake.sourceQuestion.chapterTitle
+      : mistake.angleQuestion.chapterTitle;
+  const subtopicTitle =
+    mistake.questionType === "source"
+      ? mistake.sourceQuestion.subtopicTitle
+      : mistake.angleQuestion.subtopicTitle;
+  const preview =
+    mistake.questionType === "source"
+      ? mistake.sourceQuestion.questionText
+      : mistake.angleQuestion.questionText;
+  const dateLabel = formatHebrewDateShort(mistake.lastMistakeAt);
 
   function handleRemove(e: React.MouseEvent) {
     e.stopPropagation();
@@ -68,11 +82,6 @@ export function MistakeRow({
     });
   }
 
-  const countLabel =
-    mistake.mistakesCount >= 2
-      ? `${mistake.mistakesCount} טעויות`
-      : "1 טעות";
-
   return (
     <div
       role={isArchived ? undefined : "button"}
@@ -87,31 +96,53 @@ export function MistakeRow({
         }
       }}
       className={cn(
-        "group relative rounded-lg border bg-background p-4 shadow-sm transition-colors",
+        "flex items-center gap-3 rounded-lg border bg-background p-3 shadow-sm transition-colors",
         isArchived
           ? "cursor-not-allowed opacity-60"
           : "cursor-pointer hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50",
         opening && "opacity-70"
       )}
     >
-      <div className="flex items-start gap-3">
-        <div className="min-w-0 flex-1 space-y-2">
-          <RowHeader
-            mistake={mistake}
-            isArchived={isArchived}
-            countLabel={countLabel}
-          />
-          {!isArchived && (
-            <p
-              dir="auto"
-              className="line-clamp-3 text-sm leading-relaxed text-foreground/85"
-            >
-              {mistake.questionType === "source"
-                ? mistake.sourceQuestion.questionText
-                : mistake.angleQuestion.questionText}
-            </p>
-          )}
-        </div>
+      <div className="flex shrink-0 items-center gap-2 text-xs">
+        {chapterTitle && (
+          <span className="text-sm text-muted-foreground" dir="auto">
+            {chapterTitle}
+          </span>
+        )}
+        {subtopicTitle && (
+          <span
+            dir="auto"
+            className="rounded-full bg-muted px-2 py-0.5 font-medium text-foreground/75"
+          >
+            {subtopicTitle}
+          </span>
+        )}
+        {mistake.questionType === "source" ? (
+          <span className="rounded-full bg-amber-100 px-2 py-0.5 font-medium text-amber-700">
+            מקור
+          </span>
+        ) : (
+          <span className="rounded-full bg-primary/10 px-2 py-0.5 font-medium text-primary">
+            זווית {mistake.angleQuestion.angleLetter}
+          </span>
+        )}
+      </div>
+
+      <p
+        className={cn(
+          "min-w-0 flex-1 truncate text-sm",
+          isArchived ? "" : "text-foreground/85"
+        )}
+        dir="auto"
+      >
+        {isArchived ? (
+          <span className="font-medium text-destructive">הוסר זמנית</span>
+        ) : (
+          preview
+        )}
+      </p>
+
+      <div className="flex shrink-0 items-center gap-2">
         <button
           type="button"
           aria-label="הסר מטעויות"
@@ -119,8 +150,8 @@ export function MistakeRow({
           onClick={handleRemove}
           disabled={removing}
           className={cn(
-            "flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors",
-            "hover:bg-destructive/10 hover:text-destructive",
+            "flex h-8 w-8 items-center justify-center rounded-md text-destructive transition-colors",
+            "hover:bg-destructive/10",
             "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50",
             removing && "opacity-50"
           )}
@@ -131,74 +162,16 @@ export function MistakeRow({
             <X className="size-4" aria-hidden />
           )}
         </button>
+        {dateLabel && (
+          <span className="text-xs text-muted-foreground">{dateLabel}</span>
+        )}
+        {!isArchived && (
+          <ChevronLeft
+            className="size-4 text-muted-foreground"
+            aria-hidden
+          />
+        )}
       </div>
-    </div>
-  );
-}
-
-function RowHeader({
-  mistake,
-  isArchived,
-  countLabel,
-}: {
-  mistake: MistakeListRow;
-  isArchived: boolean;
-  countLabel: string;
-}) {
-  const chapter =
-    mistake.questionType === "source"
-      ? mistake.sourceQuestion.chapterTitle
-      : mistake.angleQuestion.chapterTitle;
-  const subtopic =
-    mistake.questionType === "source"
-      ? mistake.sourceQuestion.subtopicTitle
-      : mistake.angleQuestion.subtopicTitle;
-  const externalId =
-    mistake.questionType === "source"
-      ? mistake.sourceQuestion.externalId
-      : mistake.angleQuestion.parentSourceExternalId;
-
-  return (
-    <div className="flex flex-wrap items-center gap-2 text-xs">
-      {mistake.questionType === "source" ? (
-        <span className="rounded-full bg-amber-100 px-2 py-0.5 font-medium text-amber-700">
-          שאלת מקור
-        </span>
-      ) : (
-        <span className="rounded-full bg-primary/10 px-2 py-0.5 font-medium text-primary">
-          זווית {mistake.angleQuestion.angleLetter}
-        </span>
-      )}
-      <span className="rounded-full bg-destructive/10 px-2 py-0.5 font-medium text-destructive">
-        {countLabel}
-      </span>
-      {isArchived ? (
-        <span className="rounded-full bg-muted px-2 py-0.5 font-medium text-muted-foreground">
-          הוסר זמנית
-        </span>
-      ) : (
-        <>
-          {chapter && (
-            <span className="text-muted-foreground">
-              {chapter}
-              {subtopic && (
-                <>
-                  <span className="mx-1">/</span>
-                  {subtopic}
-                </>
-              )}
-            </span>
-          )}
-          {externalId && (
-            <span
-              dir="auto"
-              className="font-mono text-[11px] text-muted-foreground/80"
-            >
-              {externalId}
-            </span>
-          )}
-        </>
-      )}
     </div>
   );
 }

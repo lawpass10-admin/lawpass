@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
+import type { ChapterChip } from "@/components/practice/chapter-filter-chips";
 import { buttonVariants } from "@/components/ui/button";
 import { requireActiveSubscription } from "@/lib/auth/subscription-gate";
 import { getUserMistakes } from "@/lib/db/practice";
@@ -10,19 +11,33 @@ import { cn } from "@/lib/utils";
 import { MistakesList } from "./_components/mistakes-list";
 
 /**
- * /mistakes — Slice 2 Phase 4. Server Component listing questions the
- * user has answered incorrectly (sorted by most-recent mistake first).
- * `manually_removed = true` rows are filtered out by the loader; the
- * record stays in the DB so analytics remains intact and the row can
- * resurface via record_mistake() if the user re-misses the same Q.
+ * /mistakes — Server Component. Mirrors /bookmarks: lists the user's
+ * non-removed mistakes (sorted by last_mistake_at DESC at the helper
+ * level), computes per-chapter chip counts, hands both to the client.
  */
 export default async function MistakesPage() {
   const { user } = await requireActiveSubscription();
   const supabase = await createClient();
-
   if (!user) redirect("/login");
 
   const mistakes = await getUserMistakes(supabase, user.id);
+
+  const chapterCountsMap = new Map<string, { title: string; count: number }>();
+  for (const m of mistakes) {
+    const preview =
+      m.questionType === "source" ? m.sourceQuestion : m.angleQuestion;
+    if (!preview.chapterId) continue;
+    const existing = chapterCountsMap.get(preview.chapterId);
+    if (existing) existing.count++;
+    else
+      chapterCountsMap.set(preview.chapterId, {
+        title: preview.chapterTitle,
+        count: 1,
+      });
+  }
+  const chapterCounts: ChapterChip[] = [...chapterCountsMap.entries()]
+    .map(([id, v]) => ({ id, title: v.title, count: v.count }))
+    .sort((a, b) => a.title.localeCompare(b.title, "he"));
 
   return (
     <div className="mx-auto w-full max-w-3xl space-y-6">
@@ -49,7 +64,7 @@ export default async function MistakesPage() {
           </Link>
         </div>
       ) : (
-        <MistakesList mistakes={mistakes} />
+        <MistakesList mistakes={mistakes} chapterCounts={chapterCounts} />
       )}
     </div>
   );

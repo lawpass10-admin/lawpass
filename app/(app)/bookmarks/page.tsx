@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
+import type { ChapterChip } from "@/components/practice/chapter-filter-chips";
 import { buttonVariants } from "@/components/ui/button";
 import { requireActiveSubscription } from "@/lib/auth/subscription-gate";
 import { getUserBookmarks } from "@/lib/db/practice";
@@ -10,24 +11,42 @@ import { cn } from "@/lib/utils";
 import { BookmarksList } from "./_components/bookmarks-list";
 
 /**
- * /bookmarks — Slice 2 Phase 4. Server Component listing the user's
- * active bookmarks (newest first). Clicking a row creates a single-
- * question review session and redirects to /practice/play/0.
+ * /bookmarks — Server Component. Lists the user's bookmarks, computes
+ * per-chapter counts for the filter chips, and hands both to the client
+ * list. Archived bookmarks (RLS-hidden underlying question) are
+ * EXCLUDED from chapter counts (they have no chapter info to bucket
+ * against) but kept in the list so the user can clean them up.
  *
- * Empty + archived states are handled by the underlying list component:
- *   - 0 bookmarks → Hebrew empty state + CTA to /practice
- *   - bookmarked question RLS-hidden (status=archived or is_current=false)
- *     → row renders as "הוסר זמנית" badge, non-clickable
+ * Empty state — 0 bookmarks total — bypasses the list and shows a
+ * Hebrew CTA back to /practice.
  */
 export default async function BookmarksPage() {
   const { user } = await requireActiveSubscription();
   const supabase = await createClient();
-
-  // Defensive — requireActiveSubscription already exited if user is null,
-  // but TypeScript narrows nothing here; keep the explicit guard.
   if (!user) redirect("/login");
 
   const bookmarks = await getUserBookmarks(supabase, user.id);
+
+  // Per-chapter counts for the filter chips. Built from the bookmarks
+  // result so the chip counts always match what's in the visible list
+  // (no separate query, no drift). Archived rows have empty chapterId
+  // — skip them. Sorted alphabetically (Hebrew locale) per Phase 5 §10.
+  const chapterCountsMap = new Map<string, { title: string; count: number }>();
+  for (const b of bookmarks) {
+    const preview =
+      b.questionType === "source" ? b.sourceQuestion : b.angleQuestion;
+    if (!preview.chapterId) continue; // archived
+    const existing = chapterCountsMap.get(preview.chapterId);
+    if (existing) existing.count++;
+    else
+      chapterCountsMap.set(preview.chapterId, {
+        title: preview.chapterTitle,
+        count: 1,
+      });
+  }
+  const chapterCounts: ChapterChip[] = [...chapterCountsMap.entries()]
+    .map(([id, v]) => ({ id, title: v.title, count: v.count }))
+    .sort((a, b) => a.title.localeCompare(b.title, "he"));
 
   return (
     <div className="mx-auto w-full max-w-3xl space-y-6">
@@ -52,7 +71,7 @@ export default async function BookmarksPage() {
           </Link>
         </div>
       ) : (
-        <BookmarksList bookmarks={bookmarks} />
+        <BookmarksList bookmarks={bookmarks} chapterCounts={chapterCounts} />
       )}
     </div>
   );

@@ -153,3 +153,17 @@ export type RemoveMistakeInput = z.infer<typeof removeMistakeSchema>;
 export type CreateReviewSessionInput = z.infer<
   typeof createReviewSessionSchema
 >;
+
+/**
+ * createBatchReviewSession input. `source` selects which list to draw
+ * from; `chapterIdFilter` is optional — if present, only items whose
+ * underlying source question belongs to that chapter are included.
+ */
+export const createBatchReviewSessionSchema = z.object({
+  source: z.enum(["bookmarks", "mistakes"]),
+  chapterIdFilter: z.string().uuid({ message: "פרק לא תקין" }).optional(),
+});
+
+export type CreateBatchReviewSessionInput = z.infer<
+  typeof createBatchReviewSessionSchema
+>;

@@ -777,6 +777,7 @@ export type BookmarkSourcePreview = {
   questionGroupId: string;
   externalId: string;
   questionText: string;
+  chapterId: string;
   chapterTitle: string;
   subtopicTitle: string;
   isArchived: boolean;
@@ -788,6 +789,7 @@ export type BookmarkAnglePreview = {
   angleTitle: string | null;
   questionText: string;
   parentSourceExternalId: string;
+  chapterId: string;
   chapterTitle: string;
   subtopicTitle: string;
   isArchived: boolean;
@@ -830,6 +832,16 @@ type SourceMetaRow = {
   question_group_id: string;
   external_id: string;
   question_text: string;
+  chapter_id: string;
+  chapter: { title: string } | { title: string }[] | null;
+  subtopic: { title: string } | { title: string }[] | null;
+};
+
+type AngleSourceParent = {
+  id: string;
+  question_group_id: string;
+  external_id: string;
+  chapter_id: string;
   chapter: { title: string } | { title: string }[] | null;
   subtopic: { title: string } | { title: string }[] | null;
 };
@@ -839,26 +851,11 @@ type AngleMetaRow = {
   angle_letter: string;
   angle_title: string | null;
   question_text: string;
-  source_question:
-    | {
-        id: string;
-        question_group_id: string;
-        external_id: string;
-        chapter: { title: string } | { title: string }[] | null;
-        subtopic: { title: string } | { title: string }[] | null;
-      }
-    | {
-        id: string;
-        question_group_id: string;
-        external_id: string;
-        chapter: { title: string } | { title: string }[] | null;
-        subtopic: { title: string } | { title: string }[] | null;
-      }[]
-    | null;
+  source_question: AngleSourceParent | AngleSourceParent[] | null;
 };
 
 const SOURCE_PREVIEW_SELECT = `
-  id, question_group_id, external_id, question_text,
+  id, question_group_id, external_id, question_text, chapter_id,
   chapter:chapters!source_questions_chapter_id_fkey(title),
   subtopic:subtopics!source_questions_subtopic_id_fkey(title)
 `;
@@ -866,7 +863,7 @@ const SOURCE_PREVIEW_SELECT = `
 const ANGLE_PREVIEW_SELECT = `
   id, angle_letter, angle_title, question_text,
   source_question:source_questions!angle_questions_source_question_id_fkey(
-    id, question_group_id, external_id,
+    id, question_group_id, external_id, chapter_id,
     chapter:chapters!source_questions_chapter_id_fkey(title),
     subtopic:subtopics!source_questions_subtopic_id_fkey(title)
   )
@@ -882,6 +879,7 @@ function mapSourcePreview(
       questionGroupId,
       externalId: "",
       questionText: "",
+      chapterId: "",
       chapterTitle: "",
       subtopicTitle: "",
       isArchived: true,
@@ -894,6 +892,7 @@ function mapSourcePreview(
     questionGroupId: row.question_group_id,
     externalId: row.external_id,
     questionText: truncatePreview(row.question_text),
+    chapterId: row.chapter_id,
     chapterTitle: chapter?.title ?? "",
     subtopicTitle: subtopic?.title ?? "",
     isArchived: false,
@@ -911,6 +910,7 @@ function mapAnglePreview(
       angleTitle: null,
       questionText: "",
       parentSourceExternalId: "",
+      chapterId: "",
       chapterTitle: "",
       subtopicTitle: "",
       isArchived: true,
@@ -925,6 +925,7 @@ function mapAnglePreview(
       angleTitle: row.angle_title,
       questionText: truncatePreview(row.question_text),
       parentSourceExternalId: "",
+      chapterId: "",
       chapterTitle: "",
       subtopicTitle: "",
       isArchived: true,
@@ -938,6 +939,7 @@ function mapAnglePreview(
     angleTitle: row.angle_title,
     questionText: truncatePreview(row.question_text),
     parentSourceExternalId: parent.external_id,
+    chapterId: parent.chapter_id,
     chapterTitle: chapter?.title ?? "",
     subtopicTitle: subtopic?.title ?? "",
     isArchived: false,
