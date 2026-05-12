@@ -813,7 +813,7 @@ export type MistakeListRow =
       questionType: "source";
       mistakesCount: number;
       lastMistakeAt: string;
-      createdAt: string;
+      firstMistakeAt: string;
       sourceQuestion: BookmarkSourcePreview;
     }
   | {
@@ -821,7 +821,7 @@ export type MistakeListRow =
       questionType: "angle";
       mistakesCount: number;
       lastMistakeAt: string;
-      createdAt: string;
+      firstMistakeAt: string;
       angleQuestion: BookmarkAnglePreview;
     };
 
@@ -959,7 +959,7 @@ type MistakeRawRow = {
   angle_question_id: string | null;
   mistakes_count: number;
   last_mistake_at: string;
-  created_at: string;
+  first_mistake_at: string;
 };
 
 /**
@@ -1093,7 +1093,7 @@ export async function getUserMistakes(
   const { data, error } = await supabase
     .from("mistakes")
     .select(
-      "id, question_type, source_question_group_id, angle_question_id, mistakes_count, last_mistake_at, created_at"
+      "id, question_type, source_question_group_id, angle_question_id, mistakes_count, last_mistake_at, first_mistake_at"
     )
     .eq("user_id", userId)
     .eq("manually_removed", false)
@@ -1126,7 +1126,7 @@ export async function getUserMistakes(
         questionType: "source",
         mistakesCount: r.mistakes_count,
         lastMistakeAt: r.last_mistake_at,
-        createdAt: r.created_at,
+        firstMistakeAt: r.first_mistake_at,
         sourceQuestion: mapSourcePreview(
           sources.get(r.source_question_group_id),
           r.source_question_group_id
@@ -1138,7 +1138,7 @@ export async function getUserMistakes(
         questionType: "angle",
         mistakesCount: r.mistakes_count,
         lastMistakeAt: r.last_mistake_at,
-        createdAt: r.created_at,
+        firstMistakeAt: r.first_mistake_at,
         angleQuestion: mapAnglePreview(
           angles.get(r.angle_question_id),
           r.angle_question_id
