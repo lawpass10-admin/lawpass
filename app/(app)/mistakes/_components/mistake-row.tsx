@@ -71,7 +71,7 @@ export function MistakeRow({
   const countLabel =
     mistake.mistakesCount >= 2
       ? `${mistake.mistakesCount} טעויות`
-      : "טעות אחת";
+      : "1 טעות";
 
   return (
     <div
