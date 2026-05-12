@@ -1,7 +1,7 @@
 "use client";
 
 import { Clock } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { cn } from "@/lib/utils";
 
@@ -12,6 +12,10 @@ type TimerProps = {
   /** When true, decrement every second. Parent stops this on submit so
    * the visual matches the moment the answer was locked in. */
   running: boolean;
+  /** Fires once per position when the countdown reaches 0. Used by the
+   * parent to surface the timer-expired dialog. Guarded against firing
+   * multiple times even if React re-renders. */
+  onExpired?: () => void;
 };
 
 const LOW_TIME_THRESHOLD_SECONDS = 30;
@@ -34,8 +38,9 @@ function formatMinSec(total: number): string {
  * Reaching 0 turns the chip red. Choices remain interactive at
  * 0 — there's no auto-submit in practice mode (plan §2 row 7).
  */
-export function Timer({ initialSeconds, running }: TimerProps) {
+export function Timer({ initialSeconds, running, onExpired }: TimerProps) {
   const [seconds, setSeconds] = useState(initialSeconds);
+  const expiredFired = useRef(false);
 
   // Reset whenever the parent passes a new initialSeconds (e.g., the
   // user advanced to a new question). Synchronous in render: the next
@@ -44,16 +49,26 @@ export function Timer({ initialSeconds, running }: TimerProps) {
   if (keyedFrom !== initialSeconds) {
     setKeyedFrom(initialSeconds);
     setSeconds(initialSeconds);
+    expiredFired.current = false;
   }
 
   useEffect(() => {
     if (!running) return;
-    if (seconds <= 0) return;
+    if (seconds <= 0) {
+      // Fire onExpired exactly once when the countdown crosses 0 while
+      // the timer is running. expiredFired ref guards against re-entry
+      // from a stale interval tick or parent re-render.
+      if (!expiredFired.current && onExpired) {
+        expiredFired.current = true;
+        onExpired();
+      }
+      return;
+    }
     const id = setInterval(() => {
       setSeconds((prev) => (prev > 0 ? prev - 1 : 0));
     }, 1000);
     return () => clearInterval(id);
-  }, [running, seconds]);
+  }, [running, seconds, onExpired]);
 
   const low = seconds < LOW_TIME_THRESHOLD_SECONDS;
 

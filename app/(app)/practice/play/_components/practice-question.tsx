@@ -1,6 +1,12 @@
 "use client";
 
-import { Bookmark, ChevronLeft, Play } from "lucide-react";
+import {
+  Bookmark,
+  ChevronDown,
+  ChevronLeft,
+  ChevronUp,
+  Play,
+} from "lucide-react";
 import Link from "next/link";
 import { useRef, useState } from "react";
 import { toast } from "sonner";
@@ -12,10 +18,7 @@ import {
   toggleBookmark,
 } from "@/app/(app)/practice/play/_actions";
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-} from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import type {
   AngleQuestionRow,
   AttemptRow,
@@ -30,6 +33,7 @@ import { Choice } from "./choice";
 import { ExitConfirmDialog } from "./exit-confirm-dialog";
 import { Learning360Panel } from "./learning-360-panel";
 import { Timer } from "./timer";
+import { TimerExpiredDialog } from "./timer-expired-dialog";
 
 type ViewModel =
   | {
@@ -57,28 +61,32 @@ type PracticeQuestionProps = {
 };
 
 /**
- * The interactive practice flow. Renders one question at a time with:
- *  - topbar (breadcrumbs + Q-counter + timer + bookmark + exit)
- *  - progress bar
- *  - question type strip
+ * Interactive practice flow. One question at a time:
+ *  - sticky Header: breadcrumb on right; position counter, bookmark,
+ *    timer, exit on left. Gold progress bar underneath.
+ *  - type + subtopic chip row
  *  - question text card
- *  - manual "התחל טיימר" CTA before answer
+ *  - manual "התחל טיימר" CTA (with "או ענה ישירות בלי טיימר" inline)
  *  - 4 choice buttons
- *  - after answer: feedback banner + 360° panel + "השאלה הבאה" CTA
+ *  - after reveal: feedback banner + a two-button row
+ *    ([הסתר/פירוט 360°] [השאלה הבאה]); 360° panel renders below the
+ *    row only when the user opts in.
+ *
+ * Phase 5 changes from Phase 3:
+ *  - Header restructured to match the prototype layout. Progress bar
+ *    moved under the header.
+ *  - Subtopic chip rendered alongside the type chip (was inline text).
+ *  - Timer button styled with border + outline variant.
+ *  - Timer expiry surfaces a non-dismissable AlertDialog.
+ *  - 360° panel starts collapsed (was auto-expanded on reveal).
  *
  * Replay mode (`existingAttempt` is non-null on mount): starts in
- * revealed state with the user's prior choice highlighted and the
- * 360° panel rendered. Choices are disabled. "השאלה הבאה" advances
- * normally. The Server Component is responsible for passing the
- * un-stripped choice data (with is_correct populated) in this mode.
+ * revealed state with the user's prior choice highlighted. The 360°
+ * panel still starts collapsed — the user clicks to expand.
  *
- * Timer model: two independent timers.
- *   - `questionRenderedAt` ref captures performance.now() at mount.
- *     On submit, durationSeconds = round((now - mounted)/1000).
- *     Accurate even when the tab is backgrounded.
- *   - `<Timer>` child renders a setInterval-driven M:SS countdown
- *     purely for visual feedback. The two diverge during tab-throttle;
- *     that's fine — the persisted value is the accurate one.
+ * Timer model: two independent timers. The persisted `duration_seconds`
+ * is derived from `performance.now()` at submit (accurate even when
+ * the tab is backgrounded); the visual Timer is just setInterval.
  */
 export function PracticeQuestion({
   session,
@@ -88,10 +96,6 @@ export function PracticeQuestion({
   existingAttempt,
   bookmarked: bookmarkedProp,
 }: PracticeQuestionProps) {
-  // questionRenderedAt — captured at mount and never reassigned within
-  // a position. Resetting on position change happens because the page
-  // Server Component re-renders the whole tree (window.location.assign
-  // forces a full page load, not just an RSC patch).
   const questionRenderedAt = useRef<number>(
     typeof performance !== "undefined" ? performance.now() : 0
   );
@@ -103,11 +107,6 @@ export function PracticeQuestion({
     initialSelectedLetter
   );
   const [revealed, setRevealed] = useState<boolean>(existingAttempt !== null);
-  // correctChoice and isCorrect are derived from the choices prop ONLY
-  // when revealed (the server stripped is_correct from the choices for
-  // unrevealed initial render — see stripAnswerFromChoices in
-  // lib/db/practice.ts). For first-time submit we update these from the
-  // submitAttempt response.
   const correctChoiceInitial = revealed
     ? view.question.choices.find((c) => c.is_correct) ?? null
     : null;
@@ -123,14 +122,15 @@ export function PracticeQuestion({
   const [advancing, setAdvancing] = useState(false);
 
   const [timerStarted, setTimerStarted] = useState(false);
+  const [timerExpired, setTimerExpired] = useState(false);
   const [exitOpen, setExitOpen] = useState(false);
   const [exiting, setExiting] = useState(false);
+  const [panel360Expanded, setPanel360Expanded] = useState(false);
 
-  // Derived: the visible timer runs only while the user has started it
-  // AND hasn't yet revealed the answer. No setState-in-effect — when
-  // `revealed` flips true the prop just stops being true on the next
-  // render and the child clears its interval in its own cleanup.
-  const timerRunning = timerStarted && !revealed;
+  // Timer runs while: user started it, not yet revealed, not expired.
+  // Once expired we freeze the visual at 0:00 (Timer enforces no-go-
+  // negative); the parent gates `running` to false to stop the interval.
+  const timerRunning = timerStarted && !revealed && !timerExpired;
 
   const isLastQuestion = position === totalQuestions - 1;
 
@@ -156,7 +156,6 @@ export function PracticeQuestion({
       return;
     }
 
-    // Archived mid-session: skip silently and auto-advance.
     if (result.archived) {
       toast.info("השאלה הזו הוסרה זמנית מהמערכת. עוברים לשאלה הבאה.");
       const advance = await advanceToNext({
@@ -172,12 +171,6 @@ export function PracticeQuestion({
       return;
     }
 
-    // Normal completion: reveal with server-derived correctness. The
-    // server's correctChoiceId points to one of the choices already in
-    // our props — we look it up here so the 360° panel and feedback
-    // banner can render. The is_correct flag was stripped from those
-    // choices before render; rebuild a corrected list locally for the
-    // 360° panel's distractor table.
     const matchedCorrect = view.question.choices.find(
       (c) => c.id === result.correctChoiceId
     );
@@ -187,6 +180,8 @@ export function PracticeQuestion({
     setIsCorrect(result.isCorrect);
     setRevealed(true);
     setSubmitting(false);
+    // Dismiss the expiry dialog if the user answered after it appeared.
+    setTimerExpired(false);
   }
 
   async function handleAdvance() {
@@ -201,8 +196,6 @@ export function PracticeQuestion({
       setAdvancing(false);
       return;
     }
-    // Full-page navigation per Slice 1 convention — works for both
-    // same-segment (next position) and cross-segment (to summary).
     window.location.assign(result.url);
   }
 
@@ -234,8 +227,6 @@ export function PracticeQuestion({
       setExitOpen(true);
       return;
     }
-    // answered === totalQuestions: no confirmation, completion is the
-    // only path forward anyway.
     void doExit();
   }
 
@@ -259,199 +250,235 @@ export function PracticeQuestion({
     : view.question.choices;
 
   const progressPct =
-    totalQuestions > 0 ? Math.round(((position + 1) / totalQuestions) * 100) : 0;
+    totalQuestions > 0 ? ((position + 1) / totalQuestions) * 100 : 0;
 
-  // For the 360° panel: same choices, but with the correct one's
-  // is_correct flipped on so the distractor table colours render.
   const choicesFor360: ChoiceType[] = view.question.choices.map((c) => ({
     ...c,
     is_correct: correctChoice ? c.id === correctChoice.id : c.is_correct,
   }));
 
-  // The 360° panel receives a "question" with corrected choices.
   const question360 =
     view.kind === "source"
       ? { ...view.question, choices: choicesFor360 }
       : { ...view.question, choices: choicesFor360 };
 
   return (
-    <div className="mx-auto w-full max-w-3xl">
-      {/* Topbar */}
-      <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-        <nav
-          aria-label="ניווט"
-          className="flex items-center gap-1.5 text-sm text-muted-foreground"
-        >
-          <Link href="/dashboard" className="hover:text-foreground">
-            תרגול
-          </Link>
-          <ChevronLeft className="size-3.5" aria-hidden />
-          <span dir="auto">{view.breadcrumbChapter}</span>
-          <ChevronLeft className="size-3.5" aria-hidden />
-          <span className="font-medium text-foreground">
-            {view.breadcrumbType}
-          </span>
-        </nav>
-        <div className="flex items-center gap-2">
-          <span className="font-mono text-xs text-muted-foreground tabular-nums">
-            {position + 1} / {totalQuestions}
-          </span>
-          <Timer
-            initialSeconds={session.time_per_question_seconds}
-            running={timerRunning}
-          />
-          <button
-            type="button"
-            onClick={handleToggleBookmark}
-            disabled={bookmarkPending}
-            title="סמן"
-            aria-label="סמן שאלה"
-            aria-pressed={bookmarked}
-            className={cn(
-              "flex h-8 w-8 items-center justify-center rounded-md border border-border bg-background transition-colors",
-              "hover:border-amber-400/60 hover:bg-amber-50",
-              "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50",
-              bookmarkPending && "opacity-50"
-            )}
+    <div className="-m-6">
+      {/* Phase 5 Header. Spans the route content area edge-to-edge so
+          the progress bar runs the full width. Internal padding matches
+          the rest of the (app) layout's main padding. */}
+      <header className="border-b border-border bg-background">
+        <div className="flex items-center justify-between gap-3 px-6 py-3">
+          {/* RTL natural-start cluster: breadcrumb */}
+          <nav
+            aria-label="ניווט"
+            className="flex min-w-0 items-center gap-1.5 text-sm text-muted-foreground"
           >
-            <Bookmark
-              className={cn(
-                "size-4",
-                bookmarked ? "fill-amber-400 text-amber-500" : "text-foreground"
-              )}
-              aria-hidden
-            />
-          </button>
-          <Button variant="ghost" size="sm" onClick={handleExitClick}>
-            סיים סשן
-          </Button>
-        </div>
-      </div>
-
-      {/* Progress bar */}
-      <div className="mb-6 h-1 w-full rounded-full bg-muted">
-        <div
-          className="h-full rounded-full bg-primary transition-all duration-300"
-          style={{ width: `${progressPct}%` }}
-          aria-hidden
-        />
-      </div>
-
-      {/* Question type strip */}
-      <div className="mb-4 flex items-center gap-2 text-sm">
-        {view.kind === "source" ? (
-          <span className="rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-semibold text-amber-700">
-            שאלת מקור
-          </span>
-        ) : (
-          <span className="rounded-full bg-primary/10 px-2.5 py-0.5 text-xs font-semibold text-primary">
-            {view.breadcrumbType}
-          </span>
-        )}
-        <span className="text-xs text-muted-foreground" dir="auto">
-          · {view.subtopicTitle}
-        </span>
-      </div>
-
-      {/* Question text */}
-      <Card className="mb-4">
-        <CardContent className="pt-6">
-          <p
-            dir="auto"
-            className="whitespace-pre-wrap text-[17px] leading-relaxed"
-          >
-            {view.question.question_text}
-          </p>
-        </CardContent>
-      </Card>
-
-      {/* Manual timer start row — only when not running, not revealed */}
-      {!revealed && !timerStarted && (
-        <div className="mb-4 flex flex-col items-center gap-1">
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            onClick={() => setTimerStarted(true)}
-          >
-            <Play className="size-3.5" aria-hidden />
-            <span>התחל טיימר</span>
-          </Button>
-          <span className="text-xs text-muted-foreground">
-            או ענה ישירות בלי טיימר
-          </span>
-        </div>
-      )}
-
-      {/* Choices */}
-      <div className="mb-4 flex flex-col gap-2">
-        {choicesForRender.map((c) => (
-          <Choice
-            key={c.letter}
-            letter={c.letter}
-            text={c.choice_text}
-            isCorrect={revealed ? c.is_correct : undefined}
-            selected={selectedLetter === c.letter}
-            revealed={revealed}
-            disabled={submitting}
-            onSelect={handleChoice}
-          />
-        ))}
-      </div>
-
-      {/* Post-answer feedback + advance CTA + 360° panel */}
-      {revealed && correctChoice && (
-        <>
-          <div
-            className={cn(
-              "mb-4 flex items-start gap-3 rounded-lg border p-4",
-              isCorrect
-                ? "border-emerald-500/50 bg-emerald-50 dark:bg-emerald-950/30"
-                : "border-destructive/50 bg-destructive/10"
-            )}
-            role="status"
-          >
-            <div className="flex-1">
-              <p
-                className={cn(
-                  "text-sm font-semibold",
-                  isCorrect ? "text-emerald-700 dark:text-emerald-400" : "text-destructive"
-                )}
-              >
-                {isCorrect ? "תשובה נכונה" : "תשובה שגויה"}
-              </p>
-              <p className="mt-1 text-sm text-foreground/80">
-                {isCorrect
-                  ? "מצוין. עיין בפירוט המלא להעמקה."
-                  : `התשובה הנכונה היא ${correctChoice.letter}. עיין בפירוט להבנת השגיאה.`}
-              </p>
-            </div>
-          </div>
-
-          <div className="mb-2 flex justify-end">
-            <Button
+            <Link href="/dashboard" className="hover:text-foreground">
+              תרגול
+            </Link>
+            <ChevronLeft className="size-3.5 shrink-0" aria-hidden />
+            <span className="truncate" dir="auto">
+              {view.breadcrumbChapter}
+            </span>
+            <ChevronLeft className="size-3.5 shrink-0" aria-hidden />
+            <span className="truncate font-medium text-foreground">
+              {view.breadcrumbType}
+            </span>
+          </nav>
+          {/* RTL natural-end cluster: counter + bookmark + timer + exit */}
+          <div className="flex items-center gap-3">
+            <PositionCounter current={position + 1} total={totalQuestions} />
+            <button
               type="button"
-              size="lg"
-              onClick={handleAdvance}
-              disabled={advancing}
+              onClick={handleToggleBookmark}
+              disabled={bookmarkPending}
+              title="סמן"
+              aria-label="סמן שאלה"
+              aria-pressed={bookmarked}
+              className={cn(
+                "flex h-8 w-8 items-center justify-center rounded-md border border-border bg-background transition-colors",
+                "hover:border-amber-400/60 hover:bg-amber-50",
+                "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50",
+                bookmarkPending && "opacity-50"
+              )}
             >
-              <span>
-                {advancing
-                  ? "טוען..."
-                  : isLastQuestion
-                  ? "סיום וצפייה בסיכום"
-                  : "השאלה הבאה"}
-              </span>
-              <ChevronLeft className="size-3.5" aria-hidden />
+              <Bookmark
+                className={cn(
+                  "size-4",
+                  bookmarked
+                    ? "fill-amber-400 text-amber-500"
+                    : "text-foreground"
+                )}
+                aria-hidden
+              />
+            </button>
+            <Timer
+              initialSeconds={session.time_per_question_seconds}
+              running={timerRunning}
+              onExpired={() => setTimerExpired(true)}
+            />
+            <Button variant="ghost" size="sm" onClick={handleExitClick}>
+              סיים סשן
             </Button>
           </div>
-
-          <Learning360Panel
-            question={question360}
-            correctChoice={correctChoice}
+        </div>
+        {/* Thin gold progress bar — full route width. */}
+        <div className="h-0.5 w-full bg-muted" aria-hidden>
+          <div
+            className="h-full bg-primary transition-all duration-300"
+            style={{ width: `${progressPct}%` }}
           />
-        </>
-      )}
+        </div>
+      </header>
+
+      {/* Question body */}
+      <div className="mx-auto w-full max-w-3xl px-6 py-6">
+        {/* Type + subtopic chip row */}
+        <div className="mb-4 flex flex-wrap items-center gap-2">
+          {view.kind === "source" ? (
+            <span className="rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-semibold text-amber-700">
+              שאלת מקור
+            </span>
+          ) : (
+            <span className="rounded-full bg-primary/10 px-2.5 py-0.5 text-xs font-semibold text-primary">
+              {view.breadcrumbType}
+            </span>
+          )}
+          {view.subtopicTitle && (
+            <span
+              dir="auto"
+              className="rounded-full bg-muted px-2.5 py-0.5 text-xs font-medium text-foreground/75"
+            >
+              {view.subtopicTitle}
+            </span>
+          )}
+        </div>
+
+        {/* Question text */}
+        <Card className="mb-4">
+          <CardContent className="pt-6">
+            <p
+              dir="auto"
+              className="whitespace-pre-wrap text-[17px] leading-relaxed"
+            >
+              {view.question.question_text}
+            </p>
+          </CardContent>
+        </Card>
+
+        {/* Manual timer start row — only pre-reveal */}
+        {!revealed && !timerStarted && (
+          <div className="mb-4 flex items-center justify-center gap-3">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setTimerStarted(true)}
+            >
+              <Play className="size-3.5" aria-hidden />
+              <span className="ms-1.5">התחל טיימר</span>
+            </Button>
+            <span className="text-xs text-muted-foreground">
+              או ענה ישירות בלי טיימר
+            </span>
+          </div>
+        )}
+
+        {/* Choices */}
+        <div className="mb-4 flex flex-col gap-2">
+          {choicesForRender.map((c) => (
+            <Choice
+              key={c.letter}
+              letter={c.letter}
+              text={c.choice_text}
+              isCorrect={revealed ? c.is_correct : undefined}
+              selected={selectedLetter === c.letter}
+              revealed={revealed}
+              disabled={submitting}
+              onSelect={handleChoice}
+            />
+          ))}
+        </div>
+
+        {/* Post-answer */}
+        {revealed && correctChoice && (
+          <>
+            <div
+              className={cn(
+                "mb-4 flex items-start gap-3 rounded-lg border p-4",
+                isCorrect
+                  ? "border-emerald-500/50 bg-emerald-50 dark:bg-emerald-950/30"
+                  : "border-destructive/50 bg-destructive/10"
+              )}
+              role="status"
+            >
+              <div className="flex-1">
+                <p
+                  className={cn(
+                    "text-sm font-semibold",
+                    isCorrect
+                      ? "text-emerald-700 dark:text-emerald-400"
+                      : "text-destructive"
+                  )}
+                >
+                  {isCorrect ? "תשובה נכונה" : "תשובה שגויה"}
+                </p>
+                <p className="mt-1 text-sm text-foreground/80">
+                  {isCorrect
+                    ? "מצוין. עיין בפירוט המלא להעמקה."
+                    : `התשובה הנכונה היא ${correctChoice.letter}. עיין בפירוט להבנת השגיאה.`}
+                </p>
+              </div>
+            </div>
+
+            {/* Two-button row: 360° toggle on right, advance on left.
+                Phase 5: 360° panel does NOT auto-expand; user opts in. */}
+            <div className="mb-2 flex items-center justify-between gap-3">
+              <Button
+                type="button"
+                variant="secondary"
+                size="lg"
+                onClick={() => setPanel360Expanded((v) => !v)}
+              >
+                {panel360Expanded ? (
+                  <>
+                    <ChevronUp className="size-4" aria-hidden />
+                    <span className="ms-1.5">הסתר פירוט</span>
+                  </>
+                ) : (
+                  <>
+                    <ChevronDown className="size-4" aria-hidden />
+                    <span className="ms-1.5">פירוט 360° מלא</span>
+                  </>
+                )}
+              </Button>
+              <Button
+                type="button"
+                size="lg"
+                onClick={handleAdvance}
+                disabled={advancing}
+              >
+                <span>
+                  {advancing
+                    ? "טוען..."
+                    : isLastQuestion
+                      ? "סיום וצפייה בסיכום"
+                      : "השאלה הבאה"}
+                </span>
+                <ChevronLeft className="ms-1.5 size-4" aria-hidden />
+              </Button>
+            </div>
+
+            {panel360Expanded && (
+              <Learning360Panel
+                question={question360}
+                correctChoice={correctChoice}
+              />
+            )}
+          </>
+        )}
+      </div>
 
       <ExitConfirmDialog
         open={exitOpen}
@@ -461,6 +488,40 @@ export function PracticeQuestion({
         totalQuestions={totalQuestions}
         confirming={exiting}
       />
+
+      <TimerExpiredDialog
+        open={timerExpired && !revealed}
+        alreadyAnswered={revealed}
+        onContinue={() => setTimerExpired(false)}
+        onSkipNext={async () => {
+          // Use the same advanceToNext path as the post-reveal button.
+          // Since the user hasn't answered, no attempt row exists; the
+          // session's questions_answered stays put. advanceToNext just
+          // increments the URL position.
+          setTimerExpired(false);
+          await handleAdvance();
+        }}
+        pending={advancing}
+      />
+    </div>
+  );
+}
+
+/**
+ * Position counter with the small gold underline beneath the current
+ * number. Used in the Header right cluster (RTL visual-end).
+ */
+function PositionCounter({
+  current,
+  total,
+}: {
+  current: number;
+  total: number;
+}) {
+  return (
+    <div className="text-sm font-medium tabular-nums">
+      <span className="border-b-2 border-primary pb-0.5">{current}</span>
+      <span className="text-muted-foreground"> / {total}</span>
     </div>
   );
 }
