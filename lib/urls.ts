@@ -48,6 +48,14 @@ export function practiceSummaryUrl(sessionId: string): string {
   return `/practice/summary?session=${sessionId}`;
 }
 
+export function bookmarksUrl(): string {
+  return "/bookmarks";
+}
+
+export function mistakesUrl(): string {
+  return "/mistakes";
+}
+
 /**
  * Build a /practice URL, optionally with prefill query params.
  *

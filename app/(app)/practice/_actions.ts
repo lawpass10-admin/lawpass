@@ -7,6 +7,7 @@ import { createClient } from "@/lib/supabase/server";
 import { practicePlayUrl } from "@/lib/urls";
 import {
   createPracticeSessionSchema,
+  createReviewSessionSchema,
   getAvailableQuestionCountSchema,
   type CreatePracticeSessionInput,
   type GetAvailableQuestionCountInput,
@@ -297,4 +298,121 @@ export async function abandonActiveSession(): Promise<ActionResult> {
   console.info(`[practice] abandon_session OK user=${user.id}`);
   revalidatePath("/practice", "page");
   return { ok: true };
+}
+
+// =============================================================================
+// createReviewSession — single-question review from /bookmarks or /mistakes
+// =============================================================================
+
+/**
+ * Creates a single-question "review" practice_session for the given
+ * bookmark or mistake target. Same `practice_sessions` table — the
+ * review-flavour distinction is implicit:
+ *   - source_count_target = 1
+ *   - angles_per_source   = 0
+ *   - selected_chapters   = []
+ *   - selected_subtopics  = []
+ *   - question_list       = [{type, id, position: 0}]
+ *
+ * Phase 3's /practice/play/[idx] page handles the rest. After answer +
+ * 360°, the "השאלה הבאה" CTA advances past the only item and lands on
+ * /practice/summary.
+ *
+ * Why we don't just deep-link to the existing session: the Phase 3
+ * replay-mode pre-reveals the user's prior choice (auto-expand 360°),
+ * which defeats the purpose of reviewing. A fresh session forces a
+ * fresh attempt with timer, lets the user see if they've improved, and
+ * the original mistake history stays intact (record_mistake increments
+ * rather than overwrites).
+ */
+export async function createReviewSession(
+  input: unknown
+): Promise<{ ok: true; url: string } | { ok: false; error: string }> {
+  const parsed = createReviewSessionSchema.safeParse(input);
+  if (!parsed.success) {
+    return {
+      ok: false,
+      error: parsed.error.issues[0]?.message ?? "פרמטרים לא תקינים",
+    };
+  }
+  const data = parsed.data;
+
+  const { user } = await requireActiveSubscription();
+  const supabase = await createClient();
+
+  try {
+    // Resolve target → the question id that goes into question_list.
+    // Source path: question_group_id → current source_questions row.
+    // RLS hides status='archived' rows; treat missing as archived.
+    let targetId: string | null = null;
+    if (data.questionType === "source") {
+      const { data: srcRow } = await supabase
+        .from("source_questions")
+        .select("id")
+        .eq("question_group_id", data.sourceQuestionGroupId!)
+        .eq("is_current", true)
+        .eq("status", "active")
+        .maybeSingle();
+      targetId = srcRow?.id ?? null;
+    } else {
+      const { data: angleRow } = await supabase
+        .from("angle_questions")
+        .select("id")
+        .eq("id", data.angleQuestionId!)
+        .maybeSingle();
+      targetId = angleRow?.id ?? null;
+    }
+
+    if (!targetId) {
+      console.info(
+        `[practice] create_review_session ARCHIVED user=${user.id} target_type=${data.questionType}`
+      );
+      return { ok: false, error: "השאלה כבר אינה זמינה" };
+    }
+
+    // Same defensive abandon-active-session as createPracticeSession.
+    await supabase
+      .from("practice_sessions")
+      .update({
+        status: "abandoned",
+        last_activity_at: new Date().toISOString(),
+      })
+      .eq("user_id", user.id)
+      .eq("status", "active");
+
+    const questionList: QuestionListItem[] = [
+      { type: data.questionType, id: targetId, position: 0 },
+    ];
+
+    const { data: inserted, error: insertError } = await supabase
+      .from("practice_sessions")
+      .insert({
+        user_id: user.id,
+        selected_chapters: [],
+        selected_subtopics: [],
+        source_count_target: 1,
+        angles_per_source: 0,
+        time_per_question_seconds: 150,
+        question_list: questionList,
+        status: "active",
+      })
+      .select("id")
+      .single();
+    if (insertError) throw insertError;
+
+    console.info(
+      `[practice] create_review_session OK user=${user.id} session=${inserted.id} target_type=${data.questionType} target_id=${targetId}`
+    );
+    revalidatePath("/", "layout");
+    return { ok: true, url: practicePlayUrl(inserted.id, 0) };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    const code = (err as { code?: string }).code;
+    console.error(
+      `[practice] create_review_session FAILED user=${user.id} code=${
+        code ?? "unknown"
+      } message=${message}`
+    );
+    return { ok: false, error: "לא ניתן לפתוח את השאלה. נסה שוב" };
+  }
 }

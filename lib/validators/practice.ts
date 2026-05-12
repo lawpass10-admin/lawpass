@@ -115,3 +115,40 @@ export type SubmitAttemptInput = z.infer<typeof submitAttemptSchema>;
 export type AdvanceToNextInput = z.infer<typeof advanceToNextSchema>;
 export type ToggleBookmarkInput = z.infer<typeof toggleBookmarkSchema>;
 export type ExitSessionInput = z.infer<typeof exitSessionSchema>;
+
+// =============================================================================
+// Phase 4 — Bookmarks + Mistakes list actions
+// =============================================================================
+
+export const removeBookmarkSchema = z.object({
+  bookmarkId: z.string().uuid({ message: "מזהה סימנייה לא תקין" }),
+});
+
+export const removeMistakeSchema = z.object({
+  mistakeId: z.string().uuid({ message: "מזהה טעות לא תקין" }),
+});
+
+/**
+ * createReviewSession input: exactly one of `sourceQuestionGroupId` or
+ * `angleQuestionId` must be set, matching `questionType`. The cross-field
+ * refinement enforces this — the server resolves the target via RLS.
+ */
+export const createReviewSessionSchema = z
+  .object({
+    questionType: z.enum(["source", "angle"]),
+    sourceQuestionGroupId: z.string().uuid().optional(),
+    angleQuestionId: z.string().uuid().optional(),
+  })
+  .refine(
+    (data) =>
+      data.questionType === "source"
+        ? !!data.sourceQuestionGroupId && !data.angleQuestionId
+        : !!data.angleQuestionId && !data.sourceQuestionGroupId,
+    { message: "פרמטרים לא תואמים לסוג השאלה" }
+  );
+
+export type RemoveBookmarkInput = z.infer<typeof removeBookmarkSchema>;
+export type RemoveMistakeInput = z.infer<typeof removeMistakeSchema>;
+export type CreateReviewSessionInput = z.infer<
+  typeof createReviewSessionSchema
+>;

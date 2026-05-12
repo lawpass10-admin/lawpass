@@ -753,3 +753,456 @@ export async function getSummary(
     archivedSkipped,
   };
 }
+
+// =============================================================================
+// Phase 4 — bookmarks + mistakes list helpers
+// =============================================================================
+
+const PREVIEW_MAX_CHARS = 200;
+
+function truncatePreview(text: string): string {
+  if (text.length <= PREVIEW_MAX_CHARS) return text;
+  return text.slice(0, PREVIEW_MAX_CHARS).trimEnd() + "…";
+}
+
+type AngleLetter = "א" | "ב" | "ג" | "ד" | "ה";
+
+function angleLetterOrNull(s: string): AngleLetter | null {
+  if (s === "א" || s === "ב" || s === "ג" || s === "ד" || s === "ה") return s;
+  return null;
+}
+
+export type BookmarkSourcePreview = {
+  id: string;
+  questionGroupId: string;
+  externalId: string;
+  questionText: string;
+  chapterTitle: string;
+  subtopicTitle: string;
+  isArchived: boolean;
+};
+
+export type BookmarkAnglePreview = {
+  id: string;
+  angleLetter: AngleLetter;
+  angleTitle: string | null;
+  questionText: string;
+  parentSourceExternalId: string;
+  chapterTitle: string;
+  subtopicTitle: string;
+  isArchived: boolean;
+};
+
+export type BookmarkListRow =
+  | {
+      bookmarkId: string;
+      questionType: "source";
+      createdAt: string;
+      sourceQuestion: BookmarkSourcePreview;
+    }
+  | {
+      bookmarkId: string;
+      questionType: "angle";
+      createdAt: string;
+      angleQuestion: BookmarkAnglePreview;
+    };
+
+export type MistakeListRow =
+  | {
+      mistakeId: string;
+      questionType: "source";
+      mistakesCount: number;
+      lastMistakeAt: string;
+      createdAt: string;
+      sourceQuestion: BookmarkSourcePreview;
+    }
+  | {
+      mistakeId: string;
+      questionType: "angle";
+      mistakesCount: number;
+      lastMistakeAt: string;
+      createdAt: string;
+      angleQuestion: BookmarkAnglePreview;
+    };
+
+type SourceMetaRow = {
+  id: string;
+  question_group_id: string;
+  external_id: string;
+  question_text: string;
+  chapter: { title: string } | { title: string }[] | null;
+  subtopic: { title: string } | { title: string }[] | null;
+};
+
+type AngleMetaRow = {
+  id: string;
+  angle_letter: string;
+  angle_title: string | null;
+  question_text: string;
+  source_question:
+    | {
+        id: string;
+        question_group_id: string;
+        external_id: string;
+        chapter: { title: string } | { title: string }[] | null;
+        subtopic: { title: string } | { title: string }[] | null;
+      }
+    | {
+        id: string;
+        question_group_id: string;
+        external_id: string;
+        chapter: { title: string } | { title: string }[] | null;
+        subtopic: { title: string } | { title: string }[] | null;
+      }[]
+    | null;
+};
+
+const SOURCE_PREVIEW_SELECT = `
+  id, question_group_id, external_id, question_text,
+  chapter:chapters!source_questions_chapter_id_fkey(title),
+  subtopic:subtopics!source_questions_subtopic_id_fkey(title)
+`;
+
+const ANGLE_PREVIEW_SELECT = `
+  id, angle_letter, angle_title, question_text,
+  source_question:source_questions!angle_questions_source_question_id_fkey(
+    id, question_group_id, external_id,
+    chapter:chapters!source_questions_chapter_id_fkey(title),
+    subtopic:subtopics!source_questions_subtopic_id_fkey(title)
+  )
+`;
+
+function mapSourcePreview(
+  row: SourceMetaRow | undefined,
+  questionGroupId: string
+): BookmarkSourcePreview {
+  if (!row) {
+    return {
+      id: "",
+      questionGroupId,
+      externalId: "",
+      questionText: "",
+      chapterTitle: "",
+      subtopicTitle: "",
+      isArchived: true,
+    };
+  }
+  const chapter = pickOne(row.chapter);
+  const subtopic = pickOne(row.subtopic);
+  return {
+    id: row.id,
+    questionGroupId: row.question_group_id,
+    externalId: row.external_id,
+    questionText: truncatePreview(row.question_text),
+    chapterTitle: chapter?.title ?? "",
+    subtopicTitle: subtopic?.title ?? "",
+    isArchived: false,
+  };
+}
+
+function mapAnglePreview(
+  row: AngleMetaRow | undefined,
+  angleQuestionId: string
+): BookmarkAnglePreview {
+  if (!row) {
+    return {
+      id: angleQuestionId,
+      angleLetter: "א",
+      angleTitle: null,
+      questionText: "",
+      parentSourceExternalId: "",
+      chapterTitle: "",
+      subtopicTitle: "",
+      isArchived: true,
+    };
+  }
+  const letter = angleLetterOrNull(row.angle_letter) ?? "א";
+  const parent = pickOne(row.source_question);
+  if (!parent) {
+    return {
+      id: row.id,
+      angleLetter: letter,
+      angleTitle: row.angle_title,
+      questionText: truncatePreview(row.question_text),
+      parentSourceExternalId: "",
+      chapterTitle: "",
+      subtopicTitle: "",
+      isArchived: true,
+    };
+  }
+  const chapter = pickOne(parent.chapter);
+  const subtopic = pickOne(parent.subtopic);
+  return {
+    id: row.id,
+    angleLetter: letter,
+    angleTitle: row.angle_title,
+    questionText: truncatePreview(row.question_text),
+    parentSourceExternalId: parent.external_id,
+    chapterTitle: chapter?.title ?? "",
+    subtopicTitle: subtopic?.title ?? "",
+    isArchived: false,
+  };
+}
+
+type BookmarkRawRow = {
+  id: string;
+  question_type: string;
+  source_question_group_id: string | null;
+  angle_question_id: string | null;
+  created_at: string;
+};
+
+type MistakeRawRow = {
+  id: string;
+  question_type: string;
+  source_question_group_id: string | null;
+  angle_question_id: string | null;
+  mistakes_count: number;
+  last_mistake_at: string;
+  created_at: string;
+};
+
+/**
+ * Joint loader for source-preview + angle-preview metadata. Given a set
+ * of question_group_ids and angle_question_ids, fetches the current
+ * source_questions row per group (RLS hides archived) and the
+ * angle_questions row per id (RLS hides via parent). Returns two Maps
+ * keyed for the caller to assemble per-row.
+ */
+async function loadPreviewMaps(
+  supabase: SupabaseSsrClient,
+  groupIds: string[],
+  angleIds: string[]
+): Promise<{
+  sources: Map<string, SourceMetaRow>;
+  angles: Map<string, AngleMetaRow>;
+}> {
+  const sources = new Map<string, SourceMetaRow>();
+  const angles = new Map<string, AngleMetaRow>();
+
+  const sourcesPromise =
+    groupIds.length > 0
+      ? supabase
+          .from("source_questions")
+          .select(SOURCE_PREVIEW_SELECT)
+          .in("question_group_id", groupIds)
+          .eq("is_current", true)
+      : null;
+
+  const anglesPromise =
+    angleIds.length > 0
+      ? supabase
+          .from("angle_questions")
+          .select(ANGLE_PREVIEW_SELECT)
+          .in("id", angleIds)
+      : null;
+
+  const [sourcesResult, anglesResult] = await Promise.all([
+    sourcesPromise,
+    anglesPromise,
+  ]);
+
+  if (sourcesResult?.data) {
+    for (const row of sourcesResult.data as unknown as SourceMetaRow[]) {
+      sources.set(row.question_group_id, row);
+    }
+  }
+  if (anglesResult?.data) {
+    for (const row of anglesResult.data as unknown as AngleMetaRow[]) {
+      angles.set(row.id, row);
+    }
+  }
+
+  return { sources, angles };
+}
+
+/**
+ * Lists the user's active bookmarks, newest first. RLS on the bookmarks
+ * table already filters by user_id. RLS on source_questions /
+ * angle_questions further hides archived content — those bookmarks
+ * still appear in the returned list but are flagged `isArchived=true`
+ * with empty preview fields so the UI can render a "הוסר זמנית" badge
+ * rather than a clickable row.
+ */
+export async function getUserBookmarks(
+  supabase: SupabaseSsrClient,
+  userId: string
+): Promise<BookmarkListRow[]> {
+  const { data, error } = await supabase
+    .from("bookmarks")
+    .select(
+      "id, question_type, source_question_group_id, angle_question_id, created_at"
+    )
+    .eq("user_id", userId)
+    .order("created_at", { ascending: false });
+
+  if (error || !data) return [];
+
+  const rows = data as BookmarkRawRow[];
+  const groupIds: string[] = [];
+  const angleIds: string[] = [];
+  for (const r of rows) {
+    if (r.question_type === "source" && r.source_question_group_id) {
+      groupIds.push(r.source_question_group_id);
+    } else if (r.question_type === "angle" && r.angle_question_id) {
+      angleIds.push(r.angle_question_id);
+    }
+  }
+
+  const { sources, angles } = await loadPreviewMaps(
+    supabase,
+    groupIds,
+    angleIds
+  );
+
+  const out: BookmarkListRow[] = [];
+  for (const r of rows) {
+    if (r.question_type === "source" && r.source_question_group_id) {
+      out.push({
+        bookmarkId: r.id,
+        questionType: "source",
+        createdAt: r.created_at,
+        sourceQuestion: mapSourcePreview(
+          sources.get(r.source_question_group_id),
+          r.source_question_group_id
+        ),
+      });
+    } else if (r.question_type === "angle" && r.angle_question_id) {
+      out.push({
+        bookmarkId: r.id,
+        questionType: "angle",
+        createdAt: r.created_at,
+        angleQuestion: mapAnglePreview(
+          angles.get(r.angle_question_id),
+          r.angle_question_id
+        ),
+      });
+    }
+  }
+  return out;
+}
+
+/**
+ * Lists the user's active mistakes (WHERE manually_removed = false),
+ * most-recent mistake first. Same archived-handling as bookmarks.
+ */
+export async function getUserMistakes(
+  supabase: SupabaseSsrClient,
+  userId: string
+): Promise<MistakeListRow[]> {
+  const { data, error } = await supabase
+    .from("mistakes")
+    .select(
+      "id, question_type, source_question_group_id, angle_question_id, mistakes_count, last_mistake_at, created_at"
+    )
+    .eq("user_id", userId)
+    .eq("manually_removed", false)
+    .order("last_mistake_at", { ascending: false });
+
+  if (error || !data) return [];
+
+  const rows = data as MistakeRawRow[];
+  const groupIds: string[] = [];
+  const angleIds: string[] = [];
+  for (const r of rows) {
+    if (r.question_type === "source" && r.source_question_group_id) {
+      groupIds.push(r.source_question_group_id);
+    } else if (r.question_type === "angle" && r.angle_question_id) {
+      angleIds.push(r.angle_question_id);
+    }
+  }
+
+  const { sources, angles } = await loadPreviewMaps(
+    supabase,
+    groupIds,
+    angleIds
+  );
+
+  const out: MistakeListRow[] = [];
+  for (const r of rows) {
+    if (r.question_type === "source" && r.source_question_group_id) {
+      out.push({
+        mistakeId: r.id,
+        questionType: "source",
+        mistakesCount: r.mistakes_count,
+        lastMistakeAt: r.last_mistake_at,
+        createdAt: r.created_at,
+        sourceQuestion: mapSourcePreview(
+          sources.get(r.source_question_group_id),
+          r.source_question_group_id
+        ),
+      });
+    } else if (r.question_type === "angle" && r.angle_question_id) {
+      out.push({
+        mistakeId: r.id,
+        questionType: "angle",
+        mistakesCount: r.mistakes_count,
+        lastMistakeAt: r.last_mistake_at,
+        createdAt: r.created_at,
+        angleQuestion: mapAnglePreview(
+          angles.get(r.angle_question_id),
+          r.angle_question_id
+        ),
+      });
+    }
+  }
+  return out;
+}
+
+// =============================================================================
+// Phase 4 — per-chapter availability for the empty-chapter UX
+// =============================================================================
+
+export type ChapterWithCount = {
+  id: string;
+  code: string;
+  title: string;
+  display_order: number;
+  activeQuestionCount: number;
+};
+
+/**
+ * Returns all chapters with their count of active+current source questions.
+ * Used by the practice setup page to render empty chapters as disabled
+ * "(בקרוב)" chips per Phase 4 plan §4. RLS on source_questions filters
+ * to `status='active' AND is_current=true AND has_active_subscription()`
+ * — so the count reflects what the user can actually practice, and
+ * users without subscriptions see all-zero counts (gate redirects
+ * before this is called).
+ *
+ * Implementation note: we issue one query for chapters and one for
+ * source_questions (grouped client-side). PostgREST's embed-aggregate
+ * shape is fragile across versions, and 6-chapter × ~100-question
+ * scale doesn't justify a custom RPC.
+ */
+export async function getChaptersWithQuestionCount(
+  supabase: SupabaseSsrClient
+): Promise<ChapterWithCount[]> {
+  const [chaptersResult, questionsResult] = await Promise.all([
+    supabase
+      .from("chapters")
+      .select("id, code, title, display_order")
+      .order("display_order", { ascending: true }),
+    supabase
+      .from("source_questions")
+      .select("chapter_id")
+      .eq("status", "active")
+      .eq("is_current", true),
+  ]);
+
+  if (chaptersResult.error || !chaptersResult.data) return [];
+
+  const counts = new Map<string, number>();
+  for (const row of questionsResult.data ?? []) {
+    const id = (row as { chapter_id: string }).chapter_id;
+    counts.set(id, (counts.get(id) ?? 0) + 1);
+  }
+
+  return chaptersResult.data.map((c) => ({
+    id: c.id,
+    code: c.code,
+    title: c.title,
+    display_order: c.display_order,
+    activeQuestionCount: counts.get(c.id) ?? 0,
+  }));
+}
