@@ -189,39 +189,49 @@ export async function submitAttempt(
     return { ok: false, error: "התרחשה שגיאה. נסה שוב" };
   }
 
-  const { error: incrErr } = await supabase.rpc("increment_session_counters", {
+  // Phase 5 perf: increment_session_counters and record_mistake are
+  // independent RPCs after the attempt insert has succeeded. Run them in
+  // parallel — saves one fra1↔Supabase round-trip (~5-10ms intra-region)
+  // on every wrong answer, and is harmless on right answers (the
+  // record_mistake side resolves to a passthrough no-op promise).
+  const incrPromise = supabase.rpc("increment_session_counters", {
     p_session_id: sessionId,
     p_was_correct: isCorrect,
   });
-  if (incrErr) {
-    // Non-fatal — attempt row is the source of truth for summary
-    // counts. Log and continue.
-    console.error(
-      `[practice] increment_session_counters FAILED session=${sessionId} code=${
-        (incrErr as { code?: string }).code ?? "unknown"
-      } msg=${incrErr.message}`
-    );
-  }
 
-  if (!isCorrect) {
-    const { error: mistakeErr } = isSource
-      ? await supabase.rpc("record_mistake", {
+  const mistakePromise = isCorrect
+    ? Promise.resolve({ error: null as { message: string; code?: string } | null })
+    : isSource
+      ? supabase.rpc("record_mistake", {
           p_question_type: "source",
           p_source_question_group_id: resolved.question.question_group_id,
           p_angle_question_id: null,
         })
-      : await supabase.rpc("record_mistake", {
+      : supabase.rpc("record_mistake", {
           p_question_type: "angle",
           p_source_question_group_id: null,
           p_angle_question_id: resolved.question.id,
         });
-    if (mistakeErr) {
-      console.error(
-        `[practice] record_mistake FAILED session=${sessionId} position=${position} code=${
-          (mistakeErr as { code?: string }).code ?? "unknown"
-        } msg=${mistakeErr.message}`
-      );
-    }
+
+  const [incrResult, mistakeResult] = await Promise.all([
+    incrPromise,
+    mistakePromise,
+  ]);
+
+  if (incrResult.error) {
+    // Non-fatal — attempt row is the source of truth for summary counts.
+    console.error(
+      `[practice] increment_session_counters FAILED session=${sessionId} code=${
+        (incrResult.error as { code?: string }).code ?? "unknown"
+      } msg=${incrResult.error.message}`
+    );
+  }
+  if (mistakeResult.error) {
+    console.error(
+      `[practice] record_mistake FAILED session=${sessionId} position=${position} code=${
+        (mistakeResult.error as { code?: string }).code ?? "unknown"
+      } msg=${mistakeResult.error.message}`
+    );
   }
 
   revalidatePath("/", "layout");
