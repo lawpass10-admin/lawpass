@@ -28,7 +28,7 @@ export type PrefillInput = {
   timePerQuestion?: number;
 };
 
-const SOURCE_COUNT_CHOICES = new Set([5, 10, 20, 50]);
+const SOURCE_COUNT_CHOICES = new Set([1, 2, 5, 10, 20, 50]);
 
 // Lowercase UUID v1-v5 with hyphens. Used for cheap validation in the
 // prefill parser; the full Zod schema in lib/validators/practice.ts is

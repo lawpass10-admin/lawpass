@@ -5,12 +5,13 @@ import { z } from "zod";
 // =============================================================================
 
 /**
- * Valid choices for the "Source count" buttons (5/10/20/50). These are the
- * only values accepted server-side; the UI presents them as buttons and
+ * Valid choices for the "Source count" buttons (1/2/5/10/20/50). These are
+ * the only values accepted server-side; the UI presents them as buttons and
  * disables individual buttons when DB availability falls below the chosen
- * count. Slice 2 plan §2 row 5.
+ * count. The 1 + 2 entries enable short spot-review sessions and align
+ * with the bookmark/mistake review-session pattern from Phase 4.
  */
-const SOURCE_COUNT_CHOICES = [5, 10, 20, 50] as const;
+const SOURCE_COUNT_CHOICES = [1, 2, 5, 10, 20, 50] as const;
 
 /**
  * Schema for createPracticeSession Server Action input. Validated twice —
@@ -29,7 +30,7 @@ export const createPracticeSessionSchema = z
       .number()
       .int()
       .refine((n) => (SOURCE_COUNT_CHOICES as readonly number[]).includes(n), {
-        message: "מספר שאלות חייב להיות 5, 10, 20 או 50",
+        message: "מספר שאלות חייב להיות 1, 2, 5, 10, 20 או 50",
       }),
     anglesPerSource: z.number().int().min(0).max(4),
     timePerQuestionSeconds: z.number().int().min(60).max(300),

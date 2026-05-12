@@ -44,7 +44,7 @@ type Subtopic = {
   display_order: number;
 };
 
-const SOURCE_COUNT_CHOICES = [5, 10, 20, 50] as const;
+const SOURCE_COUNT_CHOICES = [1, 2, 5, 10, 20, 50] as const;
 type SourceCount = (typeof SOURCE_COUNT_CHOICES)[number];
 
 const ANGLE_CHOICES = [0, 1, 2, 3, 4] as const;
@@ -504,8 +504,7 @@ function SubtopicChip({
 /**
  * Three states for the subtitle below the source-count buttons:
  *   - no chapter picked → CTA to pick one
- *   - chapter picked but availability < MIN_QUESTIONS_REQUIRED → explain
- *     why all four count buttons are disabled, surface the exact shortfall
+ *   - chapter picked but 0 questions available → "אין שאלות זמינות בפרק שבחרת."
  *   - normal case → "כרגע יש N שאלות זמינות"
  * isPending suppresses flicker during the debounced in-flight request.
  */
@@ -528,12 +527,9 @@ function AvailabilitySubtitle({
   if (isPending || available === null) {
     return <p className="text-xs text-muted-foreground">טוען זמינות...</p>;
   }
-  if (available < MIN_QUESTIONS_REQUIRED) {
+  if (available === 0) {
     return (
-      <p className="text-xs text-amber-600">
-        צריך לפחות {MIN_QUESTIONS_REQUIRED} שאלות בפרק שבחרת. כרגע יש{" "}
-        {available}.
-      </p>
+      <p className="text-xs text-amber-600">אין שאלות זמינות בפרק שבחרת.</p>
     );
   }
   return (
