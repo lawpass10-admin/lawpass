@@ -1,5 +1,6 @@
 "use client";
 
+import { Play } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { toast } from "sonner";
 
@@ -56,6 +57,12 @@ const DEFAULT_TIME_SECONDS = 150;
 const TIME_MIN = 60;
 const TIME_MAX = 300;
 const TIME_STEP = 15;
+// "מומלץ" tooltip on the time slider should sit under the thumb at
+// DEFAULT_TIME_SECONDS. In an RTL slider, the percentage from the
+// natural-start (visual-right) edge maps directly to (value - min) /
+// (max - min). At 150s along [60, 300]: 37.5% from the right edge.
+const RECOMMENDED_POSITION_PERCENT =
+  ((DEFAULT_TIME_SECONDS - TIME_MIN) / (TIME_MAX - TIME_MIN)) * 100;
 const AVAILABILITY_DEBOUNCE_MS = 300;
 const MIN_QUESTIONS_REQUIRED = SOURCE_COUNT_CHOICES[0];
 
@@ -235,7 +242,6 @@ export function PracticeSetupForm({
   }
 
   const total = effectiveSourceCount * (1 + angles);
-  const estMinutes = Math.max(1, Math.round((total * timeSeconds) / 60));
 
   // Submit blockers: no chapters, no availability yet, availability
   // below the smallest count button, or a request already in-flight.
@@ -432,15 +438,23 @@ export function PracticeSetupForm({
             className="h-2 w-full cursor-pointer appearance-none rounded-full bg-muted accent-primary"
             aria-label="זמן לכל שאלה בשניות"
           />
-          <div className="flex justify-between text-xs text-muted-foreground">
-            <span>1:00</span>
-            <span>
-              2:30
-              <span className="ms-1 text-[10px] uppercase tracking-wider text-primary">
-                מומלץ
-              </span>
+          {/* Track labels. The "מומלץ" marker is positioned to match the
+              actual slider thumb position at 2:30 (150s) along the 60-300s
+              range. The container is RTL, so we use `right` so larger
+              values sit on the RTL-left visual edge.
+              Position: ((150 - 60) / (300 - 60)) * 100 = 37.5%. */}
+          <div className="relative text-xs text-muted-foreground">
+            <div className="flex justify-between">
+              <span>1:00</span>
+              <span>2:30</span>
+              <span>5:00</span>
+            </div>
+            <span
+              className="pointer-events-none absolute top-4 -translate-x-1/2 text-[10px] uppercase tracking-wider text-primary"
+              style={{ right: `${RECOMMENDED_POSITION_PERCENT}%` }}
+            >
+              מומלץ
             </span>
-            <span>5:00</span>
           </div>
         </CardContent>
       </Card>
@@ -448,13 +462,10 @@ export function PracticeSetupForm({
       {/* Summary + CTA */}
       <Card className="border-amber-500/40 bg-amber-500/5">
         <CardContent className="flex flex-col gap-3 pt-6 sm:flex-row sm:items-center sm:justify-between">
-          <div className="space-y-1 text-sm">
-            <div className="font-medium">
-              {effectiveSourceCount} מקור · {effectiveSourceCount * angles} זווית · {total} שאלות
-            </div>
-            <div className="text-muted-foreground">
-              זמן צפוי: כ-{estMinutes} דקות
-            </div>
+          <div className="text-sm font-medium" dir="auto">
+            {angles === 0
+              ? `${effectiveSourceCount} שאלות מקור = ${total} שאלות`
+              : `${effectiveSourceCount} שאלות מקור × ${angles} זוויות = ${total} שאלות`}
           </div>
           <Button
             onClick={handleSubmit}
@@ -462,7 +473,8 @@ export function PracticeSetupForm({
             size="lg"
             className="sm:min-w-40"
           >
-            {submitting ? "יוצר סשן..." : "התחל תרגול"}
+            <span>{submitting ? "יוצר סשן..." : "התחל תרגול"}</span>
+            {!submitting && <Play className="ms-2 size-4" aria-hidden />}
           </Button>
         </CardContent>
       </Card>
