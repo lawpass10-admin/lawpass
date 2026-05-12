@@ -27,6 +27,13 @@ type Chapter = {
   code: string;
   title: string;
   display_order: number;
+  /**
+   * Count of active+current source_questions for this chapter under the
+   * caller's RLS view. `0` means "(בקרוב)" — chapter exists in the
+   * taxonomy but isn't content-populated yet; the chip renders disabled
+   * and cannot be toggled into selection.
+   */
+  activeQuestionCount: number;
 };
 
 type Subtopic = {
@@ -101,9 +108,12 @@ export function PracticeSetupForm({
   // TypeScript types). Unknown chapter/subtopic ids are kept — the form
   // will simply not visibly select them since they don't match any
   // rendered chapter button; that's a soft degradation.
+  // Drop prefill chapter ids that don't exist OR are empty — empty chapters
+  // can't be selected by the user, and silently pre-selecting them would
+  // both look broken and let "0 שאלות זמינות" reach the submit gate.
   const initialChapters =
     initialValues?.chapters?.filter((id) =>
-      chapters.some((c) => c.id === id)
+      chapters.some((c) => c.id === id && c.activeQuestionCount > 0)
     ) ?? [];
   const initialSubtopic =
     initialValues?.subtopic &&
@@ -270,21 +280,30 @@ export function PracticeSetupForm({
           <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
             {chapters.map((chapter) => {
               const selected = selectedChapterIds.includes(chapter.id);
+              const empty = chapter.activeQuestionCount === 0;
               return (
                 <button
                   key={chapter.id}
                   type="button"
-                  onClick={() => toggleChapter(chapter.id)}
+                  onClick={() => {
+                    if (empty) return;
+                    toggleChapter(chapter.id);
+                  }}
                   aria-pressed={selected}
+                  aria-disabled={empty || undefined}
+                  disabled={empty}
+                  title={empty ? "פרק זה יופעל בקרוב" : undefined}
                   className={cn(
                     "rounded-lg border px-3 py-2 text-start text-sm transition-colors",
                     "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50",
-                    selected
-                      ? "border-primary bg-primary/10 font-medium text-foreground"
-                      : "border-border bg-background hover:border-primary/40 hover:bg-muted/40"
+                    empty
+                      ? "cursor-not-allowed border-dashed border-border bg-muted/30 text-muted-foreground opacity-60"
+                      : selected
+                        ? "border-primary bg-primary/10 font-medium text-foreground"
+                        : "border-border bg-background hover:border-primary/40 hover:bg-muted/40"
                   )}
                 >
-                  {chapter.title}
+                  {empty ? `${chapter.title} (בקרוב)` : chapter.title}
                 </button>
               );
             })}

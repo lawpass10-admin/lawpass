@@ -1,4 +1,5 @@
 import { requireActiveSubscription } from "@/lib/auth/subscription-gate";
+import { getChaptersWithQuestionCount } from "@/lib/db/practice";
 import { createClient } from "@/lib/supabase/server";
 import { parsePracticeSetupPrefill } from "@/lib/urls";
 
@@ -93,11 +94,8 @@ export default async function PracticePage({
   }
   const initialValues = parsePracticeSetupPrefill(flatParams);
 
-  const [chaptersResult, subtopicsResult, activeSession] = await Promise.all([
-    supabase
-      .from("chapters")
-      .select("id, code, title, display_order")
-      .order("display_order", { ascending: true }),
+  const [chapters, subtopicsResult, activeSession] = await Promise.all([
+    getChaptersWithQuestionCount(supabase),
     supabase
       .from("subtopics")
       .select("id, chapter_id, code, title, display_order")
@@ -105,18 +103,15 @@ export default async function PracticePage({
     loadActiveSession(supabase, user.id),
   ]);
 
-  if (chaptersResult.error || subtopicsResult.error) {
+  if (subtopicsResult.error) {
     // Render-time DB failure on the taxonomy. Bubble up so the route-group
     // error.tsx renders rather than crashing into an empty form. The
     // boundary's Hebrew copy + retry button is the right UX here.
     throw new Error(
-      `Failed to load practice taxonomy: ${
-        chaptersResult.error?.message ?? subtopicsResult.error?.message
-      }`
+      `Failed to load practice taxonomy: ${subtopicsResult.error.message}`
     );
   }
 
-  const chapters = chaptersResult.data ?? [];
   const subtopics = subtopicsResult.data ?? [];
 
   if (chapters.length === 0) {
