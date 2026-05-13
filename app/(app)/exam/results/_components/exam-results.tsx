@@ -11,12 +11,12 @@ import { EXAM_TOTAL_QUESTIONS } from "@/lib/exam/clusters";
 import { cn } from "@/lib/utils";
 
 /**
- * PM-revised UX (Phase 4 hotfix): show the first {REVIEW_INITIAL_ROWS}
- * rows of the question review by default, with an expand button to
- * reveal the rest. Reverses the earlier "flatten all 40" decision —
- * the prototype's collapsed-by-default pattern is what's wanted.
+ * PM-revised UX (Phase 4 hotfix v2): show 5 rows by default — each row
+ * now carries a question-text excerpt in the middle column, so the
+ * default view is meaningful rather than 8 lines of position+pill with
+ * an empty band between them.
  */
-const REVIEW_INITIAL_ROWS = 8;
+const REVIEW_INITIAL_ROWS = 5;
 
 type Props = {
   aggregate: ExamResultsAggregate;
@@ -188,12 +188,18 @@ export function ExamResults({ aggregate }: Props) {
               <li
                 key={row.position}
                 className={cn(
-                  "flex items-center justify-between gap-3 px-5 py-3 text-sm",
+                  "grid grid-cols-[2.5rem_1fr_auto] items-center gap-3 px-5 py-3 text-sm",
                   !isLast && "border-b border-border/70"
                 )}
               >
                 <span className="font-mono text-muted-foreground tabular-nums">
                   {String(row.position + 1).padStart(2, "0")}
+                </span>
+                <span
+                  dir="auto"
+                  className="overflow-hidden text-ellipsis whitespace-nowrap text-muted-foreground"
+                >
+                  {row.excerpt}
                 </span>
                 <span
                   className={cn(

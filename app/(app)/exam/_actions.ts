@@ -213,10 +213,33 @@ async function loadSessionForAction(
   return { ok: true, session };
 }
 
-/** Clamp client-supplied elapsed seconds against the session's
- *  remaining budget. Server-authoritative. */
-function nextTimeUsed(session: ExamSessionRow, clientElapsed: number): number {
-  const incr = Math.max(0, clientElapsed);
+/**
+ * Server-authoritative elapsed-since-last-activity for the action.
+ * Phase 4 hotfix v2: replaces the prior client-supplied
+ * `clientElapsedSeconds` path. The client value was unreliable
+ * because every choice click hard-navigates → component remount →
+ * the lazy-bootstrapped client anchor reset to 0 → first
+ * `popElapsed()` returned 0. Server timing has no such failure mode.
+ *
+ * Bounded at 600 s per call so a stale row (e.g. tab left open for an
+ * hour after auto-pause was meant to fire) can't burn the entire
+ * remaining budget on a single resume click. The 600 s cap matches
+ * the per-question max we accepted from the client previously.
+ */
+function computeServerElapsedSeconds(session: ExamSessionRow): number {
+  const raw =
+    (Date.now() - new Date(session.last_activity_at).getTime()) / 1000;
+  return Math.max(0, Math.min(raw, 600));
+}
+
+/**
+ * Next `time_used_seconds` value derived from server time + the
+ * session's current budget. Caller MUST also write
+ * `last_activity_at = NOW()` in the same UPDATE so the next action's
+ * elapsed window starts fresh.
+ */
+function nextTimeUsed(session: ExamSessionRow): number {
+  const incr = computeServerElapsedSeconds(session);
   return Math.min(
     session.time_used_seconds + incr,
     session.total_duration_seconds
@@ -292,8 +315,9 @@ export async function submitExamAttempt(
 ): Promise<SubmitExamAttemptResult> {
   const parsed = submitExamAttemptInput.safeParse(input);
   if (!parsed.success) return { ok: false, error: "invalid_input" };
-  const { sessionId, windowToken, clientElapsedSeconds, position, selectedLetter } =
-    parsed.data;
+  // clientElapsedSeconds is in the schema for wire-compat but ignored
+  // server-side (see computeServerElapsedSeconds). Don't destructure.
+  const { sessionId, windowToken, position, selectedLetter } = parsed.data;
 
   const { user } = await requireActiveSubscription();
   const supabase = await createClient();
@@ -329,13 +353,13 @@ export async function submitExamAttempt(
   const isCorrect = chosen.id === correctChoice.id;
   const isSource = resolved.kind === "source";
 
-  const newTimeUsed = nextTimeUsed(session, clientElapsedSeconds);
+  const newTimeUsed = nextTimeUsed(session);
   // Clamp duration into the column's reasonable range. Matches the
   // submit-attempt practice convention (max 600 s per question).
-  const durationClamped = Math.max(
-    0,
-    Math.min(600, Math.round(clientElapsedSeconds))
-  );
+  // Per-question duration is the server-derived elapsed (same window
+  // that bumps time_used_seconds). Already clamped to [0, 600] by
+  // computeServerElapsedSeconds; round to satisfy the integer column.
+  const durationClamped = Math.round(computeServerElapsedSeconds(session));
 
   // PartIAL unique index UPSERT: supabase-js's .upsert() can't emit
   // the `WHERE <predicate>` Postgres requires for partial indexes.
@@ -397,7 +421,8 @@ export async function skipExamQuestion(
 ): Promise<SkipExamQuestionResult> {
   const parsed = skipExamQuestionInput.safeParse(input);
   if (!parsed.success) return { ok: false, error: "invalid_input" };
-  const { sessionId, windowToken, clientElapsedSeconds, position } = parsed.data;
+  // clientElapsedSeconds ignored — see submitExamAttempt note.
+  const { sessionId, windowToken, position } = parsed.data;
 
   const { user } = await requireActiveSubscription();
   const supabase = await createClient();
@@ -415,11 +440,11 @@ export async function skipExamQuestion(
   if (!item) return { ok: false, error: "position_out_of_range" };
 
   const isSource = item.question_type === "source";
-  const newTimeUsed = nextTimeUsed(session, clientElapsedSeconds);
-  const durationClamped = Math.max(
-    0,
-    Math.min(600, Math.round(clientElapsedSeconds))
-  );
+  const newTimeUsed = nextTimeUsed(session);
+  // Per-question duration is the server-derived elapsed (same window
+  // that bumps time_used_seconds). Already clamped to [0, 600] by
+  // computeServerElapsedSeconds; round to satisfy the integer column.
+  const durationClamped = Math.round(computeServerElapsedSeconds(session));
 
   // Same partial-index UPSERT path as submitExamAttempt — go through
   // the SECURITY DEFINER RPC. Skip rows carry the same shape as
@@ -469,7 +494,8 @@ type PauseExamResult = { ok: true } | ExamActionFail;
 export async function pauseExam(input: unknown): Promise<PauseExamResult> {
   const parsed = pauseExamInput.safeParse(input);
   if (!parsed.success) return { ok: false, error: "invalid_input" };
-  const { sessionId, windowToken, clientElapsedSeconds } = parsed.data;
+  // clientElapsedSeconds ignored — see submitExamAttempt note.
+  const { sessionId, windowToken } = parsed.data;
 
   const { user } = await requireActiveSubscription();
   const supabase = await createClient();
@@ -483,7 +509,7 @@ export async function pauseExam(input: unknown): Promise<PauseExamResult> {
   if (!guard.ok) return guard;
   const session = guard.session;
 
-  const newTimeUsed = nextTimeUsed(session, clientElapsedSeconds);
+  const newTimeUsed = nextTimeUsed(session);
   const nowIso = new Date().toISOString();
   await supabase
     .from("exam_sessions")
@@ -619,7 +645,8 @@ export async function submitFinalExam(
 ): Promise<SubmitFinalExamResult> {
   const parsed = submitFinalExamInput.safeParse(input);
   if (!parsed.success) return { ok: false, error: "invalid_input" };
-  const { sessionId, windowToken, clientElapsedSeconds } = parsed.data;
+  // clientElapsedSeconds ignored — see submitExamAttempt note.
+  const { sessionId, windowToken } = parsed.data;
 
   const { user } = await requireActiveSubscription();
   const supabase = await createClient();
@@ -648,7 +675,7 @@ export async function submitFinalExam(
   const { correct } = await recomputeExamCounters(supabase, sessionId);
   const finalScore = correct;
   const passed = finalScore >= 24;
-  const newTimeUsed = nextTimeUsed(session, clientElapsedSeconds);
+  const newTimeUsed = nextTimeUsed(session);
   const nowIso = new Date().toISOString();
 
   const { error: updateError } = await supabase
@@ -693,7 +720,8 @@ export async function abandonAndExitExam(
 ): Promise<AbandonAndExitExamResult> {
   const parsed = abandonAndExitExamInput.safeParse(input);
   if (!parsed.success) return { ok: false, error: "invalid_input" };
-  const { sessionId, windowToken, clientElapsedSeconds } = parsed.data;
+  // clientElapsedSeconds ignored — see submitExamAttempt note.
+  const { sessionId, windowToken } = parsed.data;
 
   const { user } = await requireActiveSubscription();
   const supabase = await createClient();
@@ -711,7 +739,7 @@ export async function abandonAndExitExam(
     return { ok: false, error: "session_not_pauseable" };
   }
 
-  const newTimeUsed = nextTimeUsed(session, clientElapsedSeconds);
+  const newTimeUsed = nextTimeUsed(session);
   const nowIso = new Date().toISOString();
   await supabase
     .from("exam_sessions")

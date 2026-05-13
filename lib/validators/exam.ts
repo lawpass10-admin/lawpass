@@ -19,11 +19,12 @@ const choiceLetter = z.enum(["א", "ב", "ג", "ד"]);
 const examPosition = z.number().int().min(0).max(39);
 
 /**
- * Bounded elapsed-seconds tick. The server adds this to
- * `time_used_seconds` after Math.max(0, …) and a clamp against
- * `total_duration_seconds`. Cap at 600 s (10 minutes) per call —
- * generous tolerance for a paused tab waking up, but rejects
- * obvious garbage.
+ * @deprecated Phase 4 hotfix v2 — timer is now server-authoritative.
+ * The server derives elapsed from `NOW() - last_activity_at` and
+ * ignores this value. Kept in the wire format so the client (which
+ * still sends it) doesn't trip schema validation mid-deployment.
+ * Future cleanup: remove from input schemas + the client once we're
+ * confident no in-flight tabs are still posting it.
  */
 const clientElapsedSeconds = z.number().int().min(0).max(600);
 

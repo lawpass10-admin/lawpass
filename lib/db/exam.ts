@@ -657,11 +657,32 @@ export type ExamByCluster = {
   total: number;
 };
 
+/**
+ * Results-page row. Extends the base `ExamByPosition` with a short
+ * excerpt of the question text so the review list can show "what was
+ * the question?" without a drill-in.
+ *
+ * The play page's progress strip uses the base `ExamByPosition` shape
+ * (no excerpt needed there); only the results page enriches.
+ */
+export type ExamReviewRow = ExamByPosition & {
+  excerpt: string;
+};
+
 export type ExamResultsAggregate = {
   session: ExamSessionRow;
-  byPosition: ExamByPosition[];
+  byPosition: ExamReviewRow[];
   byCluster: ExamByCluster[];
 };
+
+/** First N chars of a question's text, ellipsis if truncated. */
+const REVIEW_EXCERPT_MAX_CHARS = 70;
+function makeExcerpt(text: string | null | undefined): string {
+  if (!text) return "—";
+  const t = text.trim();
+  if (t.length <= REVIEW_EXCERPT_MAX_CHARS) return t;
+  return t.slice(0, REVIEW_EXCERPT_MAX_CHARS).trimEnd() + "…";
+}
 
 /**
  * Pure mapper from a session's question_list + the raw attempts rows
@@ -811,11 +832,60 @@ async function resolveChapterCodesForList(
 }
 
 /**
- * Full aggregate for the results page: session + per-position status +
- * per-cluster correct/total. Cluster codes pulled from EXAM_CLUSTERS;
- * any question whose chapter doesn't fall under any cluster (impossible
- * with the current config but defensive) is excluded from the cluster
- * cards but stays in the byPosition list.
+ * Resolve the question_text for each item in `questionList`. Returns a
+ * Map keyed by `${question_type}:${question_id}`. Mirrors
+ * resolveChapterCodesForList — two batched `.in()` queries, one per
+ * question type.
+ */
+async function resolveQuestionTextsForList(
+  supabase: SupabaseSsrClient,
+  questionList: ExamQuestionListItem[]
+): Promise<Map<string, string>> {
+  const sourceIds: string[] = [];
+  const angleIds: string[] = [];
+  for (const it of questionList) {
+    if (it.question_type === "source") sourceIds.push(it.question_id);
+    else angleIds.push(it.question_id);
+  }
+
+  const map = new Map<string, string>();
+
+  if (sourceIds.length > 0) {
+    const { data } = await supabase
+      .from("source_questions")
+      .select("id, question_text")
+      .in("id", sourceIds);
+    for (const row of (data ?? []) as Array<{
+      id: string;
+      question_text: string | null;
+    }>) {
+      if (row.question_text) map.set(`source:${row.id}`, row.question_text);
+    }
+  }
+
+  if (angleIds.length > 0) {
+    const { data } = await supabase
+      .from("angle_questions")
+      .select("id, question_text")
+      .in("id", angleIds);
+    for (const row of (data ?? []) as Array<{
+      id: string;
+      question_text: string | null;
+    }>) {
+      if (row.question_text) map.set(`angle:${row.id}`, row.question_text);
+    }
+  }
+
+  return map;
+}
+
+/**
+ * Full aggregate for the results page: session + per-position status
+ * (now with question-text excerpt) + per-cluster correct/total.
+ * Cluster codes pulled from EXAM_CLUSTERS; any question whose chapter
+ * doesn't fall under any cluster (impossible with the current config
+ * but defensive) is excluded from the cluster cards but stays in the
+ * byPosition list.
  *
  * Returns null if the session isn't loadable (page redirects).
  */
@@ -827,16 +897,18 @@ export async function getExamResultsAggregate(
   const session = await getExamSessionById(supabase, userId, sessionId);
   if (!session) return null;
 
-  const byPosition = await getExamPositionStatuses(
-    supabase,
-    sessionId,
-    session.question_list
-  );
+  const [statuses, chapterByItem, textByItem] = await Promise.all([
+    getExamPositionStatuses(supabase, sessionId, session.question_list),
+    resolveChapterCodesForList(supabase, session.question_list),
+    resolveQuestionTextsForList(supabase, session.question_list),
+  ]);
 
-  const chapterByItem = await resolveChapterCodesForList(
-    supabase,
-    session.question_list
-  );
+  // Enrich the status array with excerpts in one pass.
+  const byPosition: ExamReviewRow[] = statuses.map((s, i) => {
+    const item = session.question_list[i];
+    const text = textByItem.get(`${item.question_type}:${item.question_id}`);
+    return { ...s, excerpt: makeExcerpt(text) };
+  });
 
   const byCluster: ExamByCluster[] = EXAM_CLUSTERS.map((cluster) => {
     let correct = 0;
