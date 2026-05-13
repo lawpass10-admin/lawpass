@@ -1,15 +1,22 @@
 "use client";
 
-import { Check, Play, X } from "lucide-react";
-import Link from "next/link";
+import { Check, ChevronDown, Play, X } from "lucide-react";
 import { useState, useTransition } from "react";
 import { toast } from "sonner";
 
 import { createExamSession } from "@/app/(app)/exam/_actions";
-import { Button, buttonVariants } from "@/components/ui/button";
+import { Button } from "@/components/ui/button";
 import type { ExamResultsAggregate } from "@/lib/db/exam";
 import { EXAM_TOTAL_QUESTIONS } from "@/lib/exam/clusters";
 import { cn } from "@/lib/utils";
+
+/**
+ * PM-revised UX (Phase 4 hotfix): show the first {REVIEW_INITIAL_ROWS}
+ * rows of the question review by default, with an expand button to
+ * reveal the rest. Reverses the earlier "flatten all 40" decision —
+ * the prototype's collapsed-by-default pattern is what's wanted.
+ */
+const REVIEW_INITIAL_ROWS = 8;
 
 type Props = {
   aggregate: ExamResultsAggregate;
@@ -56,7 +63,13 @@ export function ExamResults({ aggregate }: Props) {
   const minutesUsed = Math.max(0, Math.round(session.time_used_seconds / 60));
 
   const [creating, setCreating] = useState(false);
+  const [showAll, setShowAll] = useState(false);
   const [, startTransition] = useTransition();
+
+  const visibleRows = showAll
+    ? byPosition
+    : byPosition.slice(0, REVIEW_INITIAL_ROWS);
+  const hasHiddenRows = !showAll && byPosition.length > REVIEW_INITIAL_ROWS;
 
   function handleAnother(): void {
     if (creating) return;
@@ -165,9 +178,12 @@ export function ExamResults({ aggregate }: Props) {
           <h2 className="text-sm font-semibold">סקירת שאלות</h2>
         </header>
         <ul>
-          {byPosition.map((row, idx) => {
+          {visibleRows.map((row, idx) => {
             const meta = STATUS_COPY[row.status] ?? STATUS_COPY.unanswered;
-            const isLast = idx === byPosition.length - 1;
+            // Border on every row except the visual last — when
+            // `hasHiddenRows`, the expand button sits below the list
+            // and we still want the divider above it.
+            const isLast = idx === visibleRows.length - 1 && !hasHiddenRows;
             return (
               <li
                 key={row.position}
@@ -191,16 +207,43 @@ export function ExamResults({ aggregate }: Props) {
             );
           })}
         </ul>
+        {hasHiddenRows && (
+          <button
+            type="button"
+            onClick={() => setShowAll(true)}
+            className={cn(
+              "flex w-full items-center justify-center gap-1.5 px-5 py-3 text-sm font-medium text-primary/80 transition-colors",
+              "hover:bg-muted/40 hover:text-primary",
+              "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+            )}
+          >
+            <span>הצג את כל {byPosition.length} השאלות</span>
+            <ChevronDown className="size-4" aria-hidden />
+          </button>
+        )}
       </section>
 
-      {/* D. Footer CTAs */}
+      {/* D. Footer CTAs.
+          Both use window.location.assign (hard nav) rather than <Link>
+          or router.push. Reason: the (app) layout's sidebar branch
+          reads `headers().get('x-pathname')`. Next.js App Router reuses
+          the parent layout across client-side <Link> transitions
+          between sibling pages, so the layout re-renders against a
+          stale x-pathname='/exam/results/...' value — isExamRoute
+          stays true and the sidebar stays hidden on /dashboard. Hard
+          nav forces a fresh request through middleware so the new
+          x-pathname='/dashboard' lands and the sidebar mounts. */}
       <div className="flex flex-col-reverse items-stretch gap-2 pb-10 sm:flex-row sm:justify-center">
-        <Link
-          href="/dashboard"
-          className={cn(buttonVariants({ variant: "ghost" }), "sm:min-w-44")}
+        <Button
+          variant="ghost"
+          size="lg"
+          onClick={() => {
+            window.location.assign("/dashboard");
+          }}
+          className="sm:min-w-44"
         >
           חזור לדשבורד
-        </Link>
+        </Button>
         <Button
           size="lg"
           onClick={handleAnother}
