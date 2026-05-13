@@ -327,38 +327,42 @@ export async function submitExamAttempt(
     return { ok: false, error: "invalid_choice_data" };
   }
   const isCorrect = chosen.id === correctChoice.id;
-
-  // UPSERT on (exam_session_id, source_question_id) or
-  // (exam_session_id, angle_question_id) — Phase 0 indexes.
   const isSource = resolved.kind === "source";
-  const onConflictCols = isSource
-    ? "exam_session_id,source_question_id"
-    : "exam_session_id,angle_question_id";
 
   const newTimeUsed = nextTimeUsed(session, clientElapsedSeconds);
+  // Clamp duration into the column's reasonable range. Matches the
+  // submit-attempt practice convention (max 600 s per question).
+  const durationClamped = Math.max(
+    0,
+    Math.min(600, Math.round(clientElapsedSeconds))
+  );
 
-  const { error: upsertError } = await supabase
-    .from("attempts")
-    .upsert(
-      {
-        user_id: user.id,
-        question_type: isSource ? "source" : "angle",
-        source_question_id: isSource ? item.question_id : null,
-        angle_question_id: isSource ? null : item.question_id,
-        selected_choice_id: chosen.id,
-        selected_letter: selectedLetter,
-        is_correct: isCorrect,
-        mode: "exam",
-        exam_session_id: sessionId,
-        was_skipped: false,
-      },
-      { onConflict: onConflictCols }
-    );
+  // PartIAL unique index UPSERT: supabase-js's .upsert() can't emit
+  // the `WHERE <predicate>` Postgres requires for partial indexes.
+  // Phase 3 hotfix: go through the record_exam_attempt SECURITY DEFINER
+  // RPC which issues the INSERT … ON CONFLICT (cols) WHERE … DO UPDATE
+  // in raw SQL.
+  const { error: upsertError } = await supabase.rpc(
+    "record_exam_attempt",
+    {
+      p_session_id: sessionId,
+      p_question_type: isSource ? "source" : "angle",
+      p_source_question_id: isSource ? item.question_id : null,
+      p_angle_question_id: isSource ? null : item.question_id,
+      p_selected_choice_id: chosen.id,
+      p_selected_letter: selectedLetter,
+      p_is_correct: isCorrect,
+      p_was_skipped: false,
+      p_duration_seconds: durationClamped,
+    }
+  );
   if (upsertError) {
     console.error(
-      `[exam] submit_attempt UPSERT FAILED session=${sessionId} pos=${position} msg=${upsertError.message}`
+      `[exam] record_exam_attempt RPC FAILED session=${sessionId} pos=${position} code=${
+        (upsertError as { code?: string }).code ?? "unknown"
+      } msg=${upsertError.message}`
     );
-    return { ok: false, error: "upsert_failed" };
+    return { ok: false, error: "attempt_write_failed" };
   }
 
   // Counters: recompute from attempts. Cheap, race-free.
@@ -411,34 +415,37 @@ export async function skipExamQuestion(
   if (!item) return { ok: false, error: "position_out_of_range" };
 
   const isSource = item.question_type === "source";
-  const onConflictCols = isSource
-    ? "exam_session_id,source_question_id"
-    : "exam_session_id,angle_question_id";
-
   const newTimeUsed = nextTimeUsed(session, clientElapsedSeconds);
+  const durationClamped = Math.max(
+    0,
+    Math.min(600, Math.round(clientElapsedSeconds))
+  );
 
-  const { error: upsertError } = await supabase
-    .from("attempts")
-    .upsert(
-      {
-        user_id: user.id,
-        question_type: isSource ? "source" : "angle",
-        source_question_id: isSource ? item.question_id : null,
-        angle_question_id: isSource ? null : item.question_id,
-        selected_choice_id: null,
-        selected_letter: null,
-        is_correct: null,
-        mode: "exam",
-        exam_session_id: sessionId,
-        was_skipped: true,
-      },
-      { onConflict: onConflictCols }
-    );
+  // Same partial-index UPSERT path as submitExamAttempt — go through
+  // the SECURITY DEFINER RPC. Skip rows carry the same shape as
+  // answered rows with the answer-bearing fields nulled and
+  // was_skipped=true.
+  const { error: upsertError } = await supabase.rpc(
+    "record_exam_attempt",
+    {
+      p_session_id: sessionId,
+      p_question_type: isSource ? "source" : "angle",
+      p_source_question_id: isSource ? item.question_id : null,
+      p_angle_question_id: isSource ? null : item.question_id,
+      p_selected_choice_id: null,
+      p_selected_letter: null,
+      p_is_correct: null,
+      p_was_skipped: true,
+      p_duration_seconds: durationClamped,
+    }
+  );
   if (upsertError) {
     console.error(
-      `[exam] skip UPSERT FAILED session=${sessionId} pos=${position} msg=${upsertError.message}`
+      `[exam] skip RPC FAILED session=${sessionId} pos=${position} code=${
+        (upsertError as { code?: string }).code ?? "unknown"
+      } msg=${upsertError.message}`
     );
-    return { ok: false, error: "upsert_failed" };
+    return { ok: false, error: "attempt_write_failed" };
   }
 
   await recomputeExamCounters(supabase, sessionId);

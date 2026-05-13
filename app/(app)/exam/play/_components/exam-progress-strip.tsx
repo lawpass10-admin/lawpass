@@ -26,7 +26,12 @@ export function ExamProgressStrip({
   disabled = false,
 }: Props) {
   return (
-    <div className="sticky top-12 z-10 flex gap-1 overflow-x-auto bg-[#1a4f4d] px-6 py-2.5">
+    // Outer band: full-width dark teal background.
+    // Inner: max-width container, centered, with the cell row centered
+    // inside. Horizontal scroll kicks in on narrow viewports so 40
+    // cells never crush.
+    <div className="sticky top-12 z-10 bg-[#1a4f4d] px-6 py-2.5">
+      <div className="mx-auto flex max-w-5xl justify-center gap-1 overflow-x-auto">
       {Array.from({ length: total }).map((_, i) => {
         const status: ExamProgressCellStatus =
           i === current ? "current" : (statuses[i] ?? "pending");
@@ -53,6 +58,7 @@ export function ExamProgressStrip({
           </button>
         );
       })}
+      </div>
     </div>
   );
 }
