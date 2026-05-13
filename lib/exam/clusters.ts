@@ -58,15 +58,26 @@ export const EXAM_TOTAL_DURATION_SECONDS = 6000;
 /** Pass = ≥24 of 40 (60%). */
 export const EXAM_PASS_THRESHOLD = 24;
 
-// Module-load invariant — verified once at import time. Fail loudly if a
-// future edit drifts the per-cluster targets away from the total. This
-// runs once per server boot; cost is negligible.
+// Module-load invariant — verified once at import time. The bar-exam
+// cluster weights (35% / 27.5% / 32.5%) sum to 95%, so the per-cluster
+// integer targets sum to 38, not 40. The remaining 2 slots are filled
+// by the global padding pass inside `bucketAndShuffleExamPool`. The
+// invariant therefore enforces "targets must not OVER-allocate" rather
+// than equality — over-allocation would break the per-cluster picker
+// before padding ever runs. Negative targets are also rejected.
 {
   const sum = EXAM_CLUSTERS.reduce((acc, c) => acc + c.target, 0);
-  if (sum !== EXAM_TOTAL_QUESTIONS) {
+  if (sum > EXAM_TOTAL_QUESTIONS) {
     throw new Error(
-      `EXAM_CLUSTERS targets sum to ${sum}, expected ${EXAM_TOTAL_QUESTIONS}. ` +
+      `EXAM_CLUSTERS targets sum to ${sum}, exceeds EXAM_TOTAL_QUESTIONS=${EXAM_TOTAL_QUESTIONS}. ` +
         "Check lib/exam/clusters.ts."
     );
+  }
+  for (const c of EXAM_CLUSTERS) {
+    if (c.target < 0) {
+      throw new Error(
+        `EXAM_CLUSTERS[${c.code}].target = ${c.target} is negative. Check lib/exam/clusters.ts.`
+      );
+    }
   }
 }
