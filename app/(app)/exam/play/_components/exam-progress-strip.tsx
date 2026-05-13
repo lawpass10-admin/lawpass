@@ -2,7 +2,18 @@
 
 import { cn } from "@/lib/utils";
 
-export type ExamProgressCellStatus = "current" | "answered" | "skipped" | "pending";
+/**
+ * Cell status as the strip sees it. Phase 4 hydration: the play page
+ * passes the position-aligned status array from
+ * `getExamPositionStatuses`. The strip never reveals correctness
+ * — both `correct` and `wrong` collapse to the same `answered` look,
+ * per spec (no answer-revealing during the exam).
+ */
+export type ExamProgressCellStatus =
+  | "current"
+  | "answered"
+  | "skipped"
+  | "pending";
 
 type Props = {
   total: number;
@@ -26,12 +37,14 @@ export function ExamProgressStrip({
   disabled = false,
 }: Props) {
   return (
-    // Outer band: full-width dark teal background.
-    // Inner: max-width container, centered, with the cell row centered
-    // inside. Horizontal scroll kicks in on narrow viewports so 40
-    // cells never crush.
-    <div className="sticky top-12 z-10 bg-[#1a4f4d] px-6 py-2.5">
-      <div className="mx-auto flex max-w-5xl justify-center gap-1 overflow-x-auto">
+    // Outer band: full-width dark teal background. Padding matches the
+    // topbar (px-7) so the strip's horizontal edges line up with the
+    // brand cluster on the right and the submit button on the left.
+    // Inner: justify-between spreads the 40 cells edge-to-edge across
+    // the full viewport with equal gaps. overflow-x-auto kicks in on
+    // narrow viewports so cells never crush.
+    <div className="sticky top-12 z-10 bg-[#1a4f4d] px-7 py-2.5">
+      <div className="flex justify-between gap-1 overflow-x-auto">
       {Array.from({ length: total }).map((_, i) => {
         const status: ExamProgressCellStatus =
           i === current ? "current" : (statuses[i] ?? "pending");
@@ -48,8 +61,8 @@ export function ExamProgressStrip({
               "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-300",
               status === "current" &&
                 "bg-white text-[#0a2624] outline outline-2 outline-amber-400",
-              status === "answered" && "bg-amber-400 text-[#0a2624]",
-              status === "skipped" && "bg-white/30 text-white/80",
+              status === "answered" && "bg-amber-500 text-[#0a2624]",
+              status === "skipped" && "bg-stone-400 text-[#0a2624]",
               status === "pending" && "bg-white/15 text-white/60",
               disabled && "cursor-not-allowed opacity-60"
             )}

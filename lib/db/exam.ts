@@ -639,3 +639,218 @@ export async function getExamBookmarkState(
   }
   return false;
 }
+
+// =============================================================================
+// Phase 4 — per-position status + results aggregate
+// =============================================================================
+
+export type ExamPositionStatus = "correct" | "wrong" | "skipped" | "unanswered";
+
+export type ExamByPosition = {
+  position: number;
+  status: ExamPositionStatus;
+};
+
+export type ExamByCluster = {
+  code: import("@/lib/exam/clusters").ExamClusterCode;
+  correct: number;
+  total: number;
+};
+
+export type ExamResultsAggregate = {
+  session: ExamSessionRow;
+  byPosition: ExamByPosition[];
+  byCluster: ExamByCluster[];
+};
+
+/**
+ * Pure mapper from a session's question_list + the raw attempts rows
+ * to a position-aligned status array. Shared by the play page (lights
+ * up the progress strip + fills the submit-confirm dialog's count) and
+ * the results page (drives the 40-row review list).
+ *
+ * No I/O — caller fetches `attempts` once and threads them in.
+ */
+export function computePositionStatuses(
+  questionList: ExamQuestionListItem[],
+  attempts: Array<{
+    question_type: "source" | "angle";
+    source_question_id: string | null;
+    angle_question_id: string | null;
+    is_correct: boolean | null;
+    was_skipped: boolean;
+  }>
+): ExamByPosition[] {
+  const attemptByKey = new Map<
+    string,
+    {
+      is_correct: boolean | null;
+      was_skipped: boolean;
+    }
+  >();
+  for (const a of attempts) {
+    const id =
+      a.question_type === "source" ? a.source_question_id : a.angle_question_id;
+    if (!id) continue;
+    attemptByKey.set(`${a.question_type}:${id}`, {
+      is_correct: a.is_correct,
+      was_skipped: a.was_skipped,
+    });
+  }
+  return questionList.map((item, position) => {
+    const key = `${item.question_type}:${item.question_id}`;
+    const a = attemptByKey.get(key);
+    if (!a) return { position, status: "unanswered" };
+    if (a.was_skipped) return { position, status: "skipped" };
+    if (a.is_correct === true) return { position, status: "correct" };
+    return { position, status: "wrong" };
+  });
+}
+
+/**
+ * Shared lightweight fetch: returns the position-aligned status array
+ * for a session. Used by both `app/(app)/exam/play/[idx]/page.tsx` (to
+ * hydrate the progress strip + submit-confirm dialog) and the results
+ * aggregate. Cheap — one SELECT scoped to the session.
+ */
+export async function getExamPositionStatuses(
+  supabase: SupabaseSsrClient,
+  sessionId: string,
+  questionList: ExamQuestionListItem[]
+): Promise<ExamByPosition[]> {
+  const { data, error } = await supabase
+    .from("attempts")
+    .select(
+      "question_type, source_question_id, angle_question_id, is_correct, was_skipped"
+    )
+    .eq("exam_session_id", sessionId);
+  if (error || !data) {
+    // Treat a failed read as all-unanswered. Either RLS hid the rows
+    // (impossible — RLS only filters by user, and the session is
+    // already gated) or transient. The progress strip stays useful;
+    // the submit-confirm dialog over-reports unanswered which is the
+    // safer direction.
+    return questionList.map((_, position) => ({
+      position,
+      status: "unanswered" as const,
+    }));
+  }
+  return computePositionStatuses(
+    questionList,
+    data as Array<{
+      question_type: "source" | "angle";
+      source_question_id: string | null;
+      angle_question_id: string | null;
+      is_correct: boolean | null;
+      was_skipped: boolean;
+    }>
+  );
+}
+
+/**
+ * Resolve the chapter code for each item in `questionList`. Returns a
+ * Map keyed by `${question_type}:${question_id}`. JOINs at read time
+ * per PM decision #3 (no denormalisation onto the attempts row).
+ */
+async function resolveChapterCodesForList(
+  supabase: SupabaseSsrClient,
+  questionList: ExamQuestionListItem[]
+): Promise<Map<string, string>> {
+  const sourceIds: string[] = [];
+  const angleIds: string[] = [];
+  for (const it of questionList) {
+    if (it.question_type === "source") sourceIds.push(it.question_id);
+    else angleIds.push(it.question_id);
+  }
+
+  const map = new Map<string, string>();
+
+  if (sourceIds.length > 0) {
+    const { data } = await supabase
+      .from("source_questions")
+      .select(
+        "id, chapter:chapters!source_questions_chapter_id_fkey(code)"
+      )
+      .in("id", sourceIds);
+    for (const row of (data ?? []) as Array<{
+      id: string;
+      chapter: { code: string } | { code: string }[] | null;
+    }>) {
+      const chapter = Array.isArray(row.chapter) ? row.chapter[0] : row.chapter;
+      if (chapter?.code) map.set(`source:${row.id}`, chapter.code);
+    }
+  }
+
+  if (angleIds.length > 0) {
+    const { data } = await supabase
+      .from("angle_questions")
+      .select(
+        "id, source_question:source_questions!angle_questions_source_question_id_fkey(chapter:chapters!source_questions_chapter_id_fkey(code))"
+      )
+      .in("id", angleIds);
+    for (const row of (data ?? []) as Array<{
+      id: string;
+      source_question:
+        | { chapter: { code: string } | { code: string }[] | null }
+        | { chapter: { code: string } | { code: string }[] | null }[]
+        | null;
+    }>) {
+      const parent = Array.isArray(row.source_question)
+        ? row.source_question[0]
+        : row.source_question;
+      const chapter = parent
+        ? Array.isArray(parent.chapter)
+          ? parent.chapter[0]
+          : parent.chapter
+        : null;
+      if (chapter?.code) map.set(`angle:${row.id}`, chapter.code);
+    }
+  }
+
+  return map;
+}
+
+/**
+ * Full aggregate for the results page: session + per-position status +
+ * per-cluster correct/total. Cluster codes pulled from EXAM_CLUSTERS;
+ * any question whose chapter doesn't fall under any cluster (impossible
+ * with the current config but defensive) is excluded from the cluster
+ * cards but stays in the byPosition list.
+ *
+ * Returns null if the session isn't loadable (page redirects).
+ */
+export async function getExamResultsAggregate(
+  supabase: SupabaseSsrClient,
+  userId: string,
+  sessionId: string
+): Promise<ExamResultsAggregate | null> {
+  const session = await getExamSessionById(supabase, userId, sessionId);
+  if (!session) return null;
+
+  const byPosition = await getExamPositionStatuses(
+    supabase,
+    sessionId,
+    session.question_list
+  );
+
+  const chapterByItem = await resolveChapterCodesForList(
+    supabase,
+    session.question_list
+  );
+
+  const byCluster: ExamByCluster[] = EXAM_CLUSTERS.map((cluster) => {
+    let correct = 0;
+    let total = 0;
+    for (let i = 0; i < session.question_list.length; i++) {
+      const item = session.question_list[i];
+      const code = chapterByItem.get(`${item.question_type}:${item.question_id}`);
+      if (!code) continue;
+      if (!cluster.chapter_codes.includes(code)) continue;
+      total++;
+      if (byPosition[i]?.status === "correct") correct++;
+    }
+    return { code: cluster.code, correct, total };
+  });
+
+  return { session, byPosition, byCluster };
+}

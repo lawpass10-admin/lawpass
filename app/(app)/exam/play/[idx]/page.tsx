@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { requireActiveSubscription } from "@/lib/auth/subscription-gate";
 import {
   getExamBookmarkState,
+  getExamPositionStatuses,
   getExamSessionById,
   getExistingExamAttempt,
   getQuestionForExamPosition,
@@ -79,13 +80,15 @@ export default async function ExamPlayPage({
     redirect("/exam");
   }
 
-  const existingAttempt = await getExistingExamAttempt(
-    supabase,
-    user.id,
-    session.id,
-    item
-  );
-  const bookmarked = await getExamBookmarkState(supabase, user.id, resolved);
+  const [existingAttempt, bookmarked, positionStatuses] = await Promise.all([
+    getExistingExamAttempt(supabase, user.id, session.id, item),
+    getExamBookmarkState(supabase, user.id, resolved),
+    // Hydrate per-position statuses so the progress strip can color
+    // answered/skipped cells and the submit-confirm dialog can show
+    // a real unanswered count (Phase 4 — folds in the two Phase 3
+    // deviations).
+    getExamPositionStatuses(supabase, session.id, session.question_list),
+  ]);
 
   const stripped: SourceQuestionRow | AngleQuestionRow = stripAnswerFromChoices(
     resolved.question
@@ -106,6 +109,7 @@ export default async function ExamPlayPage({
       choices={stripped.choices}
       existingSelectedLetter={existingAttempt?.selected_letter ?? null}
       isBookmarked={bookmarked}
+      positionStatuses={positionStatuses.map((p) => p.status)}
     />
   );
 }

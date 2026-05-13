@@ -17,6 +17,7 @@ import { Choice } from "@/app/(app)/practice/play/_components/choice";
 import { Button } from "@/components/ui/button";
 import type {
   Choice as ChoiceType,
+  ExamPositionStatus,
   ExamQuestionListItem,
   ExamSessionStatus,
 } from "@/lib/db/exam";
@@ -52,6 +53,11 @@ type Props = {
   choices: ChoiceType[];
   existingSelectedLetter: Letter | null;
   isBookmarked: boolean;
+  /** Position-aligned status array (length === question_list.length).
+   *  Hydrated by the Server Component from the attempts table. Drives
+   *  the progress strip's cell colours + the submit-confirm dialog's
+   *  unanswered count. Phase 4. */
+  positionStatuses: ExamPositionStatus[];
 };
 
 /**
@@ -77,6 +83,7 @@ export function ExamQuestion({
   choices,
   existingSelectedLetter,
   isBookmarked,
+  positionStatuses,
 }: Props) {
   // -------------------------------------------------------------------------
   // Window-token guard
@@ -131,9 +138,10 @@ export function ExamQuestion({
   // delta from this to the next action call is the client's elapsed
   // estimate. Reset on every successful action response (which carries
   // a fresh remaining_seconds).
-  const lastSyncAt = useRef<number>(
-    typeof performance !== "undefined" ? performance.now() : 0
-  );
+  // Lazy-bootstrap: useRef can't call performance.now() in its
+  // initializer (react-hooks/purity rule). 0 sentinel means "not yet
+  // anchored"; popElapsed() anchors on first call and returns 0 then.
+  const lastSyncAt = useRef<number>(0);
 
   // The local countdown setInterval is gated on (tokenStatus ok AND
   // !paused AND remainingSeconds > 0). When it hits 0, we fire
@@ -176,6 +184,13 @@ export function ExamQuestion({
 
   function popElapsed(): number {
     const now = typeof performance !== "undefined" ? performance.now() : 0;
+    // Bootstrap: first call anchors lastSyncAt and reports zero
+    // elapsed (the user just landed on the page — no observable time
+    // has passed from their POV yet).
+    if (lastSyncAt.current === 0) {
+      lastSyncAt.current = now;
+      return 0;
+    }
     const delta = Math.max(0, Math.round((now - lastSyncAt.current) / 1000));
     lastSyncAt.current = now;
     return delta;
@@ -331,24 +346,40 @@ export function ExamQuestion({
     setBookmarkPending(false);
   }
 
+  /**
+   * Effective per-position status for the strip + the dialog. Starts
+   * from `positionStatuses` (Server-hydrated) and overlays the
+   * current-session optimistic state:
+   *   - Current position: if user has just picked a letter or the row
+   *     was pre-filled, treat as 'correct' (the strip collapses
+   *     correct/wrong to a single 'answered' look regardless).
+   *
+   * We don't try to overlay other positions — the user can only modify
+   * the current one per page load. A backward-nav round-trip
+   * re-renders the page with fresh data.
+   */
+  const effectiveStatuses: ExamPositionStatus[] = positionStatuses.map(
+    (s, i) =>
+      i === position && (selectedLetter !== null || hasExistingAnswer)
+        ? "correct"
+        : s
+  );
+
+  const unansweredCount = effectiveStatuses.reduce(
+    (acc, s) => (s === "unanswered" || s === "skipped" ? acc + 1 : acc),
+    0
+  );
+
   async function handleSubmitFinal(force = false): Promise<void> {
     if (tokenStatus !== "ok") return;
     const token = tokenRef.current;
     if (!token) return;
 
-    if (!force) {
-      // Compute unanswered count to decide between direct-submit and
-      // confirm-dialog. We approximate from the session row's
-      // questions_answered (server has been recomputing on every
-      // attempt; the value the page rendered with is a snapshot, but
-      // it's good enough for the "is anything unanswered?" check.
-      // Worst case: dialog shows even though everything is answered;
-      // user clicks "סיים" and the action succeeds anyway).
-      const unanswered = totalQuestions - approximateAnsweredCount();
-      if (unanswered > 0) {
-        setSubmitConfirmOpen(true);
-        return;
-      }
+    // Real unanswered count drives the dialog decision. If everything's
+    // answered, skip the dialog and submit directly.
+    if (!force && unansweredCount > 0) {
+      setSubmitConfirmOpen(true);
+      return;
     }
 
     const elapsed = popElapsed();
@@ -364,20 +395,6 @@ export function ExamQuestion({
     }
     setSubmitConfirmOpen(false);
     window.location.assign(result.url);
-  }
-
-  // Approximate "answered so far" for the submit-confirm dialog. The
-  // current position's selection counts if non-null; other positions
-  // we estimate from session.questions_answered at page load. This is
-  // a UX hint, not a strict count — the server recomputes on submit.
-  function approximateAnsweredCount(): number {
-    // We don't have per-position state for other positions, so we
-    // fall back to the snapshot the page was rendered with. The
-    // session prop carries questions_answered indirectly via the
-    // page's rendered state — but we passed only the question_list
-    // and timing fields. For Phase 3, prompt the user with a generic
-    // confirm message and let the server be authoritative.
-    return 0;
   }
 
   // -------------------------------------------------------------------------
@@ -411,19 +428,20 @@ export function ExamQuestion({
     return <WindowConflict />;
   }
 
-  // statuses array for the progress strip — current/answered/pending.
-  // We only know the current position's status locally; other positions
-  // default to "pending". A future Phase 4 query can hydrate the full
-  // status map for the strip.
-  const statuses: ExamProgressCellStatus[] = Array.from(
-    { length: totalQuestions },
-    (_, i) =>
-      i === position
-        ? "current"
-        : (selectedLetter !== null || hasExistingAnswer) && i === position
-          ? "answered"
-          : "pending"
-  );
+  // statuses array for the progress strip. Phase 4: hydrated from the
+  // Server Component via `positionStatuses`. We project each status
+  // to the strip's cell-state vocabulary:
+  //   correct / wrong → "answered" (one look — no answer-revealing
+  //                                  during the exam, per spec)
+  //   skipped         → "skipped"
+  //   unanswered      → "pending"
+  // The current cell is always rendered as "current" by the strip
+  // (it checks `i === current` first), so we don't special-case here.
+  const statuses: ExamProgressCellStatus[] = effectiveStatuses.map((s) => {
+    if (s === "correct" || s === "wrong") return "answered";
+    if (s === "skipped") return "skipped";
+    return "pending";
+  });
 
   return (
     <div className="-m-6 min-h-screen">
@@ -532,13 +550,7 @@ export function ExamQuestion({
 
       <ExamSubmitConfirmDialog
         open={submitConfirmOpen}
-        unansweredCount={
-          // Server will recompute on confirm. For UX we show the
-          // approximate remaining count using totalQuestions minus
-          // approximateAnsweredCount (currently 0 — Phase 3 doesn't
-          // track per-position answered state in this client).
-          totalQuestions - approximateAnsweredCount()
-        }
+        unansweredCount={unansweredCount}
         onConfirm={() => void handleSubmitFinal(true)}
         onCancel={() => setSubmitConfirmOpen(false)}
         pending={actionPending}
