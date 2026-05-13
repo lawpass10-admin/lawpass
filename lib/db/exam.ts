@@ -28,6 +28,20 @@ import {
 } from "@/lib/exam/clusters";
 import type { createClient } from "@/lib/supabase/server";
 
+// Reused from practice — the same shape works for exam questions.
+// Re-exported below for `app/(app)/exam/**` consumers so they don't
+// reach into the practice module.
+import type {
+  AngleQuestionRow,
+  AttemptRow,
+  Choice,
+  SourceQuestionRow,
+} from "@/lib/db/practice";
+import { stripAnswerFromChoices } from "@/lib/db/practice";
+
+export type { AngleQuestionRow, AttemptRow, Choice, SourceQuestionRow };
+export { stripAnswerFromChoices };
+
 type SupabaseSsrClient = Awaited<ReturnType<typeof createClient>>;
 
 // =============================================================================
@@ -331,4 +345,297 @@ export async function sampleExamQuestions(
     question_id: it.question_id,
     display_order: idx + 1,
   }));
+}
+
+// =============================================================================
+// Phase 3 — per-position question + attempt + bookmark resolution
+// =============================================================================
+
+/**
+ * Question resolved at a given position in `exam_sessions.question_list`.
+ * `archived` covers the rare case where a question was active when the
+ * session was sampled but has since been RLS-hidden (status='archived'
+ * or is_current=false). The page Server Component handles `archived` by
+ * redirecting back to `/exam` — exam scope is more strict than practice
+ * (no "skip the archived one and keep going" — the session is treated
+ * as broken).
+ */
+export type ResolvedExamQuestion =
+  | { kind: "source"; question: SourceQuestionRow }
+  | { kind: "angle"; question: AngleQuestionRow; parentQuestionGroupId: string }
+  | { kind: "archived" };
+
+const SOURCE_SELECT_FULL = `
+  id, question_group_id, external_id, question_text, chapter_id, subtopic_id,
+  legal_topic_analysis, full_explanation, common_pitfall, concepts_and_skills,
+  quick_thinking_360, summary_for_memory, references_list,
+  chapter:chapters!source_questions_chapter_id_fkey(title),
+  subtopic:subtopics!source_questions_subtopic_id_fkey(title)
+`;
+
+const ANGLE_SELECT_FULL = `
+  id, source_question_id, angle_letter, angle_title, display_order, question_text,
+  legal_topic_analysis, full_explanation, common_pitfall, concepts_and_skills,
+  quick_thinking_360, summary_for_memory, references_list
+`;
+
+const CHOICE_SELECT = `id, letter, choice_text, is_correct, distractor_analysis, display_order`;
+
+type RawSource = {
+  id: string;
+  question_group_id: string;
+  external_id: string;
+  question_text: string;
+  chapter_id: string;
+  subtopic_id: string;
+  legal_topic_analysis: string;
+  full_explanation: string;
+  common_pitfall: string;
+  concepts_and_skills: unknown;
+  quick_thinking_360: string;
+  summary_for_memory: string;
+  references_list: unknown;
+  chapter: { title: string } | { title: string }[] | null;
+  subtopic: { title: string } | { title: string }[] | null;
+};
+
+type RawAngle = {
+  id: string;
+  source_question_id: string;
+  angle_letter: string;
+  angle_title: string | null;
+  display_order: number;
+  question_text: string;
+  legal_topic_analysis: string;
+  full_explanation: string;
+  common_pitfall: string;
+  concepts_and_skills: unknown;
+  quick_thinking_360: string;
+  summary_for_memory: string;
+  references_list: unknown;
+};
+
+type RawChoice = {
+  id: string;
+  letter: string;
+  choice_text: string;
+  is_correct: boolean;
+  distractor_analysis: string | null;
+  display_order: number;
+};
+
+function pickOne<T>(value: T | T[] | null | undefined): T | null {
+  if (!value) return null;
+  if (Array.isArray(value)) return value[0] ?? null;
+  return value;
+}
+
+function isValidLetter(s: string): s is "א" | "ב" | "ג" | "ד" {
+  return s === "א" || s === "ב" || s === "ג" || s === "ד";
+}
+
+function isValidAngleLetter(s: string): s is "א" | "ב" | "ג" | "ד" | "ה" {
+  return isValidLetter(s) || s === "ה";
+}
+
+function toStringArray(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter((v): v is string => typeof v === "string");
+}
+
+function mapChoices(rows: RawChoice[]): Choice[] {
+  return rows
+    .filter((r): r is RawChoice & { letter: "א" | "ב" | "ג" | "ד" } =>
+      isValidLetter(r.letter)
+    )
+    .sort((a, b) => a.display_order - b.display_order)
+    .map((r) => ({
+      id: r.id,
+      letter: r.letter,
+      choice_text: r.choice_text,
+      is_correct: r.is_correct,
+      distractor_analysis: r.distractor_analysis,
+      display_order: r.display_order,
+    }));
+}
+
+/**
+ * Fetch the question payload (+ choices) for a single item from
+ * `exam_sessions.question_list`. Returns `kind='archived'` if RLS hid
+ * the row mid-flight; the caller (page Server Component) redirects.
+ *
+ * NOTE: choices carry `is_correct` here — the page strips it before
+ * shipping to the client via `stripAnswerFromChoices`. The Server
+ * Actions reload the question independently to derive correctness;
+ * they never trust client-sent answers.
+ */
+export async function getQuestionForExamPosition(
+  supabase: SupabaseSsrClient,
+  item: ExamQuestionListItem
+): Promise<ResolvedExamQuestion> {
+  if (item.question_type === "source") {
+    const [qRes, cRes] = await Promise.all([
+      supabase
+        .from("source_questions")
+        .select(SOURCE_SELECT_FULL)
+        .eq("id", item.question_id)
+        .maybeSingle<RawSource>(),
+      supabase
+        .from("source_choices")
+        .select(CHOICE_SELECT)
+        .eq("source_question_id", item.question_id)
+        .returns<RawChoice[]>(),
+    ]);
+    if (qRes.error || !qRes.data) return { kind: "archived" };
+    const row = qRes.data;
+    const chapter = pickOne(row.chapter);
+    const subtopic = pickOne(row.subtopic);
+    return {
+      kind: "source",
+      question: {
+        id: row.id,
+        question_group_id: row.question_group_id,
+        external_id: row.external_id,
+        question_text: row.question_text,
+        chapter_id: row.chapter_id,
+        subtopic_id: row.subtopic_id,
+        chapter_title: chapter?.title ?? "",
+        subtopic_title: subtopic?.title ?? "",
+        legal_topic_analysis: row.legal_topic_analysis,
+        full_explanation: row.full_explanation,
+        common_pitfall: row.common_pitfall,
+        concepts_and_skills: toStringArray(row.concepts_and_skills),
+        quick_thinking_360: row.quick_thinking_360,
+        summary_for_memory: row.summary_for_memory,
+        references_list: toStringArray(row.references_list),
+        choices: mapChoices(cRes.data ?? []),
+      },
+    };
+  }
+
+  // Angle path: fetch the angle, its choices, then the parent source
+  // (for the question_group_id used in bookmarks).
+  const [aRes, acRes] = await Promise.all([
+    supabase
+      .from("angle_questions")
+      .select(ANGLE_SELECT_FULL)
+      .eq("id", item.question_id)
+      .maybeSingle<RawAngle>(),
+    supabase
+      .from("angle_choices")
+      .select(CHOICE_SELECT)
+      .eq("angle_question_id", item.question_id)
+      .returns<RawChoice[]>(),
+  ]);
+  if (aRes.error || !aRes.data) return { kind: "archived" };
+  const ang = aRes.data;
+  if (!isValidAngleLetter(ang.angle_letter)) return { kind: "archived" };
+
+  const { data: parent } = await supabase
+    .from("source_questions")
+    .select("question_group_id")
+    .eq("id", ang.source_question_id)
+    .maybeSingle();
+  if (!parent) return { kind: "archived" };
+
+  return {
+    kind: "angle",
+    parentQuestionGroupId: parent.question_group_id,
+    question: {
+      id: ang.id,
+      source_question_id: ang.source_question_id,
+      angle_letter: ang.angle_letter,
+      angle_title: ang.angle_title,
+      display_order: ang.display_order,
+      question_text: ang.question_text,
+      legal_topic_analysis: ang.legal_topic_analysis,
+      full_explanation: ang.full_explanation,
+      common_pitfall: ang.common_pitfall,
+      concepts_and_skills: toStringArray(ang.concepts_and_skills),
+      quick_thinking_360: ang.quick_thinking_360,
+      summary_for_memory: ang.summary_for_memory,
+      references_list: toStringArray(ang.references_list),
+      choices: mapChoices(acRes.data ?? []),
+    },
+  };
+}
+
+/**
+ * The user's prior attempt for this (exam_session, question) pair, or
+ * null. Used by the page Server Component to pre-fill the selected
+ * letter on backward navigation.
+ */
+export async function getExistingExamAttempt(
+  supabase: SupabaseSsrClient,
+  userId: string,
+  sessionId: string,
+  item: ExamQuestionListItem
+): Promise<AttemptRow | null> {
+  const query = supabase
+    .from("attempts")
+    .select(
+      "id, question_type, source_question_id, angle_question_id, selected_choice_id, selected_letter, is_correct, duration_seconds, was_skipped, attempted_at"
+    )
+    .eq("user_id", userId)
+    .eq("exam_session_id", sessionId)
+    .eq("question_type", item.question_type);
+
+  if (item.question_type === "source") {
+    query.eq("source_question_id", item.question_id);
+  } else {
+    query.eq("angle_question_id", item.question_id);
+  }
+
+  const { data } = await query.maybeSingle();
+  if (!data) return null;
+  const letter =
+    data.selected_letter && isValidLetter(data.selected_letter)
+      ? data.selected_letter
+      : null;
+  return {
+    id: data.id,
+    question_type: data.question_type as "source" | "angle",
+    source_question_id: data.source_question_id,
+    angle_question_id: data.angle_question_id,
+    selected_choice_id: data.selected_choice_id,
+    selected_letter: letter,
+    is_correct: data.is_correct,
+    duration_seconds: data.duration_seconds,
+    was_skipped: data.was_skipped,
+    attempted_at: data.attempted_at,
+  };
+}
+
+/**
+ * Returns true iff the caller has a bookmark on the resolved exam
+ * question. Bookmarks key on `source_question_group_id` for source
+ * questions (so the bookmark survives version bumps) and on the angle
+ * id directly. Same `bookmarks` table the practice flow uses.
+ */
+export async function getExamBookmarkState(
+  supabase: SupabaseSsrClient,
+  userId: string,
+  resolved: ResolvedExamQuestion
+): Promise<boolean> {
+  if (resolved.kind === "source") {
+    const { data } = await supabase
+      .from("bookmarks")
+      .select("id")
+      .eq("user_id", userId)
+      .eq("question_type", "source")
+      .eq("source_question_group_id", resolved.question.question_group_id)
+      .maybeSingle();
+    return data !== null;
+  }
+  if (resolved.kind === "angle") {
+    const { data } = await supabase
+      .from("bookmarks")
+      .select("id")
+      .eq("user_id", userId)
+      .eq("question_type", "angle")
+      .eq("angle_question_id", resolved.question.id)
+      .maybeSingle();
+    return data !== null;
+  }
+  return false;
 }

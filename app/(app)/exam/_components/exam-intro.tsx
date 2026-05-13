@@ -39,6 +39,19 @@ export function ExamIntro() {
         setSubmitting(false);
         return;
       }
+      // Stash the window token before navigation — the play page reads
+      // it on mount to validate against the row's active_window_token.
+      // Key includes the session id so each exam has its own slot;
+      // Phase 5's claim flow uses the same key.
+      try {
+        window.localStorage.setItem(
+          `lawpass.exam.${result.sessionId}.windowToken`,
+          result.windowToken
+        );
+      } catch {
+        // Private-browsing / quota — Phase 3 falls back to running
+        // without the guard. Phase 5 hardens this path.
+      }
       // Cross-segment navigation matches Slice 2's convention.
       window.location.assign(result.url);
     });

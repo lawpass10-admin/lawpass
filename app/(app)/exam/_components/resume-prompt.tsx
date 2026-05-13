@@ -16,8 +16,23 @@ import { cn } from "@/lib/utils";
 import { IntroContent } from "./intro-content";
 
 type ResumePromptProps = {
-  session: Pick<ExamSessionRow, "id" | "questions_answered" | "status">;
+  session: Pick<
+    ExamSessionRow,
+    "id" | "questions_answered" | "status" | "active_window_token"
+  >;
 };
+
+function persistWindowToken(sessionId: string, token: string): void {
+  try {
+    window.localStorage.setItem(
+      `lawpass.exam.${sessionId}.windowToken`,
+      token
+    );
+  } catch {
+    // Private-browsing / quota — falls back to running without the
+    // guard for this tab.
+  }
+}
 
 /**
  * Shown when the user lands on `/exam` and already has an active/paused
@@ -42,6 +57,9 @@ export function ResumePrompt({ session }: ResumePromptProps) {
   function handleResume() {
     if (busy) return;
     setBusy("resume");
+    // Persist the session's existing window token so the play page
+    // can validate it on mount.
+    persistWindowToken(session.id, session.active_window_token);
     window.location.assign(resumeUrl);
   }
 
@@ -65,6 +83,7 @@ export function ResumePrompt({ session }: ResumePromptProps) {
         setBusy(null);
         return;
       }
+      persistWindowToken(createResult.sessionId, createResult.windowToken);
       window.location.assign(createResult.url);
     });
   }
