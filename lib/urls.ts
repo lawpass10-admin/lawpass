@@ -56,6 +56,28 @@ export function mistakesUrl(): string {
   return "/mistakes";
 }
 
+// =============================================================================
+// Slice 3 — Exam routes
+// =============================================================================
+
+/** Exam intro / resume-prompt route. */
+export function examIntroUrl(): string {
+  return "/exam";
+}
+
+/**
+ * `/exam/play/[idx]?session={id}` — same path-segment shape as the
+ * practice player. Position is dense 0..39.
+ */
+export function examPlayUrl(sessionId: string, position: number): string {
+  return `/exam/play/${position}?session=${sessionId}`;
+}
+
+/** Results screen, keyed by session id in the path segment. */
+export function examResultsUrl(sessionId: string): string {
+  return `/exam/results/${sessionId}`;
+}
+
 /**
  * Build a /practice URL, optionally with prefill query params.
  *

@@ -103,6 +103,16 @@ export default async function AppLayout({
     redirect("/pricing");
   }
 
+  // Exam routes hide the sidebar to give a focused, no-distractions
+  // simulation feel (SPEC §7.0.4). The SubscriptionGate above still
+  // ran — exam is subscription-protected like every other (app) route.
+  // We skip the sidebar mount AND the bookmark/mistake count queries,
+  // since neither sidebar nor badges render on /exam/*.
+  const isExamRoute = pathname === "/exam" || pathname.startsWith("/exam/");
+  if (isExamRoute) {
+    return <main className="flex-1 p-6">{children}</main>;
+  }
+
   // Counts for sidebar badges. Both tables' RLS policies require
   // has_active_subscription(); for users on subscription-exempt routes
   // (without a sub), RLS returns 0 rows → count is 0 (no error).
