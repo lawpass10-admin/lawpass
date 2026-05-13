@@ -119,3 +119,45 @@ export async function createExamSession(): Promise<CreateExamSessionResult> {
     return { ok: false, error: "create_exam_session_failed" };
   }
 }
+
+// =============================================================================
+// abandonActiveExamSession
+// =============================================================================
+
+/**
+ * Soft-cancel any in-flight exam session (status active OR paused) for
+ * the caller. Used by the resume modal's "התחל בחינה חדשה" button so
+ * the new createExamSession call doesn't trip the
+ * "abandon-then-create" guard with a stale row.
+ *
+ * Idempotent — runs the UPDATE regardless of whether any active row
+ * exists; the WHERE clause is the gate.
+ */
+export async function abandonActiveExamSession(): Promise<
+  { ok: true } | { ok: false; error: string }
+> {
+  const { user } = await requireActiveSubscription();
+  const supabase = await createClient();
+
+  const { error } = await supabase
+    .from("exam_sessions")
+    .update({
+      status: "abandoned",
+      last_activity_at: new Date().toISOString(),
+    })
+    .eq("user_id", user.id)
+    .in("status", ["active", "paused"]);
+
+  if (error) {
+    console.error(
+      `[exam] abandon_active FAILED user=${user.id} code=${
+        (error as { code?: string }).code ?? "unknown"
+      } msg=${error.message}`
+    );
+    return { ok: false, error: "abandon_active_failed" };
+  }
+
+  console.info(`[exam] abandon_active OK user=${user.id}`);
+  revalidatePath("/exam");
+  return { ok: true };
+}
