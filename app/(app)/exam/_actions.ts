@@ -237,13 +237,42 @@ function computeServerElapsedSeconds(session: ExamSessionRow): number {
  * session's current budget. Caller MUST also write
  * `last_activity_at = NOW()` in the same UPDATE so the next action's
  * elapsed window starts fresh.
+ *
+ * Hotfix v3: `Math.round` lives inside the clamp (mirrors practice's
+ * `clampDuration` at practice/play/_actions.ts:56). `time_used_seconds`
+ * is `integer NOT NULL` in Postgres; an unrounded float here gets
+ * silently rejected by the column cast — see
+ * docs/handoffs/SLICE_3_TIMER_AUDIT.md §1.
  */
 function nextTimeUsed(session: ExamSessionRow): number {
   const incr = computeServerElapsedSeconds(session);
   return Math.min(
-    session.time_used_seconds + incr,
+    Math.round(session.time_used_seconds + incr),
     session.total_duration_seconds
   );
+}
+
+/**
+ * Defense-in-depth invariant: every write that lands in
+ * `exam_sessions.time_used_seconds` must be an integer. Trips loudly
+ * (log + caller short-circuits) before the DB round-trip if a future
+ * regression removes the `Math.round` in `nextTimeUsed`. Cheap.
+ */
+function assertIntegerTimeUsed(
+  value: number,
+  sessionId: string,
+  action: string
+): boolean {
+  if (!Number.isInteger(value)) {
+    console.error("[exam] non-integer time_used_seconds", {
+      sessionId,
+      action,
+      value,
+      stack: new Error().stack,
+    });
+    return false;
+  }
+  return true;
 }
 
 function remainingSeconds(
@@ -393,13 +422,24 @@ export async function submitExamAttempt(
   await recomputeExamCounters(supabase, sessionId);
 
   // Time accounting.
-  await supabase
+  if (!assertIntegerTimeUsed(newTimeUsed, sessionId, "submit_attempt")) {
+    return { ok: false, error: "invariant_violation" } as const;
+  }
+  const { error: updateError } = await supabase
     .from("exam_sessions")
     .update({
       time_used_seconds: newTimeUsed,
       last_activity_at: new Date().toISOString(),
     })
     .eq("id", sessionId);
+  if (updateError) {
+    console.error("[exam] submit_attempt session UPDATE failed", {
+      sessionId,
+      code: (updateError as { code?: string }).code,
+      message: updateError.message,
+    });
+    return { ok: false, error: "session_update_failed" } as const;
+  }
 
   return {
     ok: true,
@@ -474,13 +514,24 @@ export async function skipExamQuestion(
   }
 
   await recomputeExamCounters(supabase, sessionId);
-  await supabase
+  if (!assertIntegerTimeUsed(newTimeUsed, sessionId, "skip")) {
+    return { ok: false, error: "invariant_violation" } as const;
+  }
+  const { error: updateError } = await supabase
     .from("exam_sessions")
     .update({
       time_used_seconds: newTimeUsed,
       last_activity_at: new Date().toISOString(),
     })
     .eq("id", sessionId);
+  if (updateError) {
+    console.error("[exam] skip session UPDATE failed", {
+      sessionId,
+      code: (updateError as { code?: string }).code,
+      message: updateError.message,
+    });
+    return { ok: false, error: "session_update_failed" } as const;
+  }
 
   return { ok: true, remaining_seconds: remainingSeconds(session, newTimeUsed) };
 }
@@ -510,8 +561,11 @@ export async function pauseExam(input: unknown): Promise<PauseExamResult> {
   const session = guard.session;
 
   const newTimeUsed = nextTimeUsed(session);
+  if (!assertIntegerTimeUsed(newTimeUsed, sessionId, "pause")) {
+    return { ok: false, error: "invariant_violation" } as const;
+  }
   const nowIso = new Date().toISOString();
-  await supabase
+  const { error: updateError } = await supabase
     .from("exam_sessions")
     .update({
       status: "paused",
@@ -520,6 +574,14 @@ export async function pauseExam(input: unknown): Promise<PauseExamResult> {
       last_activity_at: nowIso,
     })
     .eq("id", sessionId);
+  if (updateError) {
+    console.error("[exam] pause session UPDATE failed", {
+      sessionId,
+      code: (updateError as { code?: string }).code,
+      message: updateError.message,
+    });
+    return { ok: false, error: "session_update_failed" } as const;
+  }
 
   return { ok: true };
 }
@@ -676,6 +738,9 @@ export async function submitFinalExam(
   const finalScore = correct;
   const passed = finalScore >= 24;
   const newTimeUsed = nextTimeUsed(session);
+  if (!assertIntegerTimeUsed(newTimeUsed, sessionId, "submit_final")) {
+    return { ok: false, error: "invariant_violation" };
+  }
   const nowIso = new Date().toISOString();
 
   const { error: updateError } = await supabase
@@ -691,10 +756,12 @@ export async function submitFinalExam(
     })
     .eq("id", sessionId);
   if (updateError) {
-    console.error(
-      `[exam] submit_final FAILED session=${sessionId} msg=${updateError.message}`
-    );
-    return { ok: false, error: "update_failed" };
+    console.error("[exam] submit_final session UPDATE failed", {
+      sessionId,
+      code: (updateError as { code?: string }).code,
+      message: updateError.message,
+    });
+    return { ok: false, error: "session_update_failed" };
   }
 
   revalidatePath("/", "layout");
@@ -740,8 +807,11 @@ export async function abandonAndExitExam(
   }
 
   const newTimeUsed = nextTimeUsed(session);
+  if (!assertIntegerTimeUsed(newTimeUsed, sessionId, "abandon_and_exit")) {
+    return { ok: false, error: "invariant_violation" };
+  }
   const nowIso = new Date().toISOString();
-  await supabase
+  const { error: updateError } = await supabase
     .from("exam_sessions")
     .update({
       status: "paused",
@@ -750,6 +820,14 @@ export async function abandonAndExitExam(
       last_activity_at: nowIso,
     })
     .eq("id", sessionId);
+  if (updateError) {
+    console.error("[exam] abandon_and_exit session UPDATE failed", {
+      sessionId,
+      code: (updateError as { code?: string }).code,
+      message: updateError.message,
+    });
+    return { ok: false, error: "session_update_failed" };
+  }
 
   revalidatePath("/exam");
   return { ok: true, url: "/dashboard" };
