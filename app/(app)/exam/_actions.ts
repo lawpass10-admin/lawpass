@@ -5,53 +5,74 @@ import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
 
 import { requireActiveSubscription } from "@/lib/auth/subscription-gate";
-import { sampleExamQuestions } from "@/lib/db/exam";
+import {
+  getExamSessionById,
+  getQuestionForExamPosition,
+  sampleExamQuestions,
+} from "@/lib/db/exam";
 import { EXAM_TOTAL_DURATION_SECONDS } from "@/lib/exam/clusters";
 import { createClient } from "@/lib/supabase/server";
-import { examPlayUrl } from "@/lib/urls";
+import { examPlayUrl, examResultsUrl } from "@/lib/urls";
+import {
+  abandonAndExitExamInput,
+  claimExamWindowInput,
+  pauseExamInput,
+  resumeExamInput,
+  skipExamQuestionInput,
+  submitExamAttemptInput,
+  submitFinalExamInput,
+  toggleExamBookmarkInput,
+} from "@/lib/validators/exam";
 
 // =============================================================================
-// Result types
+// Common types
 // =============================================================================
 
-type CreateExamSessionResult =
-  | {
-      ok: true;
-      url: string;
-      sessionId: string;
-      windowToken: string;
-    }
-  | { ok: false; error: string };
+type ExamActionFail = { ok: false; error: string };
+
+/**
+ * Shape every Phase 5 RPC returns. Validation/typed-error responses
+ * land as { ok: false, error_code }; success carries the payload. Action
+ * wrappers map error_code into their typed failure shape.
+ */
+type RpcEnvelope<Payload> =
+  | ({ ok: true } & Payload)
+  | { ok: false; error_code: string };
+
+function asEnvelope<P>(data: unknown): RpcEnvelope<P> | null {
+  if (!data || typeof data !== "object") return null;
+  const obj = data as Record<string, unknown>;
+  if (obj.ok === true) return data as RpcEnvelope<P>;
+  if (obj.ok === false && typeof obj.error_code === "string") {
+    return { ok: false, error_code: obj.error_code };
+  }
+  return null;
+}
 
 // =============================================================================
 // createExamSession
 // =============================================================================
+
+type CreateExamSessionResult =
+  | { ok: true; url: string; sessionId: string; windowToken: string }
+  | { ok: false; error: string };
 
 /**
  * Mint a new exam session. No client input — sampling is fully derived
  * from the caller's auth + the cluster config.
  *
  * Steps:
- *   1. Abandon any prior active/paused session for the caller (per the
- *      PM-confirmed "single in-flight exam per user" rule; mirror of
- *      `createPracticeSession`).
+ *   1. Abandon any prior active/paused session for the caller.
  *   2. Sample 40 questions via the cluster-weighted sampler.
- *   3. Mint an `active_window_token` (the DB column has no DEFAULT) and
- *      INSERT the session row.
- *   4. revalidatePath layout (no badge changes today, but the resume
- *      modal on `/exam` reads via RSC and benefits from a fresh fetch).
- *   5. Return the play URL + sessionId + windowToken. The client carries
- *      the windowToken into `localStorage` so subsequent server-action
- *      calls can validate it against the row's `active_window_token` —
- *      the single-window guard surface lands in Phase 3.
+ *   3. Mint an `active_window_token` and INSERT the row.
+ *   4. revalidatePath layout (so the resume modal on `/exam` re-fetches).
+ *   5. Return the play URL + sessionId + windowToken.
  */
 export async function createExamSession(): Promise<CreateExamSessionResult> {
   const { user } = await requireActiveSubscription();
   const supabase = await createClient();
 
   try {
-    // Step 1 — abandon any prior in-flight session. .in() on status
-    // covers both 'active' and 'paused'.
     await supabase
       .from("exam_sessions")
       .update({
@@ -61,14 +82,7 @@ export async function createExamSession(): Promise<CreateExamSessionResult> {
       .eq("user_id", user.id)
       .in("status", ["active", "paused"]);
 
-    // Step 2 — sample (throws 'exam_pool_insufficient' if the pool is
-    // <40; current production pool is 195 so this branch is defensive).
     const questionList = await sampleExamQuestions(supabase);
-
-    // Step 3 — mint window token client-side. The DB column has no
-    // DEFAULT (verified via information_schema), so we explicitly set
-    // it; the round-trip on .select('active_window_token') re-reads
-    // the stored value, so token drift between app + DB can't happen.
     const windowToken = randomUUID();
 
     const { data: inserted, error: insertError } = await supabase
@@ -98,8 +112,6 @@ export async function createExamSession(): Promise<CreateExamSessionResult> {
       ok: true,
       url: examPlayUrl(inserted.id, 0),
       sessionId: inserted.id,
-      // Use the round-tripped value rather than the local variable so
-      // any DB-side rewrite (none expected, but defensive) is reflected.
       windowToken: inserted.active_window_token,
     };
   } catch (err) {
@@ -110,9 +122,6 @@ export async function createExamSession(): Promise<CreateExamSessionResult> {
         code ?? "unknown"
       } message=${message}`
     );
-    // Surface the sampler's known-error code verbatim so the caller can
-    // distinguish "we tried, the pool is too small" from generic
-    // failures. Phase 2 surfaces this as a user-visible toast.
     if (message === "exam_pool_insufficient") {
       return { ok: false, error: "exam_pool_insufficient" };
     }
@@ -125,13 +134,8 @@ export async function createExamSession(): Promise<CreateExamSessionResult> {
 // =============================================================================
 
 /**
- * Soft-cancel any in-flight exam session (status active OR paused) for
- * the caller. Used by the resume modal's "התחל בחינה חדשה" button so
- * the new createExamSession call doesn't trip the
- * "abandon-then-create" guard with a stale row.
- *
- * Idempotent — runs the UPDATE regardless of whether any active row
- * exists; the WHERE clause is the gate.
+ * Soft-cancel any in-flight exam session for the caller. Used by the
+ * resume modal's "התחל בחינה חדשה" button. Idempotent.
  */
 export async function abandonActiveExamSession(): Promise<
   { ok: true } | { ok: false; error: string }
@@ -149,174 +153,27 @@ export async function abandonActiveExamSession(): Promise<
     .in("status", ["active", "paused"]);
 
   if (error) {
-    console.error(
-      `[exam] abandon_active FAILED user=${user.id} code=${
-        (error as { code?: string }).code ?? "unknown"
-      } msg=${error.message}`
-    );
+    console.error("[exam] abandon_active failed", {
+      userId: user.id,
+      code: (error as { code?: string }).code,
+      message: error.message,
+    });
     return { ok: false, error: "abandon_active_failed" };
   }
 
-  console.info(`[exam] abandon_active OK user=${user.id}`);
   revalidatePath("/exam");
   return { ok: true };
 }
 
 // =============================================================================
-// Phase 3 — gameplay actions
+// Phase 3 / Phase 5 — gameplay actions
 // =============================================================================
 //
-// All gameplay actions share three concerns: window-token validation,
-// server-authoritative time accounting, and counter recompute. The
-// helpers below encapsulate them so the action bodies stay readable.
-
-import {
-  getExamSessionById,
-  getQuestionForExamPosition,
-  type ExamSessionRow,
-} from "@/lib/db/exam";
-import { examResultsUrl } from "@/lib/urls";
-import {
-  abandonAndExitExamInput,
-  claimExamWindowInput,
-  pauseExamInput,
-  resumeExamInput,
-  skipExamQuestionInput,
-  submitExamAttemptInput,
-  submitFinalExamInput,
-  toggleExamBookmarkInput,
-} from "@/lib/validators/exam";
-import type { SupabaseClient } from "@supabase/supabase-js";
-
-type ExamActionFail = { ok: false; error: string };
-
-/**
- * Common pre-flight: load the row, check the token, check the status.
- * Returns the session row on success or a typed failure for the caller
- * to short-circuit on.
- */
-async function loadSessionForAction(
-  supabase: SupabaseClient,
-  userId: string,
-  sessionId: string,
-  windowToken: string,
-  options: { requireActive?: boolean } = {}
-): Promise<{ ok: true; session: ExamSessionRow } | ExamActionFail> {
-  const session = await getExamSessionById(supabase, userId, sessionId);
-  if (!session) return { ok: false, error: "session_not_found" };
-  if (session.active_window_token !== windowToken) {
-    return { ok: false, error: "window_conflict" };
-  }
-  if ((options.requireActive ?? true) && session.status !== "active") {
-    return { ok: false, error: "session_not_active" };
-  }
-  return { ok: true, session };
-}
-
-/**
- * Server-authoritative elapsed-since-last-activity for the action.
- * Phase 4 hotfix v2: replaces the prior client-supplied
- * `clientElapsedSeconds` path. The client value was unreliable
- * because every choice click hard-navigates → component remount →
- * the lazy-bootstrapped client anchor reset to 0 → first
- * `popElapsed()` returned 0. Server timing has no such failure mode.
- *
- * Bounded at 600 s per call so a stale row (e.g. tab left open for an
- * hour after auto-pause was meant to fire) can't burn the entire
- * remaining budget on a single resume click. The 600 s cap matches
- * the per-question max we accepted from the client previously.
- */
-function computeServerElapsedSeconds(session: ExamSessionRow): number {
-  const raw =
-    (Date.now() - new Date(session.last_activity_at).getTime()) / 1000;
-  return Math.max(0, Math.min(raw, 600));
-}
-
-/**
- * Next `time_used_seconds` value derived from server time + the
- * session's current budget. Caller MUST also write
- * `last_activity_at = NOW()` in the same UPDATE so the next action's
- * elapsed window starts fresh.
- *
- * Hotfix v3: `Math.round` lives inside the clamp (mirrors practice's
- * `clampDuration` at practice/play/_actions.ts:56). `time_used_seconds`
- * is `integer NOT NULL` in Postgres; an unrounded float here gets
- * silently rejected by the column cast — see
- * docs/handoffs/SLICE_3_TIMER_AUDIT.md §1.
- */
-function nextTimeUsed(session: ExamSessionRow): number {
-  const incr = computeServerElapsedSeconds(session);
-  return Math.min(
-    Math.round(session.time_used_seconds + incr),
-    session.total_duration_seconds
-  );
-}
-
-/**
- * Defense-in-depth invariant: every write that lands in
- * `exam_sessions.time_used_seconds` must be an integer. Trips loudly
- * (log + caller short-circuits) before the DB round-trip if a future
- * regression removes the `Math.round` in `nextTimeUsed`. Cheap.
- */
-function assertIntegerTimeUsed(
-  value: number,
-  sessionId: string,
-  action: string
-): boolean {
-  if (!Number.isInteger(value)) {
-    console.error("[exam] non-integer time_used_seconds", {
-      sessionId,
-      action,
-      value,
-      stack: new Error().stack,
-    });
-    return false;
-  }
-  return true;
-}
-
-function remainingSeconds(
-  session: ExamSessionRow,
-  newTimeUsed: number
-): number {
-  return Math.max(0, session.total_duration_seconds - newTimeUsed);
-}
-
-/**
- * Recompute `questions_answered` + `questions_correct` for the session
- * from the current `attempts` rows. Cheaper than tracking deltas and
- * bulletproof under backward-nav overwrites + skip toggles.
- *
- * answered = attempts where was_skipped=false AND is_correct IS NOT NULL
- * correct  = attempts where is_correct=true
- * (Skip rows have was_skipped=true; they exist for analytics but do
- *  not count as answered.)
- */
-async function recomputeExamCounters(
-  supabase: SupabaseClient,
-  sessionId: string
-): Promise<{ answered: number; correct: number }> {
-  const [answeredRes, correctRes] = await Promise.all([
-    supabase
-      .from("attempts")
-      .select("*", { count: "exact", head: true })
-      .eq("exam_session_id", sessionId)
-      .eq("was_skipped", false)
-      .not("is_correct", "is", null),
-    supabase
-      .from("attempts")
-      .select("*", { count: "exact", head: true })
-      .eq("exam_session_id", sessionId)
-      .eq("is_correct", true),
-  ]);
-  const answered = answeredRes.count ?? 0;
-  const correct = correctRes.count ?? 0;
-  await supabase
-    .from("exam_sessions")
-    .update({ questions_answered: answered, questions_correct: correct })
-    .eq("id", sessionId);
-  return { answered, correct };
-}
+// Phase 5 refactor (per SLICE_3_TIMER_AUDIT.md §3+§4): each action is a
+// thin wrapper around a single SECURITY DEFINER RPC. The RPCs handle
+// auth, token validation, attempt UPSERT (where applicable), counter
+// recompute, and time math — all in one transaction with a row lock.
+// No float math crosses the wire and no read-modify-write race remains.
 
 // -----------------------------------------------------------------------------
 // submitExamAttempt
@@ -327,53 +184,32 @@ type SubmitExamAttemptResult =
   | ExamActionFail;
 
 /**
- * Record (or overwrite) the user's answer at `position`. UPSERTs against
- * the Phase 0 partial unique indexes so backward navigation + re-pick is
- * idempotent.
- *
- * Correctness is derived server-side from the question's `is_correct`
- * choice — never trust the client. Counter recompute fires after the
- * UPSERT so changing an answer from wrong → right (or vice versa)
- * always converges.
- *
- * `mistakes` is NOT touched here: PM-confirmed exam-wrong answers do
- * not write to the mistakes folder.
+ * Record (or overwrite) the user's answer at `position`. Server derives
+ * correctness from the question's `is_correct` choice — never trust the
+ * client. The RPC handles UPSERT (partial-index ON CONFLICT) + counter
+ * recompute + time bump atomically.
  */
 export async function submitExamAttempt(
   input: unknown
 ): Promise<SubmitExamAttemptResult> {
   const parsed = submitExamAttemptInput.safeParse(input);
   if (!parsed.success) return { ok: false, error: "invalid_input" };
-  // clientElapsedSeconds is in the schema for wire-compat but ignored
-  // server-side (see computeServerElapsedSeconds). Don't destructure.
   const { sessionId, windowToken, position, selectedLetter } = parsed.data;
 
   const { user } = await requireActiveSubscription();
   const supabase = await createClient();
 
-  const guard = await loadSessionForAction(
-    supabase,
-    user.id,
-    sessionId,
-    windowToken
-  );
-  if (!guard.ok) return guard;
-  const session = guard.session;
+  const session = await getExamSessionById(supabase, user.id, sessionId);
+  if (!session) return { ok: false, error: "session_not_found" };
 
   const item = session.question_list[position];
   if (!item) return { ok: false, error: "position_out_of_range" };
 
-  // Resolve question on the server — we need the choice ids + is_correct
-  // to compute correctness; the client never sees these.
   const resolved = await getQuestionForExamPosition(supabase, item);
   if (resolved.kind === "archived") {
     return { ok: false, error: "question_archived" };
   }
-
-  const choices =
-    resolved.kind === "source"
-      ? resolved.question.choices
-      : resolved.question.choices;
+  const choices = resolved.question.choices;
   const chosen = choices.find((c) => c.letter === selectedLetter);
   const correctChoice = choices.find((c) => c.is_correct);
   if (!chosen || !correctChoice) {
@@ -382,68 +218,33 @@ export async function submitExamAttempt(
   const isCorrect = chosen.id === correctChoice.id;
   const isSource = resolved.kind === "source";
 
-  const newTimeUsed = nextTimeUsed(session);
-  // Clamp duration into the column's reasonable range. Matches the
-  // submit-attempt practice convention (max 600 s per question).
-  // Per-question duration is the server-derived elapsed (same window
-  // that bumps time_used_seconds). Already clamped to [0, 600] by
-  // computeServerElapsedSeconds; round to satisfy the integer column.
-  const durationClamped = Math.round(computeServerElapsedSeconds(session));
+  const { data, error } = await supabase.rpc("submit_exam_answer", {
+    p_session_id: sessionId,
+    p_window_token: windowToken,
+    p_question_type: isSource ? "source" : "angle",
+    p_source_question_id: isSource ? item.question_id : null,
+    p_angle_question_id: isSource ? null : item.question_id,
+    p_selected_choice_id: chosen.id,
+    p_selected_letter: selectedLetter,
+    p_is_correct: isCorrect,
+    p_was_skipped: false,
+  });
 
-  // PartIAL unique index UPSERT: supabase-js's .upsert() can't emit
-  // the `WHERE <predicate>` Postgres requires for partial indexes.
-  // Phase 3 hotfix: go through the record_exam_attempt SECURITY DEFINER
-  // RPC which issues the INSERT … ON CONFLICT (cols) WHERE … DO UPDATE
-  // in raw SQL.
-  const { error: upsertError } = await supabase.rpc(
-    "record_exam_attempt",
-    {
-      p_session_id: sessionId,
-      p_question_type: isSource ? "source" : "angle",
-      p_source_question_id: isSource ? item.question_id : null,
-      p_angle_question_id: isSource ? null : item.question_id,
-      p_selected_choice_id: chosen.id,
-      p_selected_letter: selectedLetter,
-      p_is_correct: isCorrect,
-      p_was_skipped: false,
-      p_duration_seconds: durationClamped,
-    }
-  );
-  if (upsertError) {
-    console.error(
-      `[exam] record_exam_attempt RPC FAILED session=${sessionId} pos=${position} code=${
-        (upsertError as { code?: string }).code ?? "unknown"
-      } msg=${upsertError.message}`
-    );
-    return { ok: false, error: "attempt_write_failed" };
-  }
-
-  // Counters: recompute from attempts. Cheap, race-free.
-  await recomputeExamCounters(supabase, sessionId);
-
-  // Time accounting.
-  if (!assertIntegerTimeUsed(newTimeUsed, sessionId, "submit_attempt")) {
-    return { ok: false, error: "invariant_violation" } as const;
-  }
-  const { error: updateError } = await supabase
-    .from("exam_sessions")
-    .update({
-      time_used_seconds: newTimeUsed,
-      last_activity_at: new Date().toISOString(),
-    })
-    .eq("id", sessionId);
-  if (updateError) {
-    console.error("[exam] submit_attempt session UPDATE failed", {
+  const env = asEnvelope<{ remaining_seconds: number }>(data);
+  if (error || !env) {
+    console.error("[exam] submit_exam_answer RPC failed", {
       sessionId,
-      code: (updateError as { code?: string }).code,
-      message: updateError.message,
+      position,
+      code: (error as { code?: string } | null)?.code,
+      message: error?.message,
     });
-    return { ok: false, error: "session_update_failed" } as const;
+    return { ok: false, error: "rpc_failed" };
   }
+  if (!env.ok) return { ok: false, error: env.error_code };
 
   return {
     ok: true,
-    remaining_seconds: remainingSeconds(session, newTimeUsed),
+    remaining_seconds: env.remaining_seconds,
     is_correct: isCorrect,
   };
 }
@@ -461,79 +262,44 @@ export async function skipExamQuestion(
 ): Promise<SkipExamQuestionResult> {
   const parsed = skipExamQuestionInput.safeParse(input);
   if (!parsed.success) return { ok: false, error: "invalid_input" };
-  // clientElapsedSeconds ignored — see submitExamAttempt note.
   const { sessionId, windowToken, position } = parsed.data;
 
   const { user } = await requireActiveSubscription();
   const supabase = await createClient();
 
-  const guard = await loadSessionForAction(
-    supabase,
-    user.id,
-    sessionId,
-    windowToken
-  );
-  if (!guard.ok) return guard;
-  const session = guard.session;
+  const session = await getExamSessionById(supabase, user.id, sessionId);
+  if (!session) return { ok: false, error: "session_not_found" };
 
   const item = session.question_list[position];
   if (!item) return { ok: false, error: "position_out_of_range" };
 
   const isSource = item.question_type === "source";
-  const newTimeUsed = nextTimeUsed(session);
-  // Per-question duration is the server-derived elapsed (same window
-  // that bumps time_used_seconds). Already clamped to [0, 600] by
-  // computeServerElapsedSeconds; round to satisfy the integer column.
-  const durationClamped = Math.round(computeServerElapsedSeconds(session));
 
-  // Same partial-index UPSERT path as submitExamAttempt — go through
-  // the SECURITY DEFINER RPC. Skip rows carry the same shape as
-  // answered rows with the answer-bearing fields nulled and
-  // was_skipped=true.
-  const { error: upsertError } = await supabase.rpc(
-    "record_exam_attempt",
-    {
-      p_session_id: sessionId,
-      p_question_type: isSource ? "source" : "angle",
-      p_source_question_id: isSource ? item.question_id : null,
-      p_angle_question_id: isSource ? null : item.question_id,
-      p_selected_choice_id: null,
-      p_selected_letter: null,
-      p_is_correct: null,
-      p_was_skipped: true,
-      p_duration_seconds: durationClamped,
-    }
-  );
-  if (upsertError) {
-    console.error(
-      `[exam] skip RPC FAILED session=${sessionId} pos=${position} code=${
-        (upsertError as { code?: string }).code ?? "unknown"
-      } msg=${upsertError.message}`
-    );
-    return { ok: false, error: "attempt_write_failed" };
-  }
+  const { data, error } = await supabase.rpc("submit_exam_answer", {
+    p_session_id: sessionId,
+    p_window_token: windowToken,
+    p_question_type: isSource ? "source" : "angle",
+    p_source_question_id: isSource ? item.question_id : null,
+    p_angle_question_id: isSource ? null : item.question_id,
+    p_selected_choice_id: null,
+    p_selected_letter: null,
+    p_is_correct: null,
+    p_was_skipped: true,
+  });
 
-  await recomputeExamCounters(supabase, sessionId);
-  if (!assertIntegerTimeUsed(newTimeUsed, sessionId, "skip")) {
-    return { ok: false, error: "invariant_violation" } as const;
-  }
-  const { error: updateError } = await supabase
-    .from("exam_sessions")
-    .update({
-      time_used_seconds: newTimeUsed,
-      last_activity_at: new Date().toISOString(),
-    })
-    .eq("id", sessionId);
-  if (updateError) {
-    console.error("[exam] skip session UPDATE failed", {
+  const env = asEnvelope<{ remaining_seconds: number }>(data);
+  if (error || !env) {
+    console.error("[exam] skip RPC failed", {
       sessionId,
-      code: (updateError as { code?: string }).code,
-      message: updateError.message,
+      position,
+      code: (error as { code?: string } | null)?.code,
+      message: error?.message,
     });
-    return { ok: false, error: "session_update_failed" } as const;
+    return { ok: false, error: "rpc_failed" };
   }
+  if (!env.ok) return { ok: false, error: env.error_code };
 
-  return { ok: true, remaining_seconds: remainingSeconds(session, newTimeUsed) };
+  return { ok: true, remaining_seconds: env.remaining_seconds };
 }
 
 // -----------------------------------------------------------------------------
@@ -545,43 +311,27 @@ type PauseExamResult = { ok: true } | ExamActionFail;
 export async function pauseExam(input: unknown): Promise<PauseExamResult> {
   const parsed = pauseExamInput.safeParse(input);
   if (!parsed.success) return { ok: false, error: "invalid_input" };
-  // clientElapsedSeconds ignored — see submitExamAttempt note.
   const { sessionId, windowToken } = parsed.data;
 
-  const { user } = await requireActiveSubscription();
+  await requireActiveSubscription();
   const supabase = await createClient();
 
-  const guard = await loadSessionForAction(
-    supabase,
-    user.id,
-    sessionId,
-    windowToken
-  );
-  if (!guard.ok) return guard;
-  const session = guard.session;
+  const { data, error } = await supabase.rpc("bump_exam_session_time", {
+    p_session_id: sessionId,
+    p_window_token: windowToken,
+    p_new_status: "paused",
+  });
 
-  const newTimeUsed = nextTimeUsed(session);
-  if (!assertIntegerTimeUsed(newTimeUsed, sessionId, "pause")) {
-    return { ok: false, error: "invariant_violation" } as const;
-  }
-  const nowIso = new Date().toISOString();
-  const { error: updateError } = await supabase
-    .from("exam_sessions")
-    .update({
-      status: "paused",
-      paused_at: nowIso,
-      time_used_seconds: newTimeUsed,
-      last_activity_at: nowIso,
-    })
-    .eq("id", sessionId);
-  if (updateError) {
-    console.error("[exam] pause session UPDATE failed", {
+  const env = asEnvelope<{ remaining_seconds: number }>(data);
+  if (error || !env) {
+    console.error("[exam] pause RPC failed", {
       sessionId,
-      code: (updateError as { code?: string }).code,
-      message: updateError.message,
+      code: (error as { code?: string } | null)?.code,
+      message: error?.message,
     });
-    return { ok: false, error: "session_update_failed" } as const;
+    return { ok: false, error: "rpc_failed" };
   }
+  if (!env.ok) return { ok: false, error: env.error_code };
 
   return { ok: true };
 }
@@ -595,37 +345,26 @@ export async function resumeExam(input: unknown): Promise<ResumeExamResult> {
   if (!parsed.success) return { ok: false, error: "invalid_input" };
   const { sessionId, windowToken } = parsed.data;
 
-  const { user } = await requireActiveSubscription();
+  await requireActiveSubscription();
   const supabase = await createClient();
 
-  // Resume targets a paused session — relax the requireActive check.
-  const guard = await loadSessionForAction(
-    supabase,
-    user.id,
-    sessionId,
-    windowToken,
-    { requireActive: false }
-  );
-  if (!guard.ok) return guard;
-  const session = guard.session;
-  if (session.status !== "paused") {
-    return { ok: false, error: "session_not_paused" };
+  const { data, error } = await supabase.rpc("resume_exam_session", {
+    p_session_id: sessionId,
+    p_window_token: windowToken,
+  });
+
+  const env = asEnvelope<{ remaining_seconds: number }>(data);
+  if (error || !env) {
+    console.error("[exam] resume RPC failed", {
+      sessionId,
+      code: (error as { code?: string } | null)?.code,
+      message: error?.message,
+    });
+    return { ok: false, error: "rpc_failed" };
   }
+  if (!env.ok) return { ok: false, error: env.error_code };
 
-  const nowIso = new Date().toISOString();
-  await supabase
-    .from("exam_sessions")
-    .update({
-      status: "active",
-      paused_at: null,
-      last_activity_at: nowIso,
-    })
-    .eq("id", sessionId);
-
-  return {
-    ok: true,
-    remaining_seconds: remainingSeconds(session, session.time_used_seconds),
-  };
+  return { ok: true, remaining_seconds: env.remaining_seconds };
 }
 
 // -----------------------------------------------------------------------------
@@ -646,19 +385,19 @@ export async function toggleExamBookmark(
   const { user } = await requireActiveSubscription();
   const supabase = await createClient();
 
-  const guard = await loadSessionForAction(
-    supabase,
-    user.id,
-    sessionId,
-    windowToken
-  );
-  if (!guard.ok) return guard;
-  const session = guard.session;
+  // Bookmark toggle still validates the window token client-flow-side
+  // by going through getExamSessionById and comparing. The action is
+  // read-only on session state otherwise, so it doesn't go through the
+  // Phase 5 RPCs.
+  const session = await getExamSessionById(supabase, user.id, sessionId);
+  if (!session) return { ok: false, error: "session_not_found" };
+  if (session.active_window_token !== windowToken) {
+    return { ok: false, error: "window_conflict" };
+  }
 
   const item = session.question_list[position];
   if (!item) return { ok: false, error: "position_out_of_range" };
 
-  // Resolve to derive the question_group_id for source bookmarks.
   const resolved = await getQuestionForExamPosition(supabase, item);
   if (resolved.kind === "archived") {
     return { ok: false, error: "question_archived" };
@@ -679,9 +418,11 @@ export async function toggleExamBookmark(
 
   const { data, error } = await supabase.rpc("record_bookmark_toggle", args);
   if (error) {
-    console.error(
-      `[exam] toggle_bookmark FAILED session=${sessionId} pos=${position} msg=${error.message}`
-    );
+    console.error("[exam] toggle_bookmark failed", {
+      sessionId,
+      position,
+      message: error.message,
+    });
     return { ok: false, error: "rpc_failed" };
   }
 
@@ -693,76 +434,42 @@ export async function toggleExamBookmark(
 // submitFinalExam
 // -----------------------------------------------------------------------------
 
-type SubmitFinalExamResult =
-  | { ok: true; url: string }
-  | ExamActionFail;
+type SubmitFinalExamResult = { ok: true; url: string } | ExamActionFail;
 
 /**
- * Compute final_score / passed from `attempts`, flip status, return the
- * results URL. Idempotent — if status is already 'completed', return
- * the existing URL without re-computing.
+ * Compute final_score / passed, flip status, return the results URL.
+ * Idempotent — RPC returns the existing terminal state if status is
+ * already 'completed'.
  */
 export async function submitFinalExam(
   input: unknown
 ): Promise<SubmitFinalExamResult> {
   const parsed = submitFinalExamInput.safeParse(input);
   if (!parsed.success) return { ok: false, error: "invalid_input" };
-  // clientElapsedSeconds ignored — see submitExamAttempt note.
   const { sessionId, windowToken } = parsed.data;
 
-  const { user } = await requireActiveSubscription();
+  await requireActiveSubscription();
   const supabase = await createClient();
 
-  // Allow submission from active OR paused — auto-submit at 0 may fire
-  // while paused (unlikely but defensive).
-  const guard = await loadSessionForAction(
-    supabase,
-    user.id,
-    sessionId,
-    windowToken,
-    { requireActive: false }
-  );
-  if (!guard.ok) return guard;
-  const session = guard.session;
+  const { data, error } = await supabase.rpc("submit_final_exam", {
+    p_session_id: sessionId,
+    p_window_token: windowToken,
+  });
 
-  // Idempotency: already submitted.
-  if (session.status === "completed") {
-    return { ok: true, url: examResultsUrl(sessionId) };
-  }
-  if (session.status === "abandoned") {
-    return { ok: false, error: "session_abandoned" };
-  }
-
-  // Recompute counters before reading them for the final tally.
-  const { correct } = await recomputeExamCounters(supabase, sessionId);
-  const finalScore = correct;
-  const passed = finalScore >= 24;
-  const newTimeUsed = nextTimeUsed(session);
-  if (!assertIntegerTimeUsed(newTimeUsed, sessionId, "submit_final")) {
-    return { ok: false, error: "invariant_violation" };
-  }
-  const nowIso = new Date().toISOString();
-
-  const { error: updateError } = await supabase
-    .from("exam_sessions")
-    .update({
-      status: "completed",
-      final_score: finalScore,
-      passed,
-      completed_at: nowIso,
-      paused_at: null,
-      time_used_seconds: newTimeUsed,
-      last_activity_at: nowIso,
-    })
-    .eq("id", sessionId);
-  if (updateError) {
-    console.error("[exam] submit_final session UPDATE failed", {
+  const env = asEnvelope<{
+    final_score: number;
+    passed: boolean;
+    already_completed: boolean;
+  }>(data);
+  if (error || !env) {
+    console.error("[exam] submit_final RPC failed", {
       sessionId,
-      code: (updateError as { code?: string }).code,
-      message: updateError.message,
+      code: (error as { code?: string } | null)?.code,
+      message: error?.message,
     });
-    return { ok: false, error: "session_update_failed" };
+    return { ok: false, error: "rpc_failed" };
   }
+  if (!env.ok) return { ok: false, error: env.error_code };
 
   revalidatePath("/", "layout");
   return { ok: true, url: examResultsUrl(sessionId) };
@@ -772,79 +479,99 @@ export async function submitFinalExam(
 // abandonAndExitExam — pause + redirect to dashboard
 // -----------------------------------------------------------------------------
 
-type AbandonAndExitExamResult =
-  | { ok: true; url: string }
-  | ExamActionFail;
+type AbandonAndExitExamResult = { ok: true; url: string } | ExamActionFail;
 
 /**
- * Note: action name says "abandon" but the DB transition is to 'paused'.
- * PM-confirmed: the pause overlay's "צא לדשבורד" is a "save & exit"
- * UX — the user expects to come back via the resume modal. The name
- * reflects caller intent ("leave"); the DB state stays recoverable.
+ * Pause + leave. The DB transition is to 'paused' so the user can come
+ * back via the resume modal. PM-confirmed: "save & exit" UX.
  */
 export async function abandonAndExitExam(
   input: unknown
 ): Promise<AbandonAndExitExamResult> {
   const parsed = abandonAndExitExamInput.safeParse(input);
   if (!parsed.success) return { ok: false, error: "invalid_input" };
-  // clientElapsedSeconds ignored — see submitExamAttempt note.
   const { sessionId, windowToken } = parsed.data;
 
-  const { user } = await requireActiveSubscription();
+  await requireActiveSubscription();
   const supabase = await createClient();
 
-  const guard = await loadSessionForAction(
-    supabase,
-    user.id,
-    sessionId,
-    windowToken,
-    { requireActive: false }
-  );
-  if (!guard.ok) return guard;
-  const session = guard.session;
-  if (session.status !== "active" && session.status !== "paused") {
-    return { ok: false, error: "session_not_pauseable" };
-  }
+  const { data, error } = await supabase.rpc("bump_exam_session_time", {
+    p_session_id: sessionId,
+    p_window_token: windowToken,
+    p_new_status: "paused",
+  });
 
-  const newTimeUsed = nextTimeUsed(session);
-  if (!assertIntegerTimeUsed(newTimeUsed, sessionId, "abandon_and_exit")) {
-    return { ok: false, error: "invariant_violation" };
-  }
-  const nowIso = new Date().toISOString();
-  const { error: updateError } = await supabase
-    .from("exam_sessions")
-    .update({
-      status: "paused",
-      paused_at: session.paused_at ?? nowIso,
-      time_used_seconds: newTimeUsed,
-      last_activity_at: nowIso,
-    })
-    .eq("id", sessionId);
-  if (updateError) {
-    console.error("[exam] abandon_and_exit session UPDATE failed", {
+  const env = asEnvelope<{ remaining_seconds: number }>(data);
+  if (error || !env) {
+    console.error("[exam] abandon_and_exit RPC failed", {
       sessionId,
-      code: (updateError as { code?: string }).code,
-      message: updateError.message,
+      code: (error as { code?: string } | null)?.code,
+      message: error?.message,
     });
-    return { ok: false, error: "session_update_failed" };
+    return { ok: false, error: "rpc_failed" };
   }
+  if (!env.ok) return { ok: false, error: env.error_code };
 
   revalidatePath("/exam");
   return { ok: true, url: "/dashboard" };
 }
 
 // -----------------------------------------------------------------------------
-// claimExamWindow — Phase 5 stub
+// claimExamWindow
 // -----------------------------------------------------------------------------
 
+type ClaimExamWindowResult =
+  | { ok: true; windowToken: string; url: string }
+  | ExamActionFail;
+
+/**
+ * Phase 5 — single-window guard activation.
+ *
+ * The user clicked "העבר לחלון הזה" in `<WindowConflict />`. Mint a
+ * fresh `active_window_token`, invalidating the prior tab's stored
+ * value. The prior tab's next server action will fail with
+ * 'window_conflict'; the storage event listener in `<ExamQuestion>`
+ * surfaces the conflict screen proactively.
+ *
+ * Returns the play URL (positioned at `questions_answered` so the user
+ * resumes mid-flight, mirroring `<ResumePrompt>`'s resume target).
+ */
 export async function claimExamWindow(
   input: unknown
-): Promise<{ ok: true; windowToken: string } | ExamActionFail> {
+): Promise<ClaimExamWindowResult> {
   const parsed = claimExamWindowInput.safeParse(input);
   if (!parsed.success) return { ok: false, error: "invalid_input" };
-  // Phase 5 implements: validate session ownership, mint a new
-  // active_window_token via crypto.randomUUID, persist, return it.
-  // For now return a sentinel so the WindowConflict UI can render a
-  // "Phase 5 feature" disabled state instead of silently failing.
-  return { ok: false, error: "not_implemented_yet" };
+  const { sessionId } = parsed.data;
+
+  const { user } = await requireActiveSubscription();
+  const supabase = await createClient();
+
+  const newToken = randomUUID();
+  const { data, error } = await supabase
+    .from("exam_sessions")
+    .update({
+      active_window_token: newToken,
+      last_activity_at: new Date().toISOString(),
+    })
+    .eq("id", sessionId)
+    .eq("user_id", user.id)
+    .in("status", ["active", "paused"])
+    .select("id, questions_answered")
+    .single();
+
+  if (error || !data) {
+    console.error("[exam] claim_window failed", {
+      sessionId,
+      code: (error as { code?: string } | null)?.code,
+      message: error?.message,
+    });
+    return { ok: false, error: "claim_failed" };
+  }
+
+  revalidatePath("/exam");
+  return {
+    ok: true,
+    windowToken: newToken,
+    url: examPlayUrl(data.id, data.questions_answered),
+  };
 }

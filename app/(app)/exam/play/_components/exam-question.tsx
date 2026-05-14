@@ -62,19 +62,20 @@ type Props = {
 
 /**
  * Heart of the exam play screen. Owns:
- *   - local timer countdown (visual only; server-authoritative on each
- *     action via clientElapsedSeconds)
- *   - selected letter (pre-filled on backward nav from the row's
- *     existing attempt; new selection UPSERTs server-side)
+ *   - local timer countdown (visual only — server is authoritative
+ *     via the Phase 5 SECURITY DEFINER RPCs which compute elapsed
+ *     from `last_activity_at` inside Postgres)
+ *   - selected letter (pre-filled on backward nav; new selection
+ *     UPSERTs server-side)
  *   - pause state (mirrors server status)
  *   - bookmark state (optimistic, server-confirmed)
  *   - submit-confirm dialog open state
- *   - window-token validation against localStorage
+ *   - window-token validation against localStorage + cross-tab storage
+ *     events (Phase 5 single-window guard)
  *
- * The action contract sends `clientElapsedSeconds` (delta since the
- * last action) on every call. The server clamps + adds to
- * time_used_seconds and returns the new `remaining_seconds` so the
- * client can resync its visual countdown.
+ * Phase 5 also dropped `clientElapsedSeconds` from every action call:
+ * the server reads elapsed from `NOW() - last_activity_at` directly,
+ * so the client no longer needs to carry a delta.
  */
 export function ExamQuestion({
   session,
@@ -111,10 +112,8 @@ export function ExamQuestion({
           setTokenStatus("ok");
           return;
         }
-        // No stored token AND session is freshly active: this can
-        // happen if a user opens /exam/play/0?session=… by URL paste
-        // without going through the intro/resume flow. Treat as a
-        // conflict — Phase 5 wires the claim CTA in <WindowConflict />.
+        // No stored token (or stale): possible if the user opened the
+        // play URL directly, or another tab just claimed the session.
         setTokenStatus("conflict");
       } catch {
         // localStorage unavailable — treat as conflict (safer than
@@ -125,6 +124,27 @@ export function ExamQuestion({
   }, [session.id, session.active_window_token]);
 
   // -------------------------------------------------------------------------
+  // Cross-tab claim detection
+  // -------------------------------------------------------------------------
+  // Phase 5: another tab calling `claimExamWindow` writes a new token
+  // to localStorage. The `storage` event fires synchronously in this
+  // tab, so we surface the conflict screen WITHOUT waiting for the
+  // user's next server action to fail with 'window_conflict'.
+  useEffect(() => {
+    function handleStorage(e: StorageEvent): void {
+      if (e.key !== `lawpass.exam.${session.id}.windowToken`) return;
+      // newValue is set when another tab wrote; null when the entry
+      // was removed. Either way, if it diverges from our in-memory
+      // tokenRef, this tab is now stale.
+      if (e.newValue && e.newValue !== tokenRef.current) {
+        setTokenStatus("conflict");
+      }
+    }
+    window.addEventListener("storage", handleStorage);
+    return () => window.removeEventListener("storage", handleStorage);
+  }, [session.id]);
+
+  // -------------------------------------------------------------------------
   // Local timer (visual only)
   // -------------------------------------------------------------------------
   const initialRemaining = Math.max(
@@ -133,15 +153,6 @@ export function ExamQuestion({
   );
   const [remainingSeconds, setRemainingSeconds] = useState(initialRemaining);
   const [paused, setPaused] = useState(session.status === "paused");
-
-  // performance.now() anchor for the last server-syncing event. The
-  // delta from this to the next action call is the client's elapsed
-  // estimate. Reset on every successful action response (which carries
-  // a fresh remaining_seconds).
-  // Lazy-bootstrap: useRef can't call performance.now() in its
-  // initializer (react-hooks/purity rule). 0 sentinel means "not yet
-  // anchored"; popElapsed() anchors on first call and returns 0 then.
-  const lastSyncAt = useRef<number>(0);
 
   // The local countdown setInterval is gated on (tokenStatus ok AND
   // !paused AND remainingSeconds > 0). When it hits 0, we fire
@@ -182,20 +193,6 @@ export function ExamQuestion({
   // Helpers
   // -------------------------------------------------------------------------
 
-  function popElapsed(): number {
-    const now = typeof performance !== "undefined" ? performance.now() : 0;
-    // Bootstrap: first call anchors lastSyncAt and reports zero
-    // elapsed (the user just landed on the page — no observable time
-    // has passed from their POV yet).
-    if (lastSyncAt.current === 0) {
-      lastSyncAt.current = now;
-      return 0;
-    }
-    const delta = Math.max(0, Math.round((now - lastSyncAt.current) / 1000));
-    lastSyncAt.current = now;
-    return delta;
-  }
-
   function syncRemaining(serverRemaining: number): void {
     setRemainingSeconds(Math.max(0, serverRemaining));
   }
@@ -213,12 +210,10 @@ export function ExamQuestion({
     const token = tokenRef.current;
     if (!token) return;
     setSelectedLetter(letter);
-    const elapsed = popElapsed();
     startTransition(async () => {
       const result = await submitExamAttempt({
         sessionId: session.id,
         windowToken: token,
-        clientElapsedSeconds: elapsed,
         position,
         selectedLetter: letter,
       });
@@ -249,11 +244,9 @@ export function ExamQuestion({
       opts.skip ??
       (selectedLetter === null && !hasExistingAnswer)
     ) {
-      const elapsed = popElapsed();
       void skipExamQuestion({
         sessionId: session.id,
         windowToken: token,
-        clientElapsedSeconds: elapsed,
         position,
       }).then((result) => {
         if (!result.ok && result.error === "window_conflict") {
@@ -272,7 +265,6 @@ export function ExamQuestion({
     if (actionPending || tokenStatus !== "ok") return;
     const token = tokenRef.current;
     if (!token) return;
-    const elapsed = popElapsed();
     if (paused) {
       // Resume
       startTransition(async () => {
@@ -294,7 +286,6 @@ export function ExamQuestion({
         const result = await pauseExam({
           sessionId: session.id,
           windowToken: token,
-          clientElapsedSeconds: elapsed,
         });
         if (!result.ok) {
           if (result.error === "window_conflict") handleWindowConflict();
@@ -310,11 +301,9 @@ export function ExamQuestion({
     if (actionPending || tokenStatus !== "ok") return;
     const token = tokenRef.current;
     if (!token) return;
-    const elapsed = popElapsed();
     const result = await abandonAndExitExam({
       sessionId: session.id,
       windowToken: token,
-      clientElapsedSeconds: elapsed,
     });
     if (!result.ok) {
       if (result.error === "window_conflict") handleWindowConflict();
@@ -353,10 +342,6 @@ export function ExamQuestion({
    *   - Current position: if user has just picked a letter or the row
    *     was pre-filled, treat as 'correct' (the strip collapses
    *     correct/wrong to a single 'answered' look regardless).
-   *
-   * We don't try to overlay other positions — the user can only modify
-   * the current one per page load. A backward-nav round-trip
-   * re-renders the page with fresh data.
    */
   const effectiveStatuses: ExamPositionStatus[] = positionStatuses.map(
     (s, i) =>
@@ -382,11 +367,9 @@ export function ExamQuestion({
       return;
     }
 
-    const elapsed = popElapsed();
     const result = await submitFinalExam({
       sessionId: session.id,
       windowToken: token,
-      clientElapsedSeconds: elapsed,
     });
     if (!result.ok) {
       if (result.error === "window_conflict") handleWindowConflict();
@@ -425,18 +408,9 @@ export function ExamQuestion({
   }
 
   if (tokenStatus === "conflict") {
-    return <WindowConflict />;
+    return <WindowConflict sessionId={session.id} />;
   }
 
-  // statuses array for the progress strip. Phase 4: hydrated from the
-  // Server Component via `positionStatuses`. We project each status
-  // to the strip's cell-state vocabulary:
-  //   correct / wrong → "answered" (one look — no answer-revealing
-  //                                  during the exam, per spec)
-  //   skipped         → "skipped"
-  //   unanswered      → "pending"
-  // The current cell is always rendered as "current" by the strip
-  // (it checks `i === current` first), so we don't special-case here.
   const statuses: ExamProgressCellStatus[] = effectiveStatuses.map((s) => {
     if (s === "correct" || s === "wrong") return "answered";
     if (s === "skipped") return "skipped";
@@ -464,8 +438,6 @@ export function ExamQuestion({
       />
 
       <main className="mx-auto w-full max-w-3xl px-6 py-7">
-        {/* Eyebrow row: question number on RTL-start, bookmark on
-            RTL-end (per prototype). */}
         <div className="mb-3 flex items-center justify-between">
           <span className="font-mono text-[11px] uppercase tracking-wider text-muted-foreground">
             שאלה {position + 1}
@@ -493,7 +465,6 @@ export function ExamQuestion({
           </button>
         </div>
 
-        {/* Question card */}
         <div className="mb-4 rounded-xl border border-border bg-card p-7 shadow-sm">
           <p
             dir="auto"
@@ -503,7 +474,6 @@ export function ExamQuestion({
           </p>
         </div>
 
-        {/* Choices */}
         <div className="mb-6 flex flex-col gap-2">
           {choices.map((c) => (
             <Choice
@@ -519,7 +489,6 @@ export function ExamQuestion({
           ))}
         </div>
 
-        {/* Prev / Next footer */}
         <div className="flex items-center justify-between gap-3">
           <Button
             variant="ghost"

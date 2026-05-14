@@ -39,51 +39,19 @@ import {
 import { createClient } from "@/lib/supabase/server";
 
 /**
- * Hand-rolled supabase-js mock: returns chainable thenables for the
- * specific call shapes used by submitExamAttempt + recomputeExamCounters.
- * Captures every `exam_sessions.update(...)` payload so tests can assert
- * what would have been written. Loose typing — supabase-js's builder
- * shapes are deeply generic and not worth re-deriving inside a test mock.
+ * Hand-rolled supabase-js mock for the Phase 5 RPC contract. Records
+ * every `supabase.rpc(name, args)` call so tests can assert the action
+ * called the right RPC with the right payload.
  */
-function makeSupabaseMock() {
-  const sessionUpdates: Array<{ payload: Record<string, unknown> }> = [];
+function makeSupabaseMock(rpcResponse: unknown) {
   const rpcCalls: Array<{ name: string; args: Record<string, unknown> }> = [];
-
-  function attemptsCountBuilder() {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const builder: any = {};
-    builder.select = () => builder;
-    builder.eq = () => builder;
-    builder.not = () => builder;
-    builder.then = (resolve: (v: { count: number }) => unknown) =>
-      Promise.resolve({ count: 0 }).then(resolve);
-    return builder;
-  }
-
-  function examSessionsBuilder() {
-    return {
-      update: (payload: Record<string, unknown>) => {
-        sessionUpdates.push({ payload });
-        return {
-          eq: () => Promise.resolve({ error: null }),
-        };
-      },
-    };
-  }
-
   const client = {
     rpc: (name: string, args: Record<string, unknown>) => {
       rpcCalls.push({ name, args });
-      return Promise.resolve({ error: null });
-    },
-    from: (table: string) => {
-      if (table === "attempts") return attemptsCountBuilder();
-      if (table === "exam_sessions") return examSessionsBuilder();
-      throw new Error(`unexpected table in test: ${table}`);
+      return Promise.resolve({ data: rpcResponse, error: null });
     },
   };
-
-  return { client, sessionUpdates, rpcCalls };
+  return { client, rpcCalls };
 }
 
 // Proper v4-shaped UUIDs (third group starts with 4, fourth with 8-b)
@@ -121,12 +89,10 @@ function buildSession(overrides: Partial<ExamSessionRow> = {}): ExamSessionRow {
   };
 }
 
-describe("submitExamAttempt — time bump invariants", () => {
+describe("submitExamAttempt — Phase 5 RPC contract", () => {
   beforeEach(() => {
-    // Freeze the clock so the elapsed-since-last_activity_at math is
-    // deterministic. 2026-05-13T18:00:00Z is arbitrary.
     vi.useFakeTimers();
-    vi.setSystemTime(new Date("2026-05-13T18:00:00.000Z"));
+    vi.setSystemTime(new Date("2026-05-14T18:00:00.000Z"));
 
     vi.mocked(requireActiveSubscription).mockResolvedValue({
       user: { id: "u1" } as never,
@@ -182,15 +148,13 @@ describe("submitExamAttempt — time bump invariants", () => {
     vi.resetAllMocks();
   });
 
-  it("writes an integer time_used_seconds and rounds the elapsed float", async () => {
-    // last_activity_at was set 5443ms ago via buildSession() — read at
-    // freeze time. computeServerElapsedSeconds returns 5.443; nextTimeUsed
-    // computes Math.round(10 + 5.443) = 15. Pre-hotfix this would have
-    // sent the float 15.443 and Postgres would have silently rejected.
-    const session = buildSession();
-    vi.mocked(getExamSessionById).mockResolvedValue(session);
+  it("calls submit_exam_answer RPC with the correct payload and surfaces remaining_seconds", async () => {
+    vi.mocked(getExamSessionById).mockResolvedValue(buildSession());
 
-    const { client, sessionUpdates } = makeSupabaseMock();
+    const { client, rpcCalls } = makeSupabaseMock({
+      ok: true,
+      remaining_seconds: 5985,
+    });
     vi.mocked(createClient).mockResolvedValue(client as never);
 
     const result = await submitExamAttempt({
@@ -198,20 +162,49 @@ describe("submitExamAttempt — time bump invariants", () => {
       windowToken: WINDOW_TOKEN,
       position: 0,
       selectedLetter: "א",
-      clientElapsedSeconds: 0,
     });
 
     expect(result.ok).toBe(true);
+    expect(rpcCalls).toHaveLength(1);
+    expect(rpcCalls[0].name).toBe("submit_exam_answer");
+    // Action derives correctness server-side and passes the chosen
+    // choice id + is_correct flag. RPC does the rest.
+    expect(rpcCalls[0].args).toMatchObject({
+      p_session_id: SESSION_ID,
+      p_window_token: WINDOW_TOKEN,
+      p_question_type: "source",
+      p_source_question_id: QUESTION_ID,
+      p_angle_question_id: null,
+      p_selected_choice_id: CHOICE_CORRECT_ID,
+      p_selected_letter: "א",
+      p_is_correct: true,
+      p_was_skipped: false,
+    });
+    if (result.ok) {
+      expect(result.remaining_seconds).toBe(5985);
+      expect(result.is_correct).toBe(true);
+    }
+  });
 
-    // recomputeExamCounters fires its own UPDATE first
-    // (questions_answered / questions_correct); the time UPDATE is the
-    // one carrying time_used_seconds.
-    const timeUpdate = sessionUpdates.find(
-      (u) => "time_used_seconds" in u.payload
-    );
-    expect(timeUpdate).toBeDefined();
-    const written = timeUpdate!.payload.time_used_seconds;
-    expect(Number.isInteger(written)).toBe(true);
-    expect(written).toBe(15);
+  it("maps RPC error_code into the action's typed failure", async () => {
+    vi.mocked(getExamSessionById).mockResolvedValue(buildSession());
+
+    const { client } = makeSupabaseMock({
+      ok: false,
+      error_code: "window_conflict",
+    });
+    vi.mocked(createClient).mockResolvedValue(client as never);
+
+    const result = await submitExamAttempt({
+      sessionId: SESSION_ID,
+      windowToken: WINDOW_TOKEN,
+      position: 0,
+      selectedLetter: "א",
+    });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error).toBe("window_conflict");
+    }
   });
 });

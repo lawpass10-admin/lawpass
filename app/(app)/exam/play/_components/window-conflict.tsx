@@ -1,40 +1,84 @@
 "use client";
 
-import { ArrowLeft } from "lucide-react";
-import Link from "next/link";
+import { ArrowLeft, RotateCcw } from "lucide-react";
+import { useTransition } from "react";
+import { toast } from "sonner";
 
-import { buttonVariants } from "@/components/ui/button";
-import { cn } from "@/lib/utils";
+import { claimExamWindow } from "@/app/(app)/exam/_actions";
+import { Button } from "@/components/ui/button";
+
+type Props = {
+  sessionId: string;
+};
 
 /**
- * Phase 3 minimal stub. Shown when the client's stored windowToken
- * doesn't match the session's active_window_token on the server.
+ * Full-page block shown when the client's stored windowToken doesn't
+ * match the session's `active_window_token`. Two actions:
  *
- * Phase 5 wires the "העבר לחלון הזה" claim button + the
- * `claimExamWindow` server action body. For Phase 3 we only render
- * the message + a "back to dashboard" CTA so users in the conflict
- * state aren't stuck.
+ *  1. "העבר לחלון הזה" — `claimExamWindow(sessionId)` mints a new token,
+ *      persists it to `localStorage`, then navigates to the play URL
+ *      (positioned at `questions_answered` per the resume convention).
+ *      The OTHER tab's storage event listener detects the new token
+ *      and renders its own conflict block immediately.
+ *
+ *  2. "חזור לדשבורד" — hard-nav to /dashboard (no claim, no token write).
  */
-export function WindowConflict() {
+export function WindowConflict({ sessionId }: Props) {
+  const [pending, startTransition] = useTransition();
+
+  function handleClaim(): void {
+    if (pending) return;
+    startTransition(async () => {
+      const result = await claimExamWindow({ sessionId });
+      if (!result.ok) {
+        toast.error("ההעברה נכשלה. נסה שוב");
+        return;
+      }
+      try {
+        window.localStorage.setItem(
+          `lawpass.exam.${sessionId}.windowToken`,
+          result.windowToken
+        );
+      } catch {
+        // localStorage unavailable — the play page's mount-time check
+        // will fail and render this screen again. Acceptable degradation.
+      }
+      window.location.assign(result.url);
+    });
+  }
+
   return (
     <div className="mx-auto flex min-h-[60vh] w-full max-w-md flex-col items-center justify-center gap-6 px-6 text-center">
       <div className="space-y-2">
         <h1 className="text-2xl font-bold">סימולציה פעילה בחלון אחר</h1>
         <p className="text-sm text-muted-foreground">
-          הסימולציה הזו פתוחה בחלון או מכשיר אחר. ניתן להמשיך בחלון הקודם,
-          או לחזור לדשבורד ולנסות מאוחר יותר.
-        </p>
-        <p className="text-xs text-muted-foreground">
-          (השתלטות על החלון הזה תתאפשר בעדכון הבא.)
+          ניתן להעביר את הבחינה לחלון הזה (החלון הקודם ייחסם), או לחזור
+          לדשבורד ולהמשיך מאוחר יותר.
         </p>
       </div>
-      <Link
-        href="/dashboard"
-        className={cn(buttonVariants({ variant: "default" }), "min-w-44")}
-      >
-        <ArrowLeft className="me-2 size-4" aria-hidden />
-        <span>חזור לדשבורד</span>
-      </Link>
+      <div className="flex w-full flex-col gap-2 sm:flex-row sm:justify-center">
+        <Button
+          variant="ghost"
+          size="lg"
+          onClick={() => {
+            window.location.assign("/dashboard");
+          }}
+          disabled={pending}
+          className="sm:min-w-44"
+        >
+          <ArrowLeft className="me-2 size-4" aria-hidden />
+          <span>חזור לדשבורד</span>
+        </Button>
+        <Button
+          size="lg"
+          onClick={handleClaim}
+          disabled={pending}
+          className="sm:min-w-44"
+        >
+          <RotateCcw className="me-2 size-4" aria-hidden />
+          <span>{pending ? "מעביר..." : "העבר לחלון הזה"}</span>
+        </Button>
+      </div>
     </div>
   );
 }

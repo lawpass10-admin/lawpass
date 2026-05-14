@@ -1,13 +1,12 @@
 /**
  * Slice 3 — Exam action validators.
  *
- * Every action validates a `windowToken` against `exam_sessions.active_window_token`
- * and almost every action carries a `clientElapsedSeconds` field that
- * the server clamps to non-negative and uses to bump `time_used_seconds`
- * server-authoritatively.
- *
- * The schema names use camelCase for the TS contract; the action body
- * destructures and passes through to the DB columns in snake_case.
+ * Every action validates a `windowToken` against
+ * `exam_sessions.active_window_token`. Time math is fully
+ * server-authoritative since Phase 5 — `clientElapsedSeconds` was
+ * removed (the field was deprecated in hotfix v2 and superseded by
+ * the Postgres-side elapsed computation in the SECURITY DEFINER RPCs
+ * added in `20260516000001_exam_phase5_atomic_actions.sql`).
  */
 
 import { z } from "zod";
@@ -18,16 +17,6 @@ const choiceLetter = z.enum(["א", "ב", "ג", "ד"]);
 
 const examPosition = z.number().int().min(0).max(39);
 
-/**
- * @deprecated Phase 4 hotfix v2 — timer is now server-authoritative.
- * The server derives elapsed from `NOW() - last_activity_at` and
- * ignores this value. Kept in the wire format so the client (which
- * still sends it) doesn't trip schema validation mid-deployment.
- * Future cleanup: remove from input schemas + the client once we're
- * confident no in-flight tabs are still posting it.
- */
-const clientElapsedSeconds = z.number().int().min(0).max(600);
-
 // =============================================================================
 // createExamSession — Phase 1 (kept here for the canonical re-export)
 // =============================================================================
@@ -36,33 +25,30 @@ export const createExamSessionInput = z.object({});
 export type CreateExamSessionInput = z.infer<typeof createExamSessionInput>;
 
 // =============================================================================
-// Phase 3 — gameplay actions
+// Phase 3 / Phase 5 — gameplay actions
 // =============================================================================
 
-/** Common base — every Phase 3 action needs at least the session +
- *  window-token pair so the server can validate before doing any work.
- *  Building it as a base object lets each action `.extend()` cleanly. */
+/**
+ * Common base — every gameplay action needs at least the session +
+ * window-token pair so the server can validate before doing any work.
+ */
 const sessionTokenBase = z.object({
   sessionId: uuid,
   windowToken: uuid,
 });
 
-const sessionTokenTimedBase = sessionTokenBase.extend({
-  clientElapsedSeconds,
-});
-
-export const submitExamAttemptInput = sessionTokenTimedBase.extend({
+export const submitExamAttemptInput = sessionTokenBase.extend({
   position: examPosition,
   selectedLetter: choiceLetter,
 });
 export type SubmitExamAttemptInput = z.infer<typeof submitExamAttemptInput>;
 
-export const skipExamQuestionInput = sessionTokenTimedBase.extend({
+export const skipExamQuestionInput = sessionTokenBase.extend({
   position: examPosition,
 });
 export type SkipExamQuestionInput = z.infer<typeof skipExamQuestionInput>;
 
-export const pauseExamInput = sessionTokenTimedBase;
+export const pauseExamInput = sessionTokenBase;
 export type PauseExamInput = z.infer<typeof pauseExamInput>;
 
 export const resumeExamInput = sessionTokenBase;
@@ -73,10 +59,10 @@ export const toggleExamBookmarkInput = sessionTokenBase.extend({
 });
 export type ToggleExamBookmarkInput = z.infer<typeof toggleExamBookmarkInput>;
 
-export const submitFinalExamInput = sessionTokenTimedBase;
+export const submitFinalExamInput = sessionTokenBase;
 export type SubmitFinalExamInput = z.infer<typeof submitFinalExamInput>;
 
-export const abandonAndExitExamInput = sessionTokenTimedBase;
+export const abandonAndExitExamInput = sessionTokenBase;
 export type AbandonAndExitExamInput = z.infer<typeof abandonAndExitExamInput>;
 
 export const claimExamWindowInput = z.object({ sessionId: uuid });
