@@ -1,7 +1,7 @@
 "use client";
 
 import { ArrowLeft, RotateCcw } from "lucide-react";
-import { useTransition } from "react";
+import { useEffect, useRef, useTransition } from "react";
 import { toast } from "sonner";
 
 import { claimExamWindow } from "@/app/(app)/exam/_actions";
@@ -25,6 +25,13 @@ type Props = {
  */
 export function WindowConflict({ sessionId }: Props) {
   const [pending, startTransition] = useTransition();
+  const primaryBtnRef = useRef<HTMLButtonElement>(null);
+
+  // Phase 6 a11y: focus the primary "claim" button on mount so keyboard
+  // users can Enter-to-confirm immediately.
+  useEffect(() => {
+    primaryBtnRef.current?.focus();
+  }, []);
 
   function handleClaim(): void {
     if (pending) return;
@@ -70,6 +77,7 @@ export function WindowConflict({ sessionId }: Props) {
           <span>חזור לדשבורד</span>
         </Button>
         <Button
+          ref={primaryBtnRef}
           size="lg"
           onClick={handleClaim}
           disabled={pending}

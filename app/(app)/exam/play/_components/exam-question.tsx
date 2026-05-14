@@ -167,6 +167,7 @@ export function ExamQuestion({
     return () => clearInterval(id);
   }, [tokenStatus, paused, remainingSeconds]);
 
+
   // -------------------------------------------------------------------------
   // State for the rest of the UI
   // -------------------------------------------------------------------------
@@ -398,6 +399,93 @@ export function ExamQuestion({
   }, [tokenStatus, paused, remainingSeconds]);
 
   // -------------------------------------------------------------------------
+  // Keyboard shortcuts (Phase 6)
+  // -------------------------------------------------------------------------
+  // RTL-aware: ArrowLeft moves forward (visually left in RTL Hebrew),
+  // ArrowRight moves back. 1-4 and א-ד both select choices. B toggles
+  // bookmark, P toggles pause, Escape opens the submit flow.
+  //
+  // Gated by tokenStatus/paused/actionPending/submitConfirmOpen so we
+  // don't fight modals — pause overlay and submit dialog handle their
+  // own keys via base-ui's focus trap.
+  useEffect(() => {
+    function onKeyDown(e: KeyboardEvent): void {
+      if (tokenStatus !== "ok") return;
+      if (paused || submitConfirmOpen) return;
+      const target = e.target as HTMLElement | null;
+      if (
+        target &&
+        (target.tagName === "INPUT" || target.tagName === "TEXTAREA")
+      ) {
+        return;
+      }
+
+      if (e.key === "ArrowLeft") {
+        e.preventDefault();
+        navigate(position + 1);
+        return;
+      }
+      if (e.key === "ArrowRight") {
+        e.preventDefault();
+        navigate(position - 1);
+        return;
+      }
+
+      const choiceMap: Record<string, Letter> = {
+        "1": "א",
+        "2": "ב",
+        "3": "ג",
+        "4": "ד",
+        "א": "א",
+        "ב": "ב",
+        "ג": "ג",
+        "ד": "ד",
+      };
+      const mappedLetter = choiceMap[e.key];
+      if (mappedLetter) {
+        e.preventDefault();
+        void handleChoice(mappedLetter);
+        return;
+      }
+
+      if (e.key === "b" || e.key === "B") {
+        e.preventDefault();
+        void handleToggleBookmark();
+        return;
+      }
+      if (e.key === "p" || e.key === "P") {
+        e.preventDefault();
+        void handlePauseToggle();
+        return;
+      }
+      if (e.key === "Escape") {
+        e.preventDefault();
+        void handleSubmitFinal(false);
+        return;
+      }
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+    // The handlers (navigate, handleChoice, etc.) are recreated every
+    // render but close over the listed state. Re-registering on those
+    // state changes is what keeps them current — listing the function
+    // identities would re-register on every render (no behavior change,
+    // just noise).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    tokenStatus,
+    paused,
+    submitConfirmOpen,
+    position,
+    actionPending,
+    selectedLetter,
+    hasExistingAnswer,
+    bookmarked,
+    bookmarkPending,
+    unansweredCount,
+  ]);
+
+  // -------------------------------------------------------------------------
   // Render
   // -------------------------------------------------------------------------
 
@@ -447,7 +535,7 @@ export function ExamQuestion({
             onClick={() => void handleToggleBookmark()}
             disabled={bookmarkPending || paused}
             aria-pressed={bookmarked}
-            aria-label="סמן לחזרה"
+            aria-label={bookmarked ? "בטל סימון" : "סמן לחזרה"}
             className={cn(
               "inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs transition-colors",
               "hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50",

@@ -127,3 +127,16 @@
     @apply font-sans;
   }
 }
+
+/* Slice 3 Phase 6 — subtle pulse on the exam timer when remaining < 600s.
+   Gated on `prefers-reduced-motion: no-preference` so motion-sensitive
+   users get no animation. */
+@keyframes timerPulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.04); }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .timer-pulse {
+    animation: timerPulse 1s ease-in-out infinite;
+  }
+}

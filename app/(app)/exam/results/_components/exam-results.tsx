@@ -125,7 +125,7 @@ export function ExamResults({ aggregate }: Props) {
           סימולציית בחינה
         </p>
         <div className="flex items-baseline justify-center gap-1.5">
-          <span className="text-6xl font-bold tabular-nums sm:text-7xl">
+          <span className="text-5xl font-bold tabular-nums sm:text-7xl">
             {score}
           </span>
           <span className="text-2xl font-semibold text-muted-foreground tabular-nums">
@@ -197,7 +197,7 @@ export function ExamResults({ aggregate }: Props) {
                 </span>
                 <span
                   dir="auto"
-                  className="overflow-hidden text-ellipsis whitespace-nowrap text-muted-foreground"
+                  className="min-w-0 overflow-hidden text-ellipsis whitespace-nowrap text-muted-foreground"
                 >
                   {row.excerpt}
                 </span>

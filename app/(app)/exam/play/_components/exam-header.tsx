@@ -29,8 +29,18 @@ function formatMinSec(total: number): string {
  *   - RTL-start: brand mark "L" (gold square) + label "סימולציית בחינה"
  *   - RTL-end: counter, timer pill, pause/resume toggle, "סיים בחינה"
  *
- * Sidebar is hidden across /exam/* via the layout branch (Phase 0) so
- * this header takes the full viewport width.
+ * Phase 6 — mobile fixes:
+ *   - Brand label hides on `<sm` (just the "L" mark stays)
+ *   - Counter hides on `<sm`
+ *   - Pause/resume label hides on `<sm` (icon-only)
+ *   - Timer pulses red at <600s (reduced-motion gated)
+ *
+ * Phase 6 — a11y:
+ *   - Visible timer is `aria-hidden` so screen readers don't spam every
+ *     1s tick. A separate sr-only `role="timer" aria-live="polite"`
+ *     announces remaining minutes — content only changes per minute
+ *     so it triggers at most once per minute.
+ *   - Pause/resume button carries an explicit Hebrew aria-label.
  */
 export function ExamHeader({
   position,
@@ -42,8 +52,9 @@ export function ExamHeader({
   onSubmit,
 }: Props) {
   const lowTime = remainingSeconds < LOW_TIME_THRESHOLD_SECONDS;
+  const minutesLeft = Math.max(0, Math.floor(remainingSeconds / 60));
   return (
-    <header className="sticky top-0 z-20 flex h-12 items-center gap-4 bg-primary px-6 text-primary-foreground">
+    <header className="sticky top-0 z-20 flex h-12 items-center gap-3 bg-primary px-4 text-primary-foreground sm:gap-4 sm:px-6">
       {/* Brand cluster (RTL-start) */}
       <div className="flex items-center gap-2">
         <span
@@ -52,34 +63,43 @@ export function ExamHeader({
         >
           L
         </span>
-        <span className="text-sm font-semibold">סימולציית בחינה</span>
+        <span className="hidden text-sm font-semibold sm:inline">
+          סימולציית בחינה
+        </span>
       </div>
 
       {/* Counter + timer + pause + submit (RTL-end) */}
-      <div className="ms-auto flex items-center gap-3">
-        <span className="font-mono text-[13px] text-primary-foreground/70 tabular-nums">
+      <div className="ms-auto flex items-center gap-2 sm:gap-3">
+        <span className="hidden font-mono text-[13px] text-primary-foreground/70 tabular-nums sm:inline">
           שאלה {position + 1} / {total}
         </span>
         <div
+          aria-hidden
           className={cn(
-            "inline-flex items-center gap-2 rounded-md px-3 py-1.5 font-mono text-sm font-semibold tabular-nums",
+            "inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 font-mono text-sm font-semibold tabular-nums sm:gap-2 sm:px-3",
             lowTime
-              ? "bg-destructive text-destructive-foreground"
+              ? "bg-destructive text-destructive-foreground timer-pulse"
               : "bg-white/10 text-primary-foreground"
           )}
-          role="timer"
-          aria-live="off"
-          aria-label={`זמן שנותר: ${formatMinSec(remainingSeconds)}`}
         >
           <Clock className="size-3.5" aria-hidden />
           <span>{formatMinSec(remainingSeconds)}</span>
         </div>
+        {/* sr-only timer announcer: content changes only when the minute
+            boundary crosses, so aria-live="polite" announces ~once/minute
+            instead of every second. */}
+        <span role="timer" aria-live="polite" className="sr-only">
+          {minutesLeft > 0
+            ? `${minutesLeft} דקות נותרו`
+            : "פחות מדקה נותרה"}
+        </span>
         <button
           type="button"
           onClick={onTogglePause}
           disabled={busy}
+          aria-label={paused ? "המשך בחינה" : "השהה בחינה"}
           className={cn(
-            "inline-flex items-center gap-1.5 rounded-md bg-white/10 px-3 py-1.5 text-xs text-primary-foreground transition-colors",
+            "inline-flex items-center gap-1.5 rounded-md bg-white/10 px-2.5 py-1.5 text-xs text-primary-foreground transition-colors sm:px-3",
             "hover:bg-white/15 disabled:opacity-50",
             "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-300"
           )}
@@ -87,12 +107,12 @@ export function ExamHeader({
           {paused ? (
             <>
               <Play className="size-3.5" aria-hidden />
-              <span>המשך</span>
+              <span className="hidden sm:inline">המשך</span>
             </>
           ) : (
             <>
               <Pause className="size-3.5" aria-hidden />
-              <span>השהה</span>
+              <span className="hidden sm:inline">השהה</span>
             </>
           )}
         </button>
@@ -101,7 +121,7 @@ export function ExamHeader({
           onClick={onSubmit}
           disabled={busy}
           className={cn(
-            "rounded-md bg-amber-400 px-3 py-1.5 text-xs font-semibold text-primary transition-colors",
+            "rounded-md bg-amber-400 px-2.5 py-1.5 text-xs font-semibold text-primary transition-colors sm:px-3",
             "hover:bg-amber-300 disabled:opacity-50",
             "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-200"
           )}
