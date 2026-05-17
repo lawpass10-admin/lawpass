@@ -39,7 +39,9 @@ const STATUS_ARIA: Record<ExamProgressCellStatus, string> = {
  * Phase 6 — mobile + a11y:
  *   - Cells get `min-w-6` (24px) so the strip horizontally scrolls
  *     instead of crushing the cells on narrow viewports.
- *   - Active cell scale-110 (subtle pop — easier to find on mobile).
+ *   - Active cell: white bg + amber outline (no transform — scale-110
+ *     at the rightmost cell overflowed the strip and triggered a
+ *     spurious horizontal scrollbar on Q40 in RTL).
  *   - aria-label reflects status, not just position.
  */
 export function ExamProgressStrip({
@@ -67,7 +69,7 @@ export function ExamProgressStrip({
                 "h-6 w-6 min-w-6 shrink-0 rounded font-mono text-[10px] font-semibold tabular-nums transition-all",
                 "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-300",
                 status === "current" &&
-                  "scale-110 bg-white text-[#0a2624] outline outline-2 outline-amber-400",
+                  "bg-white text-[#0a2624] outline outline-2 outline-amber-400 ring-2 ring-amber-300",
                 status === "answered" && "bg-amber-500 text-[#0a2624]",
                 status === "skipped" && "bg-stone-400 text-[#0a2624]",
                 status === "pending" && "bg-white/15 text-white/60",
