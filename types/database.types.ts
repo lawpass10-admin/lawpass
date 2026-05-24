@@ -107,6 +107,7 @@ export type Database = {
           common_pitfall: string
           concepts_and_skills: Json
           created_at: string
+          difficulty_level: string | null
           display_order: number
           full_explanation: string
           id: string
@@ -124,6 +125,7 @@ export type Database = {
           common_pitfall: string
           concepts_and_skills?: Json
           created_at?: string
+          difficulty_level?: string | null
           display_order: number
           full_explanation: string
           id?: string
@@ -141,6 +143,7 @@ export type Database = {
           common_pitfall?: string
           concepts_and_skills?: Json
           created_at?: string
+          difficulty_level?: string | null
           display_order?: number
           full_explanation?: string
           id?: string
@@ -349,8 +352,8 @@ export type Database = {
           final_score?: number | null
           id?: string
           last_activity_at?: string
-          paused_at?: string | null
           passed?: boolean | null
+          paused_at?: string | null
           question_list?: Json
           questions_answered?: number
           questions_correct?: number
@@ -701,6 +704,7 @@ export type Database = {
           concepts_and_skills: Json
           created_at: string
           created_by: string
+          difficulty_level: string | null
           external_id: string
           full_explanation: string
           id: string
@@ -724,6 +728,7 @@ export type Database = {
           concepts_and_skills?: Json
           created_at?: string
           created_by: string
+          difficulty_level?: string | null
           external_id: string
           full_explanation: string
           id?: string
@@ -747,6 +752,7 @@ export type Database = {
           concepts_and_skills?: Json
           created_at?: string
           created_by?: string
+          difficulty_level?: string | null
           external_id?: string
           full_explanation?: string
           id?: string
@@ -950,6 +956,14 @@ export type Database = {
       }
     }
     Functions: {
+      bump_exam_session_time: {
+        Args: {
+          p_new_status: string
+          p_session_id: string
+          p_window_token: string
+        }
+        Returns: Json
+      }
       complete_user_profile: {
         Args: {
           p_birth_date: string
@@ -967,7 +981,49 @@ export type Database = {
         Returns: string
       }
       has_active_subscription: { Args: never; Returns: boolean }
+      increment_session_counters: {
+        Args: { p_session_id: string; p_was_correct: boolean }
+        Returns: undefined
+      }
       is_admin: { Args: never; Returns: boolean }
+      record_bookmark_toggle: {
+        Args: {
+          p_angle_question_id?: string
+          p_question_type: string
+          p_source_question_group_id?: string
+        }
+        Returns: boolean
+      }
+      record_mistake: {
+        Args: {
+          p_angle_question_id?: string
+          p_question_type: string
+          p_source_question_group_id?: string
+        }
+        Returns: undefined
+      }
+      resume_exam_session: {
+        Args: { p_session_id: string; p_window_token: string }
+        Returns: Json
+      }
+      submit_exam_answer: {
+        Args: {
+          p_angle_question_id: string
+          p_is_correct: boolean
+          p_question_type: string
+          p_selected_choice_id: string
+          p_selected_letter: string
+          p_session_id: string
+          p_source_question_id: string
+          p_was_skipped: boolean
+          p_window_token: string
+        }
+        Returns: Json
+      }
+      submit_final_exam: {
+        Args: { p_session_id: string; p_window_token: string }
+        Returns: Json
+      }
     }
     Enums: {
       [_ in never]: never
