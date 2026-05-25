@@ -18,7 +18,6 @@ import {
   toggleBookmark,
 } from "@/app/(app)/practice/play/_actions";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
 import type {
   AngleQuestionRow,
   AttemptRow,
@@ -263,12 +262,11 @@ export function PracticeQuestion({
       : { ...view.question, choices: choicesFor360 };
 
   return (
-    <div className="-m-6">
-      {/* Phase 5 Header. Spans the route content area edge-to-edge so
-          the progress bar runs the full width. Internal padding matches
-          the rest of the (app) layout's main padding. */}
-      <header className="border-b border-border bg-background">
-        <div className="flex items-center justify-between gap-3 px-6 py-3">
+    <>
+      {/* Section A — Header card (Phase 9d hotfix): full-width across the
+          page-content area, NOT constrained to the centered column. */}
+      <div className="mb-4 overflow-hidden rounded-lg border bg-card">
+        <div className="flex items-center justify-between gap-3 px-5 py-3">
           {/* RTL natural-start cluster: breadcrumb */}
           <nav
             aria-label="ניווט"
@@ -297,7 +295,7 @@ export function PracticeQuestion({
               aria-label="סמן שאלה"
               aria-pressed={bookmarked}
               className={cn(
-                "flex h-8 w-8 items-center justify-center rounded-md border border-border bg-background transition-colors",
+                "flex h-8 w-8 items-center justify-center rounded-md border border-border bg-card transition-colors",
                 "hover:border-amber-400/60 hover:bg-amber-50",
                 "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50",
                 bookmarkPending && "opacity-50"
@@ -323,53 +321,51 @@ export function PracticeQuestion({
             </Button>
           </div>
         </div>
-        {/* Thin gold progress bar — full route width. */}
+        {/* Thin gold progress bar — runs the inner card width. Clipped
+            to the card's rounded corners via the wrapper's overflow-hidden. */}
         <div className="h-0.5 w-full bg-muted" aria-hidden>
           <div
             className="h-full bg-primary transition-all duration-300"
             style={{ width: `${progressPct}%` }}
           />
         </div>
-      </header>
+      </div>
 
-      {/* Question body */}
-      <div className="mx-auto w-full max-w-3xl px-6 py-6">
-        {/* Type + subtopic chip row */}
-        <div className="mb-4 flex flex-wrap items-center gap-2">
-          {view.kind === "source" ? (
-            <span className="rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-semibold text-amber-700">
-              שאלת מקור
-            </span>
-          ) : (
-            <span className="rounded-full bg-primary/10 px-2.5 py-0.5 text-xs font-semibold text-primary">
-              {view.breadcrumbType}
-            </span>
-          )}
-          {view.subtopicTitle && (
-            <span
-              dir="auto"
-              className="rounded-full bg-muted px-2.5 py-0.5 text-xs font-medium text-foreground/75"
-            >
-              {view.subtopicTitle}
-            </span>
-          )}
-        </div>
+      {/* Centered content column below the full-width header. */}
+      <div className="mx-auto w-full max-w-3xl space-y-4">
+      {/* Type + subtopic chip row — meta-context above the question card */}
+      <div className="flex flex-wrap items-center gap-2">
+        {view.kind === "source" ? (
+          <span className="rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-semibold text-amber-700">
+            שאלת מקור
+          </span>
+        ) : (
+          <span className="rounded-full bg-primary/10 px-2.5 py-0.5 text-xs font-semibold text-primary">
+            {view.breadcrumbType}
+          </span>
+        )}
+        {view.subtopicTitle && (
+          <span
+            dir="auto"
+            className="rounded-full bg-muted px-2.5 py-0.5 text-xs font-medium text-foreground/75"
+          >
+            {view.subtopicTitle}
+          </span>
+        )}
+      </div>
 
-        {/* Question text */}
-        <Card className="mb-4">
-          <CardContent className="pt-6">
-            <p
-              dir="auto"
-              className="whitespace-pre-wrap text-[17px] leading-relaxed"
-            >
-              {view.question.question_text}
-            </p>
-          </CardContent>
-        </Card>
+      {/* Section B — Question card (Phase 9d hotfix): own white card.
+          Holds the question text + (pre-reveal) timer-start row. */}
+      <div className="space-y-4 rounded-lg border bg-card p-6">
+        <p
+          dir="auto"
+          className="whitespace-pre-wrap text-[17px] leading-relaxed"
+        >
+          {view.question.question_text}
+        </p>
 
-        {/* Manual timer start row — only pre-reveal */}
         {!revealed && !timerStarted && (
-          <div className="mb-4 flex items-center justify-center gap-3">
+          <div className="flex items-center justify-center gap-3">
             <Button
               type="button"
               variant="outline"
@@ -384,25 +380,27 @@ export function PracticeQuestion({
             </span>
           </div>
         )}
+      </div>
 
-        {/* Choices */}
-        <div className="mb-4 flex flex-col gap-2">
-          {choicesForRender.map((c) => (
-            <Choice
-              key={c.letter}
-              letter={c.letter}
-              text={c.choice_text}
-              isCorrect={revealed ? c.is_correct : undefined}
-              selected={selectedLetter === c.letter}
-              revealed={revealed}
-              disabled={submitting}
-              onSelect={handleChoice}
-            />
-          ))}
-        </div>
+      {/* Section B' — Answer choices (Phase 9d hotfix): each Choice is
+          its own white card sibling, no shared wrapper. */}
+      <div className="space-y-3">
+        {choicesForRender.map((c) => (
+          <Choice
+            key={c.letter}
+            letter={c.letter}
+            text={c.choice_text}
+            isCorrect={revealed ? c.is_correct : undefined}
+            selected={selectedLetter === c.letter}
+            revealed={revealed}
+            disabled={submitting}
+            onSelect={handleChoice}
+          />
+        ))}
+      </div>
 
-        {/* Post-answer */}
-        {revealed && correctChoice && (
+      {/* Post-answer */}
+      {revealed && correctChoice && (
           <>
             <div
               className={cn(
@@ -503,7 +501,7 @@ export function PracticeQuestion({
         }}
         pending={advancing}
       />
-    </div>
+    </>
   );
 }
 

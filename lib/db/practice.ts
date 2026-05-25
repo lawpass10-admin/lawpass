@@ -161,6 +161,81 @@ function asStringArray(value: unknown): string[] {
 }
 
 // =============================================================================
+// getResumableSessionForUser — Slice 5 Phase P2
+// =============================================================================
+
+/**
+ * 24-hour cutoff for silent abandon. A session older than this is
+ * treated as stale on the next /practice or /practice/resume visit —
+ * flipped to abandoned and the user lands on the builder rather than a
+ * resume prompt for a session they no longer remember. Aligned with the
+ * dashboard hero card's `HERO_STALE_SESSION_MS`.
+ */
+const RESUME_STALE_SESSION_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * Resolves the user's resumable active practice session for the
+ * /practice and /practice/resume route gates.
+ *
+ *  - Returns the full session row if an active session exists AND its
+ *    `last_activity_at` is within the 24h staleness window.
+ *  - If an active session exists but is past the window, silently flips
+ *    it to `abandoned` (write side-effect) and returns `null`.
+ *  - Returns `null` when no active session exists.
+ *
+ * The write side-effect is intentional: keeping it inside one helper
+ * means /practice and /practice/resume share a single source of truth
+ * — neither route renders against a stale row, and the row only gets
+ * abandoned once per request.
+ */
+export async function getResumableSessionForUser(
+  supabase: SupabaseSsrClient,
+  userId: string
+): Promise<PracticeSessionRow | null> {
+  const { data, error } = await supabase
+    .from("practice_sessions")
+    .select(
+      "id, user_id, selected_chapters, selected_subtopics, source_count_target, angles_per_source, time_per_question_seconds, question_list, status, questions_answered, questions_correct, started_at, completed_at, last_activity_at"
+    )
+    .eq("user_id", userId)
+    .eq("status", "active")
+    .order("started_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (error || !data) return null;
+
+  const lastActivityMs = new Date(data.last_activity_at).getTime();
+  if (Date.now() - lastActivityMs > RESUME_STALE_SESSION_MS) {
+    await supabase
+      .from("practice_sessions")
+      .update({
+        status: "abandoned",
+        last_activity_at: new Date().toISOString(),
+      })
+      .eq("id", data.id);
+    return null;
+  }
+
+  return {
+    id: data.id,
+    user_id: data.user_id,
+    selected_chapters: asStringArray(data.selected_chapters),
+    selected_subtopics: asStringArray(data.selected_subtopics),
+    source_count_target: data.source_count_target,
+    angles_per_source: data.angles_per_source,
+    time_per_question_seconds: data.time_per_question_seconds,
+    question_list: parseQuestionList(data.question_list),
+    status: "active",
+    questions_answered: data.questions_answered,
+    questions_correct: data.questions_correct,
+    started_at: data.started_at,
+    completed_at: data.completed_at,
+    last_activity_at: data.last_activity_at,
+  };
+}
+
+// =============================================================================
 // getSessionForUser
 // =============================================================================
 

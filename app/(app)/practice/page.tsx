@@ -1,60 +1,15 @@
+import Link from "next/link";
+import { redirect } from "next/navigation";
+
 import { requireActiveSubscription } from "@/lib/auth/subscription-gate";
-import { getChaptersWithQuestionCount } from "@/lib/db/practice";
+import {
+  getChaptersWithQuestionCount,
+  getResumableSessionForUser,
+} from "@/lib/db/practice";
 import { createClient } from "@/lib/supabase/server";
 import { parsePracticeSetupPrefill } from "@/lib/urls";
 
 import { PracticeSetupForm } from "./_components/practice-setup-form";
-import { ResumePrompt } from "./_components/resume-prompt";
-
-// 24-hour cutoff for silent abandon. A session older than this is treated
-// as stale on the next /practice visit — flipped to abandoned and the
-// user lands on the setup form rather than a resume prompt for a session
-// they no longer remember. Plan §6 Phase 6 + plan review Part 3
-// decision #4.
-const STALE_SESSION_MS = 24 * 60 * 60 * 1000;
-
-/**
- * Returns the active practice_session for `userId`, or null. If the
- * session's last activity is older than the cutoff, the row is flipped
- * to abandoned and null is returned.
- *
- * Lives outside the page component because react-hooks/purity treats
- * Date.now() as impure inside a render function. Server Components ARE
- * render functions per that rule — but a plain async helper isn't, and
- * Date.now() is the right primitive for comparing against an ISO
- * timestamp read from the DB.
- */
-async function loadActiveSession(
-  supabase: Awaited<ReturnType<typeof createClient>>,
-  userId: string
-) {
-  const { data } = await supabase
-    .from("practice_sessions")
-    .select(
-      "id, started_at, last_activity_at, questions_answered, question_list"
-    )
-    .eq("user_id", userId)
-    .eq("status", "active")
-    .order("started_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-
-  if (!data) return null;
-
-  const lastActivityMs = new Date(data.last_activity_at).getTime();
-  if (Date.now() - lastActivityMs > STALE_SESSION_MS) {
-    await supabase
-      .from("practice_sessions")
-      .update({
-        status: "abandoned",
-        last_activity_at: new Date().toISOString(),
-      })
-      .eq("id", data.id);
-    return null;
-  }
-
-  return data;
-}
 
 /**
  * /practice — Slice 2 PracticeSetup entry point. Server Component.
@@ -62,15 +17,15 @@ async function loadActiveSession(
  * 1. `requireActiveSubscription()` re-runs the auth + subscription gate
  *    so the layout's Router Cache can't replay /practice for an expired
  *    user (same hardening as /dashboard).
- * 2. Loads the chapter + subtopic taxonomy used by the setup form.
+ * 2. Phase P2 — if an active in-flight session exists (and isn't stale
+ *    past the 24h cutoff), redirect to `/practice/resume`. The
+ *    resumable check lives in `lib/db/practice.ts:getResumableSessionForUser`
+ *    so /practice and /practice/resume share one source of truth and
+ *    one place to silently flip stale rows to `abandoned`.
+ * 3. Loads the chapter + subtopic taxonomy used by the setup form.
  *    Both tables' RLS allows any authenticated SELECT, so the SSR
  *    client is the right one (admin client would bypass that
  *    intentionally — Hardening Rule territory).
- * 3. Looks for an in-flight practice_session. If one exists and
- *    last_activity_at is within 24h, render the resume prompt INSTEAD
- *    of the setup form (the user opts in to either Continue or Start
- *    Over). If it's older than 24h, silently abandon it and proceed
- *    straight to the setup form.
  */
 export default async function PracticePage({
   searchParams,
@@ -79,6 +34,11 @@ export default async function PracticePage({
 }) {
   const { user } = await requireActiveSubscription();
   const supabase = await createClient();
+
+  // Resume gate — runs BEFORE taxonomy loading so we don't pay the
+  // chapters+subtopics round trips when we're about to redirect away.
+  const activeSession = await getResumableSessionForUser(supabase, user.id);
+  if (activeSession) redirect("/practice/resume");
 
   // Parse optional ?prefill from the "תרגול נוסף" CTA on the summary
   // page. Defensive: parsePracticeSetupPrefill drops invalid uuids /
@@ -94,13 +54,12 @@ export default async function PracticePage({
   }
   const initialValues = parsePracticeSetupPrefill(flatParams);
 
-  const [chapters, subtopicsResult, activeSession] = await Promise.all([
+  const [chapters, subtopicsResult] = await Promise.all([
     getChaptersWithQuestionCount(supabase),
     supabase
       .from("subtopics")
       .select("id, chapter_id, code, title, display_order")
       .order("display_order", { ascending: true }),
-    loadActiveSession(supabase, user.id),
   ]);
 
   if (subtopicsResult.error) {
@@ -119,13 +78,8 @@ export default async function PracticePage({
     // chapter (סדר דין אזרחי) — a missing chapters table means the seed
     // got wiped. Surface a friendly state rather than an empty grid.
     return (
-      <div className="mx-auto w-full max-w-3xl space-y-6">
-        <header className="space-y-1">
-          <p className="text-xs uppercase tracking-wider text-muted-foreground">
-            סשן תרגול חדש
-          </p>
-          <h1 className="text-3xl font-bold">בנה את הסשן שלך</h1>
-        </header>
+      <div className="mx-auto w-full max-w-[1480px] space-y-6">
+        <PageHead />
         <p className="text-sm text-muted-foreground">
           אין כרגע פרקים זמינים. נסה שוב מאוחר יותר או פנה לתמיכה.
         </p>
@@ -133,49 +87,58 @@ export default async function PracticePage({
     );
   }
 
-  if (activeSession) {
-    // Resume-prompt path. The next unanswered position is exactly
-    // questions_answered (positions are 0-indexed, dense). The
-    // /practice/play route segment is wired in Phase 3 — for now the
-    // link merely targets it.
-    const nextPosition = activeSession.questions_answered;
-    const totalQuestions = Array.isArray(activeSession.question_list)
-      ? activeSession.question_list.length
-      : 0;
-    return (
-      <div className="mx-auto w-full max-w-3xl space-y-6">
-        <header className="space-y-1">
-          <p className="text-xs uppercase tracking-wider text-muted-foreground">
-            סשן תרגול
-          </p>
-          <h1 className="text-3xl font-bold">בנה את הסשן שלך</h1>
-        </header>
-        <ResumePrompt
-          sessionId={activeSession.id}
-          startedAt={activeSession.started_at}
-          nextPosition={nextPosition}
-          totalQuestions={totalQuestions}
-        />
-      </div>
-    );
-  }
-
   return (
-    <div className="mx-auto w-full max-w-3xl space-y-6">
-      <header className="space-y-1">
-        <p className="text-xs uppercase tracking-wider text-muted-foreground">
-          סשן תרגול חדש
-        </p>
-        <h1 className="text-3xl font-bold">בנה את הסשן שלך</h1>
-        <p className="text-sm text-muted-foreground">
-          בחר נושאים, כמה שאלות מקור, וכמה זוויות לכל מקור.
-        </p>
-      </header>
+    <div className="mx-auto w-full max-w-[1480px] space-y-7">
+      <PageHead />
       <PracticeSetupForm
         chapters={chapters}
         subtopics={subtopics}
         initialValues={initialValues}
       />
     </div>
+  );
+}
+
+/**
+ * Slice 5 Phase P3 — Page head per `PracticeBuilder.html`. Replaces
+ * the old card-style header with breadcrumbs + a fluid H1 + sub-line
+ * sitting flush on the paper background. Server-rendered alongside
+ * the rest of the route — no client interactivity needed.
+ */
+function PageHead() {
+  return (
+    <header className="space-y-2">
+      <nav
+        aria-label="breadcrumbs"
+        className="flex items-center gap-2 font-heebo"
+        style={{ fontSize: 13, color: "var(--color-ink-muted)" }}
+      >
+        <Link
+          href="/dashboard"
+          className="font-semibold transition-colors hover:underline"
+          style={{ color: "var(--color-gold-deep)" }}
+        >
+          דשבורד
+        </Link>
+        <span aria-hidden>›</span>
+        <span>בניית תרגול</span>
+      </nav>
+      <h1
+        className="font-heebo font-extrabold tracking-tight"
+        style={{
+          fontSize: "clamp(28px, 2.4vw, 36px)",
+          color: "var(--color-navy-ink)",
+          lineHeight: 1.1,
+        }}
+      >
+        בנה את הסשן שלך
+      </h1>
+      <p
+        className="font-heebo font-normal"
+        style={{ fontSize: 15, color: "var(--color-ink-dim)" }}
+      >
+        בחר נושאים, כמה שאלות מקור, וכמה זוויות לכל מקור.
+      </p>
+    </header>
   );
 }

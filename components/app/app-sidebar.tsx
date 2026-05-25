@@ -1,15 +1,16 @@
 "use client";
 
 import {
-  AlertCircle,
   BarChart3,
   Bookmark,
-  BookOpen,
-  ClipboardList,
-  LayoutDashboard,
+  Gauge,
   LogOut,
+  Scale,
   Settings,
+  Timer,
+  XCircle,
 } from "lucide-react";
+import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
@@ -29,7 +30,6 @@ import {
   SidebarGroupLabel,
   SidebarHeader,
   SidebarMenu,
-  SidebarMenuBadge,
   SidebarMenuButton,
   SidebarMenuItem,
   useSidebar,
@@ -43,19 +43,26 @@ type SubscriptionData = {
   ends_at: string; // ISO timestamp
 } | null;
 
-/** plan_type → display label. Migration 0006 + 0001 use these snake-case
- *  values; the labels here are the human-facing Hebrew.
- *  TODO(slice-4): when Tranzila lands and plan_type may include more
- *  values (e.g. upgrade SKUs), keep this map in sync. */
+/** plan_type → display label + total days. The total-days mapping
+ *  powers the Phase 9c progress bar; subscriptions table currently
+ *  doesn't carry start_date so we derive from the plan SKU. */
 const PLAN_LABELS: Record<string, string> = {
   "3_months": "תוכנית 3 חודשים",
   "6_months": "תוכנית 6 חודשים",
 };
 
+const PLAN_TOTAL_DAYS: Record<string, number> = {
+  "3_months": 90,
+  "6_months": 180,
+};
+
+// Phase 14 polish — icons re-tuned to match the final prototype:
+// dashboard/practice/exam map to Gauge/Scale/Timer (legal-leaning,
+// thin stroke). Bookmarks + mistakes stay on Bookmark + XCircle.
 const NAV_LEARNING = [
-  { href: "/dashboard", label: "דשבורד", Icon: LayoutDashboard },
-  { href: "/practice", label: "תרגול", Icon: BookOpen },
-  { href: "/exam", label: "סימולציות בחינה", Icon: ClipboardList },
+  { href: "/dashboard", label: "דשבורד", Icon: Gauge },
+  { href: "/practice", label: "תרגול", Icon: Scale },
+  { href: "/exam", label: "סימולציות בחינה", Icon: Timer },
 ] as const;
 
 const NAV_LIBRARY = [
@@ -68,7 +75,7 @@ const NAV_LIBRARY = [
   {
     href: "/mistakes",
     label: "שאלות שטעיתי בהן",
-    Icon: AlertCircle,
+    Icon: XCircle,
     countKey: "mistakes",
   },
 ] as const;
@@ -77,25 +84,85 @@ function isPathActive(pathname: string, href: string): boolean {
   return pathname === href || pathname.startsWith(`${href}/`);
 }
 
-/** Active-state polish (per PM clarification): subtle blue tint + slight
- *  font-medium bump. Each active button also renders a thin amber-400
- *  vertical accent bar at the visual-end edge (RTL-left) — see the
- *  conditional <span aria-hidden /> rendered inside each active button.
- *  `relative` is required so the absolute-positioned accent bar pins to
- *  the button itself.
+/**
+ * Phase 9f — sidebar refactored to navy (`--sidebar: #1E3A8A`).
+ *   - Inactive: `text-white/70`, `font-medium`. Hover → subtle white
+ *     overlay (`bg-white/10`) + full white text.
+ *   - Active: translucent white overlay (`bg-white/15`) + pure white
+ *     text/icon + `font-semibold`. Gold bar pinned to the row's
+ *     visual-LEFT edge (RTL end) — opposite the dot. Gold dot lives
+ *     at the row's visual-RIGHT edge (RTL start) as the first flex
+ *     child, so it never collides with the count badge on the
+ *     visual-left.
  *
- *  `text-start` overrides the shadcn primitive's `text-left` (which is
- *  baked into sidebarMenuButtonVariants and would otherwise push label
- *  text to the visual-LEFT in RTL — opposite of where the icon sits).
- *  text-start is RTL-aware via CSS logical properties. */
-const ACTIVE_BUTTON_CLS =
-  "relative text-start data-[active=true]:bg-blue-50/60 data-[active=true]:font-medium dark:data-[active=true]:bg-blue-950/30";
+ * Icons inherit `currentColor` and track the text color automatically.
+ */
+const NAV_BUTTON_CLS = cn(
+  "relative text-start text-sm",
+  "[&_svg:not([class*='size-'])]:size-5",
+  // Inactive — translucent white, medium weight
+  "font-medium text-white/70",
+  // Hover (inactive) — gentle white overlay, full-white text
+  "hover:bg-white/10 hover:text-white",
+  // Active — Phase 15: instead of a flat white overlay, paint a navy→gold
+  // linear gradient so the active row reads as a warm "spotlight" lane.
+  // SVG also flips to gold (matches the dot + bar accents).
+  "data-active:bg-[linear-gradient(90deg,var(--color-navy-deep)_0%,rgba(201,161,73,0.08)_100%)]",
+  "data-active:text-white data-active:font-semibold",
+  "data-active:hover:text-white",
+  "data-active:[&_svg]:text-[#C9A149]"
+);
 
-function ActiveAccentBar() {
+const COUNT_BADGE_CLS = cn(
+  "ms-auto inline-flex items-center justify-center",
+  "min-w-6 h-6 px-1.5 rounded-full text-xs font-semibold tabular-nums",
+  // Inactive — translucent white pill
+  "bg-white/10 text-white/80",
+  // Active — clean white pill with navy text
+  "group-data-active/menu-button:bg-white group-data-active/menu-button:text-[#1E3A8A]"
+);
+
+const SECTION_LABEL_CLS = cn(
+  "px-3 pt-2.5 pb-1.5",
+  "text-[10px] font-bold uppercase tracking-[0.16em] text-white/45"
+);
+
+/**
+ * Phase 16b — Gold bar pinned to the active row's INNER LEFT edge
+ * (visually-left in RTL — the side facing the dashboard content).
+ * Previously the bar was at `-left-[22px]` and extended past the
+ * sidebar bounds into the page gutter — PM wanted it inside the
+ * sidebar instead. Sits flush against the menu-item's left edge with
+ * a thin 4px width so it doesn't crowd the icon/label content.
+ */
+function ActiveBar() {
   return (
     <span
       aria-hidden
-      className="pointer-events-none absolute top-1.5 bottom-1.5 left-0 w-[2px] rounded-full bg-amber-400"
+      className="pointer-events-none absolute left-0 top-1/2 h-7 w-[4px] -translate-y-1/2 rounded-l-[3px] bg-[#C9A149] z-10"
+      style={{ boxShadow: "0 0 12px rgba(201, 161, 73, 0.55)" }}
+    />
+  );
+}
+
+/**
+ * Phase 14 — Inset gold dot (8×8) on the row's visual-RIGHT edge
+ * (RTL start). Absolute-positioned so it doesn't shift the icon/label
+ * flex layout, and pinned with `inset-inline-end: 10px` so the dot
+ * sits ~10px from the row's start edge regardless of writing
+ * direction. Soft gold glow matches the outer bar.
+ */
+function ActiveDot() {
+  return (
+    <span
+      aria-hidden
+      className="pointer-events-none absolute size-2 rounded-full bg-[#C9A149]"
+      style={{
+        insetInlineEnd: 10,
+        top: "50%",
+        transform: "translateY(-50%)",
+        boxShadow: "0 0 10px rgba(201, 161, 73, 0.7)",
+      }}
     />
   );
 }
@@ -145,35 +212,40 @@ export function AppSidebar({
     <Sidebar side="right" collapsible="icon">
       <SidebarHeaderArea />
 
-      <SidebarContent>
+      <SidebarContent className="pt-0">
         {/* קבוצה 1 — לימוד (SPEC §7.0.1) */}
         <SidebarGroup>
-          <SidebarGroupLabel>לימוד</SidebarGroupLabel>
-          <SidebarMenu>
+          <SidebarGroupLabel className={SECTION_LABEL_CLS}>
+            לימוד
+          </SidebarGroupLabel>
+          <SidebarMenu className="gap-1.5">
             {NAV_LEARNING.map((item) => {
               const active = isPathActive(pathname, item.href);
               const { Icon } = item;
               return (
-                <SidebarMenuItem key={item.href}>
+                <SidebarMenuItem key={item.href} className="relative">
                   <SidebarMenuButton
                     render={<Link href={item.href} />}
                     isActive={active}
-                    className={ACTIVE_BUTTON_CLS}
+                    className={NAV_BUTTON_CLS}
                   >
-                    <Icon />
+                    <Icon strokeWidth={1.5} />
                     <span>{item.label}</span>
-                    {active && <ActiveAccentBar />}
                   </SidebarMenuButton>
+                  {active ? <ActiveDot /> : null}
+                  {active ? <ActiveBar /> : null}
                 </SidebarMenuItem>
               );
             })}
           </SidebarMenu>
         </SidebarGroup>
 
-        {/* קבוצה 2 — המאגר שלי (SPEC §7.0.1, flat) */}
+        {/* קבוצה 2 — המאגר שלי */}
         <SidebarGroup>
-          <SidebarGroupLabel>המאגר שלי</SidebarGroupLabel>
-          <SidebarMenu>
+          <SidebarGroupLabel className={SECTION_LABEL_CLS}>
+            המאגר שלי
+          </SidebarGroupLabel>
+          <SidebarMenu className="gap-1.5">
             {NAV_LIBRARY.map((item) => {
               const active = isPathActive(pathname, item.href);
               const { Icon } = item;
@@ -182,47 +254,43 @@ export function AppSidebar({
                   ? bookmarksCount
                   : mistakesCount;
               return (
-                <SidebarMenuItem key={item.href}>
+                <SidebarMenuItem key={item.href} className="relative">
                   <SidebarMenuButton
                     render={<Link href={item.href} />}
                     isActive={active}
-                    className={ACTIVE_BUTTON_CLS}
+                    className={NAV_BUTTON_CLS}
                   >
-                    <Icon />
+                    <Icon strokeWidth={1.5} />
                     <span>{item.label}</span>
-                    {active && <ActiveAccentBar />}
+                    {count > 0 ? (
+                      <span className={COUNT_BADGE_CLS}>{count}</span>
+                    ) : null}
                   </SidebarMenuButton>
-                  {/* Hide the badge when 0 to avoid showing a misleading
-                      "0" pill for users who haven't bookmarked / made
-                      mistakes yet (Slice 1 has no practice flow). */}
-                  {count > 0 && (
-                    <SidebarMenuBadge>{count}</SidebarMenuBadge>
-                  )}
+                  {active ? <ActiveDot /> : null}
+                  {active ? <ActiveBar /> : null}
                 </SidebarMenuItem>
               );
             })}
           </SidebarMenu>
         </SidebarGroup>
 
-        {/* Standalone — סטטיסטיקה.
-            SPEC §7.0.1 v1.3 had removed Statistics from MVP, but Yoav
-            confirmed it's back in scope (basic analytics only — see
-            placeholder page note). */}
+        {/* Standalone — סטטיסטיקה */}
         <SidebarGroup>
-          <SidebarMenu>
+          <SidebarMenu className="gap-1.5">
             {(() => {
               const active = isPathActive(pathname, "/statistics");
               return (
-                <SidebarMenuItem>
+                <SidebarMenuItem className="relative">
                   <SidebarMenuButton
                     render={<Link href="/statistics" />}
                     isActive={active}
-                    className={ACTIVE_BUTTON_CLS}
+                    className={NAV_BUTTON_CLS}
                   >
-                    <BarChart3 />
+                    <BarChart3 strokeWidth={1.5} />
                     <span>סטטיסטיקה</span>
-                    {active && <ActiveAccentBar />}
                   </SidebarMenuButton>
+                  {active ? <ActiveDot /> : null}
+                  {active ? <ActiveBar /> : null}
                 </SidebarMenuItem>
               );
             })()}
@@ -230,7 +298,11 @@ export function AppSidebar({
         </SidebarGroup>
       </SidebarContent>
 
-      <SidebarFooter>
+      {/* Phase 14b: pb-4 ensures the subscription card has breathing
+          room on the mobile Sheet variant; shadcn pins the footer flex
+          slot to the bottom but small-screen Safari sometimes clips
+          the last few px when the URL bar collapses. */}
+      <SidebarFooter className="pb-4">
         {subscription && <SubscriptionCard subscription={subscription} />}
         <UserAreaDropdown
           fullName={profileFullName}
@@ -241,29 +313,47 @@ export function AppSidebar({
   );
 }
 
-/** "תרגול מהיר" header CTA. Uses useSidebar() to hide itself when the
- *  sidebar is collapsed to its icon rail — a full-text button doesn't
- *  fit in the icon column. The dashboard / nav menu items stay reachable
- *  from the icon rail with their lucide icons. */
+/**
+ * Phase 9c B3: the "תרגול מהיר" CTA is gone. Sidebar header now hosts
+ * the LawPass logo (gold wordmark + graduation cap). Hidden when the
+ * sidebar is collapsed to the icon rail. Source: `public/lawpass-logo.png`
+ * (1536×1024 transparent PNG; next/image handles optimization).
+ */
 function SidebarHeaderArea() {
   const { state } = useSidebar();
   if (state === "collapsed") {
     return <SidebarHeader />;
   }
   return (
-    <SidebarHeader>
+    <SidebarHeader className="pb-0">
       <Link
-        href="/practice"
-        className={cn(
-          "flex h-9 items-center justify-center rounded-md bg-primary px-3 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
-        )}
+        href="/dashboard"
+        className="flex items-center justify-center px-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40 rounded-md"
+        aria-label="LawPass — חזרה לדשבורד"
       >
-        תרגול מהיר
+        <Image
+          src="/lawpass-logo-v4.png"
+          alt="LawPass"
+          width={280}
+          height={187}
+          priority
+          className="h-auto w-56"
+        />
       </Link>
     </SidebarHeader>
   );
 }
 
+/**
+ * Phase 9f — subscription card recolored for the navy sidebar.
+ * Dark-navy gradient surface + gold accent radial in the corner +
+ * gold label / gold progress fill. Same data wiring as before; only
+ * the visual layer changes.
+ *
+ * `totalDays` derived from plan_type (no start_date column on the
+ * subscriptions row). Width = daysRemaining / totalDays * 100 — bar
+ * shrinks as the subscription wears down.
+ */
 function SubscriptionCard({
   subscription,
 }: {
@@ -271,42 +361,77 @@ function SubscriptionCard({
 }) {
   const endsAt = new Date(subscription.ends_at);
   const days = daysUntil(endsAt);
-  const isWarning = days <= 7;
+  const totalDays = PLAN_TOTAL_DAYS[subscription.plan_type] ?? Math.max(days, 1);
+  const pct = Math.min(100, Math.max(0, (days / totalDays) * 100));
   const planLabel =
     PLAN_LABELS[subscription.plan_type] ?? subscription.plan_type;
 
   return (
     <div
-      className={cn(
-        "rounded-md border p-3 text-xs",
-        // Active = subtle primary tint. Within 7 days = amber warning.
-        // Red/expired state deferred (unreachable in Slice 1 — middleware
-        // bounces expired-sub users to /pricing before the sidebar renders).
-        isWarning
-          ? "border-amber-500/50 bg-amber-500/10"
-          : "border-primary/30 bg-primary/5"
-      )}
+      className="relative overflow-hidden rounded-lg"
+      style={{
+        background: "linear-gradient(160deg, #15243A 0%, #0F2A4A 100%)",
+        padding: 14,
+      }}
     >
-      <div className="font-medium">המנוי שלך</div>
-      <div className="mt-1">{planLabel}</div>
-      <div className={cn("mt-1", isWarning && "font-medium text-amber-600")}>
-        {days} ימים נותרו
+      {/* Gold radial accent — top inline-end corner (visual top-left in RTL). */}
+      <span
+        aria-hidden
+        className="pointer-events-none absolute"
+        style={{
+          insetInlineEnd: -20,
+          top: -20,
+          width: 80,
+          height: 80,
+          background:
+            "radial-gradient(circle, rgba(201,161,73,0.18) 0%, transparent 70%)",
+        }}
+      />
+      <div className="relative mb-2 flex items-baseline justify-between">
+        <span
+          style={{
+            fontSize: 11,
+            color: "rgba(201, 161, 73, 0.95)",
+            fontWeight: 600,
+            letterSpacing: "0.04em",
+            textTransform: "uppercase",
+          }}
+        >
+          המנוי שלך
+        </span>
+        <span
+          className="tabular-nums text-white"
+          style={{ fontSize: 18, fontWeight: 700 }}
+        >
+          {days} ימים
+        </span>
       </div>
-      <div className="mt-1 text-muted-foreground">
-        עד {formatDateHe(endsAt)}
+      <div
+        className="relative mb-2 h-1.5 overflow-hidden rounded-full"
+        style={{ background: "rgba(255, 255, 255, 0.12)" }}
+        aria-label={`${Math.round(pct)}% מהמנוי נותרו`}
+      >
+        <div
+          className="h-full rounded-full transition-all"
+          style={{ width: `${pct}%`, background: "#C9A149" }}
+        />
+      </div>
+      <div
+        className="relative flex justify-between"
+        style={{ fontSize: 12, color: "rgba(255, 255, 255, 0.70)" }}
+      >
+        <span>{planLabel}</span>
+        <span className="tabular-nums">{formatDateHe(endsAt)}</span>
       </div>
     </div>
   );
 }
 
-/** User-area block at the sidebar bottom. Click anywhere on the row opens
- *  a dropdown above it (side="top") with two items: הגדרות (Link to
- *  /account, with Settings gear icon) and התנתק (calls signOutAction,
- *  with LogOut icon).
- *
- *  signOutAction is a Server Action — invoked via DropdownMenuItem onClick
- *  rather than form action. The action's redirect("/login") is propagated
- *  by Next.js's client-side navigation handling. */
+/**
+ * Phase 9c — typography bumped to keep parity with the larger nav text.
+ * Name reads at `text-base` instead of `text-sm`; email keeps `text-xs`
+ * for visual hierarchy.
+ */
 function UserAreaDropdown({
   fullName,
   email,
@@ -318,16 +443,24 @@ function UserAreaDropdown({
     <DropdownMenu>
       <DropdownMenuTrigger
         className={cn(
-          "flex w-full items-center gap-2 rounded-md p-2 text-start outline-none transition-colors",
-          "hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring/50"
+          "flex w-full items-center gap-2.5 rounded-md p-2 text-start outline-none transition-colors",
+          "hover:bg-white/10 focus-visible:ring-2 focus-visible:ring-white/30"
         )}
       >
-        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary text-xs font-medium text-primary-foreground">
+        <div
+          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border bg-white/10 text-sm font-medium text-white"
+          style={{ borderColor: "rgba(201, 161, 73, 0.4)" }}
+        >
           {initials(fullName)}
         </div>
         <div className="flex min-w-0 flex-col items-start text-start">
-          <div className="truncate text-sm font-medium">{fullName}</div>
-          <div className="truncate text-xs text-muted-foreground" dir="ltr">
+          <div className="truncate text-base font-medium leading-tight text-white">
+            {fullName}
+          </div>
+          <div
+            className="truncate text-xs leading-tight text-white/60"
+            dir="ltr"
+          >
             {email}
           </div>
         </div>

@@ -1,6 +1,5 @@
-import { requireActiveSubscription } from "@/lib/auth/subscription-gate";
+import { redirect } from "next/navigation";
 
-export default async function StatisticsPage() {
-  await requireActiveSubscription();
-  return <div>סטטיסטיקה (Slice 5 — אנליטיקה בסיסית בלבד ב-MVP)</div>;
+export default function StatisticsPage() {
+  redirect("/dashboard");
 }

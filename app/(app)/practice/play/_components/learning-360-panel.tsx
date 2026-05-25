@@ -87,7 +87,7 @@ export function Learning360Panel({
   correctChoice,
 }: Learning360PanelProps) {
   return (
-    <div className="mt-6 rounded-xl border border-border bg-background p-6 shadow-sm">
+    <div className="rounded-xl border border-border bg-card p-6 shadow-sm">
       <header className="mb-6 flex items-center gap-2.5 border-b border-border pb-4">
         <Compass className="size-5 text-primary" aria-hidden />
         <h3 className="text-lg font-semibold">פירוט מלא — שיטת ה־360°</h3>

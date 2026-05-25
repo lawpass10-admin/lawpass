@@ -56,8 +56,9 @@ export function Choice({
       className={cn(
         "grid w-full grid-cols-[auto_1fr_auto] items-center gap-3.5 rounded-lg border px-4 py-3 text-start transition-colors",
         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50",
-        // Default / unrevealed
-        !revealed && !selected && "border-border bg-background hover:border-primary/40 hover:bg-muted/40",
+        // Default / unrevealed — Phase 9d hotfix: bg-card (white) so each
+        // choice reads as its own white card on the gray page bg.
+        !revealed && !selected && "border-border bg-card hover:border-primary/40 hover:bg-muted/40",
         !revealed && selected && "border-primary bg-primary/10 font-medium",
         // Revealed states
         showCorrect && "border-emerald-500 bg-emerald-50 dark:bg-emerald-950/30",

@@ -4,6 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev --webpack",
+    "typecheck": "tsc --noEmit",
     "build": "bash scripts/check-db-url.sh && next build",
     "start": "next start",
     "lint": "eslint",

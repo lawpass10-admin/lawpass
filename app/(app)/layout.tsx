@@ -3,6 +3,7 @@ import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 
 import { AppSidebar } from "@/components/app/app-sidebar";
+import { MobileTopBar } from "@/components/app/mobile-top-bar";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { createClient } from "@/lib/supabase/server";
 
@@ -141,7 +142,8 @@ export default async function AppLayout({
         mistakesCount={mistakesCount}
       />
       <SidebarInset>
-        <main className="flex-1 p-6">{children}</main>
+        <MobileTopBar />
+        <main className="flex-1 p-4 md:p-6">{children}</main>
       </SidebarInset>
     </SidebarProvider>
   );
