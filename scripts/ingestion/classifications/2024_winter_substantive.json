@@ -1,0 +1,65 @@
+{
+  "_about": "Per-question classification for the 2024 winter substantive (פברואר 2024, חלק ג', דין מהותי) batch. Each entry maps the source question to a (chapter_code, subtopic_code) in the substantive-track taxonomy from migration 20260526000001. needs_review=true flags taxonomy gaps where the question's real subject area doesn't have a clean home.",
+  "_taxonomy_source": "chapters.track='substantive', see migration 20260526000001_add_substantive_law_taxonomy.sql",
+  "_batch": {
+    "exam_year": 2024,
+    "exam_season": "winter",
+    "exam_part": 2,
+    "track": "substantive",
+    "external_id_prefix": "2024-W-S"
+  },
+  "_drops": [
+    {
+      "external_id": "2024-W-S-Q20",
+      "reason": "exact-content duplicate of Q18 (same question_text + identical 4 source_choices, just different position in the docx). User flagged this batch has a content-level dup."
+    },
+    {
+      "external_id": "2024-W-S-Q23-duplicate-marker",
+      "reason": "second occurrence of the Q23 fence in the 21-40 docx — dropped by normalize.py's consecutive-marker dedup."
+    },
+    {
+      "external_id": "2024-W-S-Q27",
+      "reason": "JSON block is structurally malformed beyond automatic repair (missing closing `\"` + `,` before the next key in references_list area). Skipped per the 'don't fail the whole run' rule."
+    }
+  ],
+  "classifications": {
+    "2024-W-S-Q01": { "chapter": "corporate",            "subtopic": "companies_formation",            "needs_review": false, "note": "Class A vs class B shareholders; article-amendment harming a class — companies act §20" },
+    "2024-W-S-Q02": { "chapter": "property",             "subtopic": "pledge",                          "needs_review": false, "note": "Pledge on a car, double-financing — pledge law" },
+    "2024-W-S-Q03": { "chapter": "contracts",            "subtopic": "lease_bailment",                  "needs_review": false, "note": "Apartment lease, extension option — lease law" },
+    "2024-W-S-Q04": { "chapter": "administrative",       "subtopic": "planning_building",               "needs_review": false, "note": "Town-planning compensation for damage from a plan" },
+    "2024-W-S-Q05": { "chapter": "contracts",            "subtopic": "insurance_contract",              "needs_review": false, "note": "Property-insurance burden of proof" },
+    "2024-W-S-Q06": { "chapter": "criminal_substantive", "subtopic": "sentencing",                      "needs_review": true,  "note": "Youth (Juvenile Court) sentencing — 'נוער' is its own legal area, not directly a substantive subtopic. Sentencing is closest." },
+    "2024-W-S-Q07": { "chapter": "contracts",            "subtopic": "unjust_enrichment",               "needs_review": false, "note": "Hotel-pool free-use → unjust enrichment claim" },
+    "2024-W-S-Q08": { "chapter": "ethics",               "subtopic": "fiduciary_privilege_conflict",    "needs_review": true,  "note": "Recording court proceedings by prosecutor — between ethics-conflict and procedural court rules" },
+    "2024-W-S-Q09": { "chapter": "family_inheritance",   "subtopic": "inheritance_will",                "needs_review": true,  "note": "International private law dimension (London assets, Israeli resident) — has no direct subtopic; primary topic is inheritance" },
+    "2024-W-S-Q10": { "chapter": "criminal_substantive", "subtopic": "general_part_elements",           "needs_review": false, "note": "Attempted offense (impossible attempt), mistake of fact/law — criminal general part" },
+    "2024-W-S-Q11": { "chapter": "tax",                  "subtopic": "real_estate_tax",                 "needs_review": false, "note": "Capital-gains tax (מס שבח) on inherited apartment" },
+    "2024-W-S-Q12": { "chapter": "criminal_substantive", "subtopic": "sentencing",                      "needs_review": false, "note": "Suspended sentence (מאסר על תנאי) activation rules" },
+    "2024-W-S-Q13": { "chapter": "ethics",               "subtopic": "fiduciary_privilege_conflict",    "needs_review": false, "note": "Conflict of interest between two clients of same lawyer" },
+    "2024-W-S-Q14": { "chapter": "labor",                "subtopic": "workplace_harassment",            "needs_review": false, "note": "Sexual harassment at work, statute of limitations, civil claim" },
+    "2024-W-S-Q15": { "chapter": "ethics",               "subtopic": "licensing_bar_membership",        "needs_review": false, "note": "Lawyer's death + appointed custodian — bar association governance" },
+    "2024-W-S-Q16": { "chapter": "family_inheritance",   "subtopic": "inheritance_will",                "needs_review": false, "note": "Coercion / undue influence in a will — invalidity" },
+    "2024-W-S-Q17": { "chapter": "ethics",               "subtopic": "fees_client_funds_advertising",   "needs_review": true,  "note": "Lawyer-client disagreement, termination of representation — ethics; subtopic is approximate (no 'termination' subtopic)" },
+    "2024-W-S-Q18": { "chapter": "corporate",            "subtopic": "fiduciary_duties",                "needs_review": false, "note": "Director Sahar wants to prevent breach by officer Barak — director duties" },
+    "2024-W-S-Q19": { "chapter": "criminal_substantive", "subtopic": "sentencing",                      "needs_review": false, "note": "Crediting time in detention + electronic-tag house arrest against sentence" },
+    "2024-W-S-Q21": { "chapter": "criminal_substantive", "subtopic": "sentencing",                      "needs_review": false, "note": "Undertaking to avoid offense + breach (התחייבות להימנע)" },
+    "2024-W-S-Q22": { "chapter": "contracts",            "subtopic": "standard_contracts",              "needs_review": true,  "note": "Internet purchase, cancellation right — consumer-protection law is the real subject; no direct substantive subtopic for it" },
+    "2024-W-S-Q23": { "chapter": "contracts",            "subtopic": "insurance_contract",              "needs_review": false, "note": "Subrogation (תחלוף) in insurance" },
+    "2024-W-S-Q24": { "chapter": "contracts",            "subtopic": "insurance_contract",              "needs_review": false, "note": "Insurance-claim handover by municipality to its insurer" },
+    "2024-W-S-Q25": { "chapter": "contracts",            "subtopic": "insurance_contract",              "needs_review": true,  "note": "Compulsory motor-vehicle insurance; could also belong in a tort chapter (PLT'D) which we don't have" },
+    "2024-W-S-Q26": { "chapter": "contracts",            "subtopic": "limitation",                      "needs_review": false, "note": "Statute of limitations (התיישנות) after dismissal" },
+    "2024-W-S-Q28": { "chapter": "contracts",            "subtopic": "agency",                          "needs_review": true,  "note": "Trustee buying from trust assets — 'נאמנות' (trust) has no direct subtopic; agency (שליחות) is the closest" },
+    "2024-W-S-Q29": { "chapter": "corporate",            "subtopic": "partnerships",                    "needs_review": false, "note": "Limited public partnership, gas-exploration firm, directors" },
+    "2024-W-S-Q30": { "chapter": "corporate",            "subtopic": "companies_formation",             "needs_review": false, "note": "Founders' agreement, anti-dilution protection" },
+    "2024-W-S-Q31": { "chapter": "contracts",            "subtopic": "construction_contract",           "needs_review": true,  "note": "Pre-construction apartment buyer, disclosure duty in negotiations — sits between contracts/general_part and construction_contract" },
+    "2024-W-S-Q32": { "chapter": "ethics",               "subtopic": "fiduciary_privilege_conflict",    "needs_review": false, "note": "Attorney-client privilege scope, joint representation" },
+    "2024-W-S-Q33": { "chapter": "family_inheritance",   "subtopic": "inheritance_will",                "needs_review": false, "note": "Will provisions, 'יורש אחר יורש' (heir-after-heir) clause" },
+    "2024-W-S-Q34": { "chapter": "contracts",            "subtopic": "sale",                            "needs_review": false, "note": "Electric-car sale, classification of obligations (כפול/מותנה)" },
+    "2024-W-S-Q35": { "chapter": "contracts",            "subtopic": "general_part",                    "needs_review": true,  "note": "Elderly woman injured in road accident, compensation for care — TORT (נזיקין / פלת'ד) is the real subject; no substantive tort subtopic exists. Defaulted to contracts/general_part as the closest civil-obligations umbrella." },
+    "2024-W-S-Q36": { "chapter": "property",             "subtopic": "condominiums",                    "needs_review": false, "note": "Condominium, roof-tarring expenses, owner shares" },
+    "2024-W-S-Q37": { "chapter": "ethics",               "subtopic": "fiduciary_privilege_conflict",    "needs_review": true,  "note": "Family-law lawyer + client disclosure (אלימות במשפחה) — ethics privilege/conflict; could also fit ethics/disciplinary_law" },
+    "2024-W-S-Q38": { "chapter": "corporate",            "subtopic": "fiduciary_duties",                "needs_review": true,  "note": "Vegetable-company case — exact angle unclear from question text alone (could be officer duties or shareholder rights)" },
+    "2024-W-S-Q39": { "chapter": "property",             "subtopic": "real_estate",                     "needs_review": false, "note": "Easement (זיקת הנאה) over neighbor's land" },
+    "2024-W-S-Q40": { "chapter": "administrative",       "subtopic": "reasonableness_proportionality",  "needs_review": true,  "note": "Constitutional rights restriction (freedom of occupation / movement). 'Constitutional law' has no substantive home; admin/proportionality is the closest doctrinal fit." }
+  }
+}

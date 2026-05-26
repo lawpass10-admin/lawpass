@@ -39,6 +39,14 @@ yarn-error.log*
 # supabase local config
 supabase/.temp/
 
+# ingestion pipeline working dir — downloaded .docx, parsed JSON, generated SQL.
+# Scripts under scripts/ingestion/ are committed; the per-batch artifacts under
+# scripts/ingestion/tmp/ are local-only.
+scripts/ingestion/tmp/
+
+# python bytecode cache (from running scripts/ingestion/*.py)
+__pycache__/
+
 # vercel
 .vercel
 
