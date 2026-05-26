@@ -1,0 +1,70 @@
+{
+  "_about": "Per-question classification for the 2023 summer substantive (קיץ 2023, חלק ג', דין מהותי) batch. Each entry maps the source question to a (chapter_code, subtopic_code) in the substantive-track taxonomy (post-Phase 4: 10 chapters incl. torts). needs_review=true flags taxonomy gaps or legitimate cross-cutting topics that don't have a single clean home.",
+  "_taxonomy_source": "chapters.track='substantive' after Phase 4 (torts + youth_law + consumer_protection + trusts + constitutional_rights)",
+  "_batch": {
+    "exam_year": 2023,
+    "exam_season": "summer",
+    "exam_part": 2,
+    "track": "substantive",
+    "external_id_prefix": "2023-S-S"
+  },
+  "_drops": [
+    {
+      "external_id": "2023-S-S-Q09",
+      "reason": "JSON block structurally malformed beyond automatic repair (Invalid \\escape inside a string at line 270). Source needs Sharon's re-export."
+    },
+    {
+      "external_id": "2023-S-S-Q13",
+      "reason": "JSON block structurally malformed beyond automatic repair (Expecting ',' delimiter at line 104 — unbalanced punctuation). Source needs Sharon's re-export."
+    },
+    {
+      "external_id": "2023-S-S-Q10",
+      "reason": "Not present in the source docx at all — file 1-20 contains Q1..Q9 + Q11..Q13 + Q15..Q20. Source needs Sharon's clarification (incomplete batch?)."
+    },
+    {
+      "external_id": "2023-S-S-Q14",
+      "reason": "Not present in the source docx at all (see Q10 note)."
+    },
+    {
+      "external_id": "2023-S-S-Q24",
+      "reason": "Not present in the source docx at all — file 21-40 contains Q21..Q23 + Q25..Q40. Source needs Sharon's clarification."
+    }
+  ],
+  "classifications": {
+    "2023-S-S-Q01": { "chapter": "torts",                "subtopic": "negligence",             "needs_review": false, "note": "Medical negligence + autonomy violation (biopsy without consent during another procedure)" },
+    "2023-S-S-Q02": { "chapter": "contracts",            "subtopic": "limitation",             "needs_review": false, "note": "Statute of limitations — discovery rule (סעיף 9 חוק ההתיישנות, surgeon's apology by SMS 8 years later)" },
+    "2023-S-S-Q03": { "chapter": "corporate",            "subtopic": "companies_formation",    "needs_review": false, "note": "Public company articles amendment — entrenched provisions, weighted majority" },
+    "2023-S-S-Q04": { "chapter": "corporate",            "subtopic": "piercing_veil",          "needs_review": false, "note": "Exact match — when may court pierce the veil" },
+    "2023-S-S-Q05": { "chapter": "corporate",            "subtopic": "fiduciary_duties",       "needs_review": false, "note": "CEO + Chairman of the board dual role — officer duties and combined-role rules" },
+    "2023-S-S-Q06": { "chapter": "contracts",            "subtopic": "limitation",             "needs_review": false, "note": "Statute of limitations — accident + phone damage timeline; pure limitation-period question per the source review_note" },
+    "2023-S-S-Q07": { "chapter": "corporate",            "subtopic": "securities_disclosure",  "needs_review": false, "note": "Board delegation re bond issuance under employee comp plan — securities issuance" },
+    "2023-S-S-Q08": { "chapter": "corporate",            "subtopic": "fiduciary_duties",       "needs_review": false, "note": "Articles exempting officers from breach-of-care; unlawful distribution; creditor suing directors" },
+    "2023-S-S-Q11": { "chapter": "criminal_substantive", "subtopic": "general_part_elements",  "needs_review": false, "note": "Accomplice liability (Yaakov aiding Dan to pollute Kinneret water) — criminal general part / parties to offense" },
+    "2023-S-S-Q12": { "chapter": "criminal_substantive", "subtopic": "general_part_elements",  "needs_review": false, "note": "Attempted offense + voluntary withdrawal (חזרה מכוונת מן הניסיון)" },
+    "2023-S-S-Q15": { "chapter": "criminal_substantive", "subtopic": "general_part_elements",  "needs_review": false, "note": "Interpretation of an offense element under חוק טיפול בחולי נפש (general principles of criminal interpretation)" },
+    "2023-S-S-Q16": { "chapter": "administrative",       "subtopic": "planning_building",      "needs_review": true,  "note": "Section 197 claim for plan damage to property — primarily planning law; tort/nuisance overlap noted in source review_note" },
+    "2023-S-S-Q17": { "chapter": "criminal_substantive", "subtopic": "sentencing",             "needs_review": false, "note": "Criminal court ordering compensation to victim's children under פקודת העונשין — restitution/sentencing" },
+    "2023-S-S-Q18": { "chapter": "contracts",            "subtopic": "gift",                   "needs_review": false, "note": "Father's written promise of a phone to son if grades improve — חוק המתנה (gift law) formation" },
+    "2023-S-S-Q19": { "chapter": "property",             "subtopic": "chattels_lost_found",    "needs_review": true,  "note": "Market overt (תקנת השוק) on a used piano — falls under chattels chapter; the dedicated 'market overt' framing isn't a subtopic" },
+    "2023-S-S-Q20": { "chapter": "contracts",            "subtopic": "general_part",           "needs_review": false, "note": "Pre-contractual good faith / breakdown of apartment negotiations — חוזים חלק כללי" },
+    "2023-S-S-Q21": { "chapter": "tax",                  "subtopic": "real_estate_tax",        "needs_review": false, "note": "Capital-gains tax (מס שבח) on multiple apartments + linear computation" },
+    "2023-S-S-Q22": { "chapter": "contracts",            "subtopic": "general_part",           "needs_review": false, "note": "Standard for good-faith review in pre-contract negotiations — objective vs subjective" },
+    "2023-S-S-Q23": { "chapter": "contracts",            "subtopic": "sale",                   "needs_review": false, "note": "Real estate sale 'As Is' clause, hidden permit issue — sale-of-goods/real-property + disclosure" },
+    "2023-S-S-Q25": { "chapter": "torts",                "subtopic": "nuisance_trespass",      "needs_review": true,  "note": "Trespass + unjust enrichment combo (company dumped earth on Ehud's land). Primary cause of action is trespass; UE overlap" },
+    "2023-S-S-Q26": { "chapter": "family_inheritance",   "subtopic": "inheritance_will",       "needs_review": false, "note": "Cohabitee (ידועה בציבור) inheritance rights re shared apartment — sec. 55 חוק הירושה" },
+    "2023-S-S-Q27": { "chapter": "family_inheritance",   "subtopic": "inheritance_will",       "needs_review": false, "note": "Mutual will (צוואה הדדית) + clause prohibiting unilateral revocation" },
+    "2023-S-S-Q28": { "chapter": "ethics",               "subtopic": "disciplinary_law",       "needs_review": false, "note": "Lawyer-to-lawyer professional courtesy; mutual respect duty" },
+    "2023-S-S-Q29": { "chapter": "criminal_substantive", "subtopic": "general_part_elements",  "needs_review": false, "note": "Strict-liability offense (אחריות קפידה) — element of criminal general part" },
+    "2023-S-S-Q30": { "chapter": "ethics",               "subtopic": "disciplinary_law",       "needs_review": false, "note": "Lawyer's ethics rules re anti-money-laundering reporting" },
+    "2023-S-S-Q31": { "chapter": "ethics",               "subtopic": "disciplinary_law",       "needs_review": false, "note": "Lawyer misleading the court re medical-procedure date" },
+    "2023-S-S-Q32": { "chapter": "criminal_substantive", "subtopic": "general_part_elements",  "needs_review": false, "note": "Co-conspirators (שותפות לדבר עבירה) — accessories vs principals" },
+    "2023-S-S-Q33": { "chapter": "criminal_substantive", "subtopic": "youth_law",              "needs_review": false, "note": "Avoidance of conviction for minors — youth law, post-Phase 4 subtopic" },
+    "2023-S-S-Q34": { "chapter": "family_inheritance",   "subtopic": "inheritance_will",       "needs_review": false, "note": "Oral deathbed will (צוואה בעל פה) after road accident — sec. 23 חוק הירושה" },
+    "2023-S-S-Q35": { "chapter": "family_inheritance",   "subtopic": "inheritance_will",       "needs_review": true,  "note": "Cross-border inheritance / private-international choice of law (Israel/Canada/France/Spain); no dedicated subtopic. Inheritance is the substantive subject" },
+    "2023-S-S-Q36": { "chapter": "property",             "subtopic": "real_estate",            "needs_review": true,  "note": "Real-estate joint venture between two developers + landowners — partition aspects implied. Closest fit is real_estate; could also belong under corporate/partnerships" },
+    "2023-S-S-Q37": { "chapter": "tax",                  "subtopic": "real_estate_tax",        "needs_review": false, "note": "Inheritance + gift + real-estate transfer — primary subject is real-estate taxation per the source review_note" },
+    "2023-S-S-Q38": { "chapter": "ethics",               "subtopic": "licensing_bar_membership","needs_review": false, "note": "Intern (מתמחה) authority to authenticate signatures — falls under licensing/bar rules" },
+    "2023-S-S-Q39": { "chapter": "ethics",               "subtopic": "disciplinary_law",       "needs_review": true,  "note": "Lawyer's duty when authenticating signatures + admissibility 5 years later — straddles ethics/disciplinary and evidence law" },
+    "2023-S-S-Q40": { "chapter": "ethics",               "subtopic": "fees_client_funds_advertising", "needs_review": false, "note": "Lawyer direct-mail / newsletter advertising rules" }
+  }
+}
