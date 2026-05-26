@@ -12,7 +12,7 @@ import { cn } from "@/lib/utils";
 /**
  * Slice 5 Phase P3 — Chapter panel.
  *
- * Hosts the 2×3 chapter card grid plus the inline subtopics chips. The
+ * Hosts the dynamic N-chapter card grid plus the inline subtopics chips. The
  * subtopics block lives INSIDE the same panel (separated by a dashed
  * border) so the "narrow the practice scope" flow reads as one
  * step — matches the prototype's `PracticeBuilder.html` structure.

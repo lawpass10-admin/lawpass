@@ -288,23 +288,44 @@ type AngleRow = { id: string; source_question_id: string };
 export async function sampleExamQuestions(
   supabase: SupabaseSsrClient
 ): Promise<ExamQuestionListItem[]> {
-  // Step 1 — fetch all active+current source questions with their
-  // chapter codes. PostgREST's embedded select gives us the chapter
-  // code via the FK relation.
+  // Step 1 — fetch all active+current PROCEDURAL-TRACK source questions
+  // with their chapter codes. The 40-question bar-exam simulation is
+  // procedural-only by product spec: substantive-track chapters
+  // (contracts, property, etc — introduced in the substantive-law
+  // taxonomy migration) live in the same `source_questions` table but
+  // MUST NOT be candidates for the exam. Filtering here, BEFORE the
+  // pool reaches `bucketAndShuffleExamPool`, guarantees they cannot
+  // leak via cluster picks (impossible — no cluster contains their
+  // codes) or via the padding pass (otherwise possible).
+  //
+  // Two layers of defense:
+  //   1. DB-side: `!inner` makes the chapter embed an INNER join and
+  //      `.eq("chapter.track", "procedural")` filters at PostgREST.
+  //   2. JS-side: the loop below also drops any row whose `track` is
+  //      not exactly "procedural", in case the embedded-resource
+  //      filter is ever bypassed (FK schema change, PostgREST upgrade
+  //      semantics, etc.).
   const { data: srcRows, error: srcErr } = await supabase
     .from("source_questions")
-    .select("id, chapter:chapters!source_questions_chapter_id_fkey(code)")
+    .select(
+      "id, chapter:chapters!source_questions_chapter_id_fkey!inner(code, track)"
+    )
     .eq("is_current", true)
-    .eq("status", "active");
+    .eq("status", "active")
+    .eq("chapter.track", "procedural");
   if (srcErr) throw srcErr;
 
   const sourceById = new Map<string, SourceRow>();
   for (const row of (srcRows ?? []) as Array<{
     id: string;
-    chapter: { code: string } | { code: string }[] | null;
+    chapter:
+      | { code: string; track: string | null }
+      | { code: string; track: string | null }[]
+      | null;
   }>) {
     const chapter = Array.isArray(row.chapter) ? row.chapter[0] : row.chapter;
     if (!chapter?.code) continue;
+    if (chapter.track !== "procedural") continue;
     sourceById.set(row.id, { id: row.id, chapter_code: chapter.code });
   }
 

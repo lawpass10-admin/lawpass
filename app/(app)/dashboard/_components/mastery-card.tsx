@@ -322,6 +322,8 @@ export function MasteryCard({ rows }: Props) {
   }
 
   const weaknessCount = rows.filter(isWeakness).length;
+  const chaptersPhrase =
+    rows.length === 1 ? "פרק אחד" : `${rows.length} הפרקים`;
 
   return (
     <div
@@ -351,10 +353,10 @@ export function MasteryCard({ rows }: Props) {
             }}
           >
             {weaknessCount === 1
-              ? "חולשה אחת מסומנת — תמונת המצב שלך על פני 6 הפרקים"
+              ? `חולשה אחת מסומנת — תמונת המצב שלך על פני ${chaptersPhrase}`
               : weaknessCount > 0
-                ? `${weaknessCount} חולשות מסומנות — תמונת המצב שלך על פני 6 הפרקים`
-                : "תמונת המצב שלך על פני 6 הפרקים — לפי אחוז שליטה"}
+                ? `${weaknessCount} חולשות מסומנות — תמונת המצב שלך על פני ${chaptersPhrase}`
+                : `תמונת המצב שלך על פני ${chaptersPhrase} — לפי אחוז שליטה`}
           </p>
         </div>
       </div>

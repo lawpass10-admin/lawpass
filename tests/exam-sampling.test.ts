@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   bucketAndShuffleExamPool,
+  sampleExamQuestions,
   type ExamPoolItem,
 } from "@/lib/db/exam";
 import { EXAM_CLUSTERS, EXAM_TOTAL_QUESTIONS } from "@/lib/exam/clusters";
@@ -182,6 +183,105 @@ describe("bucketAndShuffleExamPool — starved cluster (ג)", () => {
     expect(() => bucketAndShuffleExamPool(tinyPool)).toThrow(
       "exam_pool_insufficient"
     );
+  });
+});
+
+describe("sampleExamQuestions — procedural-only guard", () => {
+  /**
+   * Substantive-law chapters (contracts, property, etc — introduced by
+   * migration 20260526000001) live in the same `source_questions`
+   * table as procedural questions. They must NEVER appear in the
+   * 40-question bar-exam simulation: not in cluster picks (impossible
+   * — their codes are not in any cluster's chapter_codes), and not in
+   * the global padding pass either. This regression test seeds the
+   * mocked DB with a substantive source + a substantive angle and
+   * asserts both are absent from the final list.
+   */
+
+  type SrcRow = {
+    id: string;
+    chapter: { code: string; track: "procedural" | "substantive" };
+  };
+  type AngleRow = { id: string; source_question_id: string };
+
+  function buildFakeSupabase(srcRows: SrcRow[], angleRows: AngleRow[]) {
+    function thenable<T>(data: T) {
+      const builder: Record<string, unknown> = {};
+      const passthrough = () => builder;
+      builder.select = passthrough;
+      builder.eq = passthrough;
+      builder.in = passthrough;
+      builder.then = (resolve: (v: { data: T; error: null }) => unknown) =>
+        Promise.resolve({ data, error: null }).then(resolve);
+      return builder;
+    }
+    return {
+      from: (table: string) => {
+        if (table === "source_questions") return thenable(srcRows);
+        if (table === "angle_questions") return thenable(angleRows);
+        throw new Error(`unexpected from() call: ${table}`);
+      },
+    };
+  }
+
+  it("never includes substantive-track questions, even via padding", async () => {
+    // Production-shaped procedural pool (39 sources × 5 angles each =
+    // 234 candidates) — comfortably above the 14/11/13 cluster targets.
+    const proceduralCounts: Record<string, number> = {
+      civil_proc: 14,
+      criminal_proc: 11,
+      evidence: 4,
+      constitutional_intl: 5,
+      execution: 5,
+      insolvency_arbitration: 0,
+    };
+
+    const srcRows: SrcRow[] = [];
+    const angleRows: AngleRow[] = [];
+    for (const [code, count] of Object.entries(proceduralCounts)) {
+      for (let i = 0; i < count; i++) {
+        const sid = `${code}-src-${i}`;
+        srcRows.push({
+          id: sid,
+          chapter: { code, track: "procedural" },
+        });
+        for (let a = 0; a < 5; a++) {
+          angleRows.push({
+            id: `${code}-ang-${i}-${a}`,
+            source_question_id: sid,
+          });
+        }
+      }
+    }
+
+    // The "do not let through" markers: 1 substantive source + 1
+    // substantive angle hanging off it. Cluster picks cannot reach
+    // them (no cluster contains "contracts"), and padding cannot
+    // either if `sampleExamQuestions` correctly filters them out
+    // BEFORE building the pool.
+    const SUBSTANTIVE_SRC_ID = "contracts-substantive-src";
+    const SUBSTANTIVE_ANGLE_ID = "contracts-substantive-ang";
+    srcRows.push({
+      id: SUBSTANTIVE_SRC_ID,
+      chapter: { code: "contracts", track: "substantive" },
+    });
+    angleRows.push({
+      id: SUBSTANTIVE_ANGLE_ID,
+      source_question_id: SUBSTANTIVE_SRC_ID,
+    });
+
+    const fakeSupabase = buildFakeSupabase(srcRows, angleRows);
+    // `sampleExamQuestions` is typed against the SSR client; we widen
+    // here because the fake only implements the subset the sampler
+    // actually calls.
+    const result = await sampleExamQuestions(
+      fakeSupabase as unknown as Parameters<typeof sampleExamQuestions>[0]
+    );
+
+    expect(result.length).toBe(EXAM_TOTAL_QUESTIONS);
+    const ids = new Set(result.map((r) => r.question_id));
+    expect(ids.has(SUBSTANTIVE_SRC_ID)).toBe(false);
+    expect(ids.has(SUBSTANTIVE_ANGLE_ID)).toBe(false);
   });
 });
 
