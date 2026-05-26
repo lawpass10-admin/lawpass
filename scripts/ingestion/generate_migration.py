@@ -99,7 +99,16 @@ def emit_question_block(q: dict, cls: dict, created_by: str) -> str:
     sq_id = str(uuid.uuid4())
     group_id = str(uuid.uuid4())
 
-    angles = q.get("angles") or []
+    # JSON key is "angle_questions" (matches Sharon's docx output, normalize.py
+    # preserves it verbatim). Earlier versions used q.get("angles") which is
+    # the WRONG key — `dict.get` silently returns None for a missing key, so
+    # the angle-INSERT block became dead code and 152 angle_questions + 608
+    # angle_choices got dropped in the first 2024-W-S substantive batch. The
+    # post-emit sanity check in main() catches this class of bug now.
+    # Also filters out angles with a multi-correct data bug (see
+    # _filter_valid_angles) so the DB invariant `idx_angle_ch_one_correct`
+    # isn't violated mid-transaction.
+    angles = _filter_valid_angles(q)
     angle_uuids = [str(uuid.uuid4()) for _ in angles]
 
     lines: list[str] = []
@@ -229,12 +238,15 @@ def emit_question_block(q: dict, cls: dict, created_by: str) -> str:
             suffix = "," if j + 4 < len(a_vals) else ""
             lines.append(f"    {chunk}{suffix}")
         lines.append("  );")
-        for ac in angle.get("angle_choices") or []:
+        for ac_idx, ac in enumerate(angle.get("angle_choices") or []):
             ac_letter = ac.get("letter")
             ac_text = ac.get("choice_text")
             ac_correct = bool(ac.get("is_correct"))
             ac_analysis = ac.get("distractor_analysis") or ac.get("display_analysis") or ""
-            ac_order = int(ac.get("display_order") or 0)
+            # angle_choices entries in Sharon's docx don't carry display_order;
+            # derive from position (1-based) to match the existing source_choices
+            # convention (1..4 for letters א..ד).
+            ac_order = int(ac.get("display_order") or (ac_idx + 1))
             lines.append(
                 "  INSERT INTO public.angle_choices "
                 "(angle_question_id, letter, choice_text, is_correct, distractor_analysis, display_order) "
@@ -249,13 +261,176 @@ def emit_question_block(q: dict, cls: dict, created_by: str) -> str:
     return "\n".join(lines)
 
 
+_skipped_angles: list[dict] = []
+
+
+def _angle_has_exactly_one_correct(angle: dict) -> bool:
+    """Validate angle_choices satisfy DB partial unique `idx_angle_ch_one_correct`
+    (exactly one is_correct=true). Skipping invalid angles is preferable to
+    a half-applied migration. Skip events are collected globally for the
+    post-emit summary."""
+    choices = angle.get("angle_choices") or []
+    correct = sum(1 for c in choices if c.get("is_correct"))
+    return correct == 1
+
+
+def _filter_valid_angles(q: dict) -> list[dict]:
+    """Return only the angles whose choices satisfy the one-correct invariant.
+    Records skips in module-level `_skipped_angles` for sanity-check + report."""
+    ext_id = q["external_id"]
+    kept: list[dict] = []
+    for a in q.get("angle_questions") or []:
+        if _angle_has_exactly_one_correct(a):
+            kept.append(a)
+        else:
+            correct_count = sum(
+                1 for c in (a.get("angle_choices") or []) if c.get("is_correct")
+            )
+            _skipped_angles.append({
+                "external_id": ext_id,
+                "angle_letter": a.get("angle_letter"),
+                "correct_count": correct_count,
+                "reason": (
+                    "violates idx_angle_ch_one_correct "
+                    f"(expected exactly 1 is_correct=true; found {correct_count})"
+                ),
+            })
+    return kept
+
+
+def emit_angles_only_block(q: dict, ext_id_lookup: str | None = None) -> str:
+    """
+    Emit a DO $$ block that ONLY backfills angles + angle_choices for an
+    existing source_question. Used by `--angles-only`.
+
+    Idempotency model: per-angle SELECT-then-INSERT inside the DO block.
+    If the angle row already exists for (source_question_id, angle_letter),
+    we capture its existing id and skip the angle_choices INSERT (choices
+    are owned by their angle — a re-run on a complete row would otherwise
+    UNIQUE-violate on angle_choices.angle_question_id + letter anyway).
+
+    Validation: skips any angle whose angle_choices don't satisfy the
+    DB invariant of exactly one is_correct=true (the partial unique index
+    `idx_angle_ch_one_correct`). Skip events are recorded in
+    `_skipped_angles` and surfaced in the post-emit summary.
+
+    Safe to re-run: nothing changes once the angles are present.
+    """
+    ext_id = ext_id_lookup or q["external_id"]
+    qnum = q["source_metadata"]["exam_question_number"]
+    angles = _filter_valid_angles(q)
+
+    lines: list[str] = []
+    lines.append("-- ============================================================")
+    lines.append(f"-- Q{qnum:02d} — angles backfill for {ext_id} ({len(angles)} angles)")
+    lines.append("-- ============================================================")
+    lines.append("DO $$")
+    lines.append("DECLARE")
+    lines.append("  v_sq_id uuid;")
+    lines.append("  v_ang_id uuid;")
+    lines.append("BEGIN")
+    lines.append(
+        f"  SELECT id INTO v_sq_id FROM public.source_questions WHERE external_id = '{ext_id}';"
+    )
+    lines.append("  IF v_sq_id IS NULL THEN")
+    lines.append(
+        f"    RAISE NOTICE 'parent source % not found, skipping angles', '{ext_id}';"
+    )
+    lines.append("    RETURN;")
+    lines.append("  END IF;")
+    lines.append("")
+
+    for angle in angles:
+        a_letter = angle.get("angle_letter") or angle.get("letter")
+        a_title = angle.get("angle_title") or angle.get("title")
+        a_order = int(angle.get("display_order") or 0)
+
+        lines.append(f"  -- Angle {a_letter}")
+        lines.append(
+            "  SELECT id INTO v_ang_id FROM public.angle_questions "
+            f"WHERE source_question_id = v_sq_id AND angle_letter = {sql_str(a_letter)};"
+        )
+        lines.append("  IF v_ang_id IS NULL THEN")
+        a_cols = [
+            "source_question_id", "angle_letter", "angle_title",
+            "display_order", "question_text",
+            "legal_topic_analysis", "full_explanation", "common_pitfall",
+            "concepts_and_skills", "quick_thinking_360", "summary_for_memory",
+            "references_list",
+        ]
+        a_vals = [
+            "v_sq_id", sql_str(a_letter), sql_str(a_title),
+            sql_int(a_order), sql_str(angle.get("question_text")),
+            sql_str(angle.get("legal_topic_analysis")),
+            sql_str(angle.get("full_explanation")),
+            sql_str(angle.get("common_pitfall")),
+            sql_jsonb(angle.get("concepts_and_skills")),
+            sql_str(angle.get("quick_thinking_360")),
+            sql_str(angle.get("summary_for_memory")),
+            sql_jsonb(angle.get("references_list")),
+        ]
+        lines.append("    INSERT INTO public.angle_questions (")
+        lines.append("      " + ", ".join(a_cols))
+        lines.append("    ) VALUES (")
+        for j in range(0, len(a_vals), 4):
+            chunk = ", ".join(a_vals[j : j + 4])
+            suffix = "," if j + 4 < len(a_vals) else ""
+            lines.append(f"      {chunk}{suffix}")
+        lines.append("    ) RETURNING id INTO v_ang_id;")
+
+        for ac_idx, ac in enumerate(angle.get("angle_choices") or []):
+            ac_letter = ac.get("letter")
+            ac_text = ac.get("choice_text")
+            ac_correct = bool(ac.get("is_correct"))
+            ac_analysis = ac.get("distractor_analysis") or ac.get("display_analysis") or ""
+            # angle_choices entries in Sharon's docx don't carry display_order;
+            # derive from position (1-based) to match the existing source_choices
+            # convention (1..4 for letters א..ד).
+            ac_order = int(ac.get("display_order") or (ac_idx + 1))
+            lines.append(
+                "    INSERT INTO public.angle_choices "
+                "(angle_question_id, letter, choice_text, is_correct, distractor_analysis, display_order) "
+                f"VALUES (v_ang_id, {sql_str(ac_letter)}, {sql_str(ac_text)}, {sql_bool(ac_correct)}, {sql_str(ac_analysis)}, {sql_int(ac_order)});"
+            )
+        lines.append("  ELSE")
+        lines.append(
+            f"    RAISE NOTICE 'angle % already exists for %, skipping', '{a_letter}', '{ext_id}';"
+        )
+        lines.append("  END IF;")
+        lines.append("")
+
+    lines.append(f"  RAISE NOTICE 'Q% angles backfilled: external_id %', {qnum}, '{ext_id}';")
+    lines.append("END")
+    lines.append("$$;")
+    lines.append("")
+    return "\n".join(lines)
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--normalized", nargs="+", required=True)
     ap.add_argument("--classifications", required=True)
-    ap.add_argument("--created-by", required=True)
+    ap.add_argument(
+        "--created-by",
+        default="b9ecdde2-d07e-4761-96ab-05f0ad32d4e3",
+        help="Admin UUID stamped into source_questions.created_by (full mode only).",
+    )
     ap.add_argument("--migration-name", required=True)
     ap.add_argument("--out", required=True)
+    ap.add_argument(
+        "--angles-only",
+        action="store_true",
+        help=(
+            "Emit ONLY angle_questions + angle_choices for already-ingested "
+            "sources (resolves parent by external_id). Use this for backfill "
+            "after a prior partial run."
+        ),
+    )
+    ap.add_argument(
+        "--migration-version",
+        help="Optional: register the migration in supabase_migrations.schema_migrations. "
+        "If given, appends an INSERT ... ON CONFLICT DO NOTHING.",
+    )
     args = ap.parse_args()
 
     # Load classifications.
@@ -297,14 +472,41 @@ def main() -> int:
 -- external_id already exists. Safe to re-run.
 """
 
+    # Override the header in angles-only mode so its purpose is unambiguous
+    # when read in isolation (and so re-runs can identify themselves).
+    if args.angles_only:
+        header = f"""-- Migration: {args.migration_name}
+--
+-- ANGLES-ONLY backfill for the 2024 winter substantive batch. The original
+-- ingestion (migration 20260526000002) dropped every nested
+-- `angle_questions` array because `generate_migration.py` used the wrong
+-- dict key (`q.get("angles")` instead of `q.get("angle_questions")`).
+-- Sources + source_choices already landed; this migration adds only the
+-- missing angle rows.
+--
+-- Idempotency: each angle is guarded by a SELECT-then-INSERT against the
+-- (source_question_id, angle_letter) unique key. Choices fire only when
+-- the parent angle is newly inserted. Re-running is a no-op (each block
+-- RAISE NOTICEs that the angle already exists).
+"""
+
     blocks: list[str] = [header]
     inserted_count = 0
     skipped_drops = 0
     skipped_unclassified = 0
+    included_questions: list[dict] = []
     for q in all_q:
         ext_id = q["external_id"]
         if ext_id in drops:
             skipped_drops += 1
+            continue
+        if args.angles_only:
+            # Angles-only mode does NOT require a classification — the source
+            # is already in the DB and the only thing we need from it is
+            # `external_id` to look the parent up.
+            blocks.append(emit_angles_only_block(q))
+            included_questions.append(q)
+            inserted_count += 1
             continue
         cls = classifications.get(ext_id)
         if not cls:
@@ -312,9 +514,113 @@ def main() -> int:
             sys.stderr.write(f"WARN: no classification for {ext_id} — skipped\n")
             continue
         blocks.append(emit_question_block(q, cls, args.created_by))
+        included_questions.append(q)
         inserted_count += 1
 
-    Path(args.out).write_text("\n".join(blocks), encoding="utf-8")
+    # Optionally register in supabase_migrations.schema_migrations.
+    if args.migration_version:
+        blocks.append("")
+        blocks.append(
+            "-- ============================================================"
+        )
+        blocks.append(
+            "-- Register this migration in Supabase's schema_migrations registry."
+        )
+        blocks.append(
+            "-- Idempotent: ON CONFLICT DO NOTHING in case the file is re-applied."
+        )
+        blocks.append(
+            "-- ============================================================"
+        )
+        blocks.append(
+            "INSERT INTO supabase_migrations.schema_migrations (version, name)"
+        )
+        blocks.append(
+            f"VALUES ('{args.migration_version}', '{args.migration_name}')"
+        )
+        blocks.append("ON CONFLICT (version) DO NOTHING;")
+
+    out_sql = "\n".join(blocks)
+    Path(args.out).write_text(out_sql, encoding="utf-8")
+
+    # -------------------------------------------------------------------
+    # Post-emit sanity check — loud failure if INSERT counts don't match
+    # what the source JSON requires. Catches the dropped-angles class of
+    # bug (where a wrong key name silently zeroes a section). Counts INSERT
+    # statements in the emitted SQL and compares against expected counts
+    # tallied from the included questions.
+    # -------------------------------------------------------------------
+    def count_inserts(text: str, table: str) -> int:
+        return text.count(f"INSERT INTO public.{table}")
+
+    expected_sources = 0 if args.angles_only else len(included_questions)
+    expected_source_choices = (
+        0
+        if args.angles_only
+        else sum(len(q.get("source_choices") or []) for q in included_questions)
+    )
+    # Expected angle counts EXCLUDE any angle filtered out by
+    # _filter_valid_angles. The skipped list is the source of truth — we
+    # can't just count `len(q["angle_questions"])` because the multi-correct
+    # validation drops some.
+    skipped_keys = {(s["external_id"], s["angle_letter"]) for s in _skipped_angles}
+    valid_angles_per_q: dict[str, list[dict]] = {}
+    for q in included_questions:
+        valid_angles_per_q[q["external_id"]] = [
+            a
+            for a in (q.get("angle_questions") or [])
+            if (q["external_id"], a.get("angle_letter")) not in skipped_keys
+        ]
+    expected_angles = sum(len(v) for v in valid_angles_per_q.values())
+    expected_angle_choices = sum(
+        len(a.get("angle_choices") or [])
+        for v in valid_angles_per_q.values()
+        for a in v
+    )
+
+    emitted_sources = count_inserts(out_sql, "source_questions")
+    emitted_source_choices = count_inserts(out_sql, "source_choices")
+    emitted_angles = count_inserts(out_sql, "angle_questions")
+    emitted_angle_choices = count_inserts(out_sql, "angle_choices")
+
+    mismatches: list[str] = []
+    for label, expected, emitted in [
+        ("source_questions", expected_sources, emitted_sources),
+        ("source_choices", expected_source_choices, emitted_source_choices),
+        ("angle_questions", expected_angles, emitted_angles),
+        ("angle_choices", expected_angle_choices, emitted_angle_choices),
+    ]:
+        if expected != emitted:
+            mismatches.append(
+                f"  {label}: expected={expected} emitted={emitted}  (delta={emitted - expected})"
+            )
+
+    sys.stderr.write(
+        f"\nINSERT counts (emitted vs expected from JSON):\n"
+        f"  source_questions : {emitted_sources}/{expected_sources}\n"
+        f"  source_choices   : {emitted_source_choices}/{expected_source_choices}\n"
+        f"  angle_questions  : {emitted_angles}/{expected_angles}\n"
+        f"  angle_choices    : {emitted_angle_choices}/{expected_angle_choices}\n"
+    )
+    if _skipped_angles:
+        sys.stderr.write(
+            f"\nSKIPPED ANGLES ({len(_skipped_angles)}) — failed editorial validation:\n"
+        )
+        for s in _skipped_angles:
+            sys.stderr.write(
+                f"  {s['external_id']} angle {s['angle_letter']}: {s['reason']}\n"
+            )
+
+    if mismatches:
+        sys.stderr.write(
+            "\nFATAL: emitted INSERT counts do not match the source JSON. "
+            "This is exactly the dropped-angles class of bug the post-emit "
+            "check exists to catch. Aborting before any apply step.\n"
+        )
+        for m in mismatches:
+            sys.stderr.write(m + "\n")
+        return 2
+
     print(
         f"emitted {inserted_count} questions to {args.out}  "
         f"(drops={skipped_drops}, unclassified={skipped_unclassified})",

@@ -35,8 +35,27 @@ batches.
 5. **`generate_migration.py`** — emit one SQL file under
    `supabase/migrations/<timestamp>_<name>.sql`. Each question gets a
    `DO $$ ... END$$;` block with idempotent early-return on existing
-   `external_id`. Appends a `supabase_migrations.schema_migrations`
-   INSERT at the bottom so the registry stays in sync.
+   `external_id`. Pass `--migration-version <YYYYMMDDhhmmss>` to also
+   append a `supabase_migrations.schema_migrations` INSERT so
+   `list_migrations` stays in sync.
+
+   **Post-emit sanity check (load-bearing):** the generator counts the
+   `INSERT INTO public.<table>` lines it just emitted and compares
+   them against the expected count tallied from the normalized JSON.
+   Tables checked: `source_questions`, `source_choices`,
+   `angle_questions`, `angle_choices`. **Any mismatch aborts with a
+   non-zero exit code BEFORE the apply step** — this is the safety
+   net that catches the dropped-angles class of bug (where a wrong
+   dict key silently zeroes a whole section's INSERTs). The original
+   2024 winter substantive batch was missing this check; that's why
+   152 angles + 608 angle_choices were dropped silently.
+
+   **`--angles-only` mode:** emits ONLY the angle backfill (a SELECT
+   on existing source by `external_id`, then SELECT-then-INSERT per
+   angle with `(source_question_id, angle_letter)`-keyed idempotency,
+   skipping choices when the angle is already present). Used when a
+   prior partial run left sources in the DB but no angles, as
+   happened for migration 20260526000002 (fixed by 20260526000003).
 6. **Apply** — `node scripts/apply-sql.mjs <file.sql>`. The script
    prefers `DIRECT_URL` over `DATABASE_URL`; if direct connectivity is
    broken (DNS failure on `db.<ref>.supabase.co`), unset `DIRECT_URL`
