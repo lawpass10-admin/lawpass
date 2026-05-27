@@ -8,6 +8,7 @@ import {
   Play,
 } from "lucide-react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useRef, useState } from "react";
 import { toast } from "sonner";
 
@@ -95,6 +96,13 @@ export function PracticeQuestion({
   existingAttempt,
   bookmarked: bookmarkedProp,
 }: PracticeQuestionProps) {
+  // Slice 6 fix 2 — router.refresh() after a successful submit
+  // re-runs the (app) layout server-side and pulls fresh
+  // bookmarks/mistakes counts for the sidebar badges. The server
+  // action's revalidatePath only invalidates the data cache; it
+  // can't re-render the page that's already on screen.
+  const router = useRouter();
+
   const questionRenderedAt = useRef<number>(
     typeof performance !== "undefined" ? performance.now() : 0
   );
@@ -181,6 +189,13 @@ export function PracticeQuestion({
     setSubmitting(false);
     // Dismiss the expiry dialog if the user answered after it appeared.
     setTimerExpired(false);
+
+    // Slice 6 fix 2 — refresh the layout so the sidebar
+    // bookmarks/mistakes badges reflect this attempt without waiting
+    // for the next hard navigation. Local reveal state above is set
+    // BEFORE the refresh so the reveal UI paints on the current
+    // render; refresh only swaps the server tree.
+    router.refresh();
   }
 
   async function handleAdvance() {

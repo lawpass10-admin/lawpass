@@ -115,7 +115,13 @@ const NAV_BUTTON_CLS = cn(
 );
 
 const COUNT_BADGE_CLS = cn(
-  "ms-auto inline-flex items-center justify-center",
+  // `ms-auto` (margin-inline-start: auto) pushes the badge to the
+  // row's inline-END edge — in RTL that's the visual LEFT. The
+  // active-row gold ActiveBar paints over the leftmost 4px at z-10,
+  // so without `me-2.5` (margin-inline-end → physical margin-LEFT in
+  // RTL) the badge sat under the bar. 10px = 4px bar + 6px breathing
+  // room.  Slice 6 fix 3.
+  "ms-auto me-2.5 inline-flex items-center justify-center",
   "min-w-6 h-6 px-1.5 rounded-full text-xs font-semibold tabular-nums",
   // Inactive — translucent white pill
   "bg-white/10 text-white/80",

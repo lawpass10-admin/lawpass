@@ -117,12 +117,15 @@ export function MistakeRow({
             {subtopicTitle}
           </span>
         )}
+        {/* Slice 6 fix 4 — white-bg variant of the question-type badge,
+            scoped to this list row. Practice-play and exam pages keep
+            their amber/primary filled badges. */}
         {mistake.questionType === "source" ? (
-          <span className="rounded-full bg-amber-100 px-2 py-0.5 font-medium text-amber-700">
+          <span className="rounded-full border border-amber-300 bg-white px-2 py-0.5 font-medium text-amber-700">
             מקור
           </span>
         ) : (
-          <span className="rounded-full bg-primary/10 px-2 py-0.5 font-medium text-primary">
+          <span className="rounded-full border border-primary/40 bg-white px-2 py-0.5 font-medium text-primary">
             זווית {mistake.angleQuestion.angleLetter}
           </span>
         )}

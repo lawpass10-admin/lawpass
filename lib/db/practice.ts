@@ -1093,6 +1093,209 @@ async function loadPreviewMaps(
   return { sources, angles };
 }
 
+// =============================================================================
+// Slice 6 cluster — auto-resolve on a correct answer
+// =============================================================================
+
+/**
+ * Given a user and the universe of (source group_ids, angle ids) they
+ * have mistaked or bookmarked, returns the subset that is currently
+ * "resolved" — i.e. the user's most recent attempt on that question
+ * was correct.
+ *
+ * Why this helper exists (Slice 6 bug cluster, fix 1):
+ *   - record_mistake / record_bookmark_toggle never auto-clear rows
+ *     when a later attempt is correct. We compute that at read time
+ *     instead, so the UI hides resolved rows without any schema or
+ *     write-path change.
+ *   - Source-type rows store `source_question_group_id` (the version-
+ *     stable id), but `attempts.source_question_id` references the
+ *     current `source_questions.id`. We translate via source_questions
+ *     before matching. Angle-type rows match directly on
+ *     `angle_questions.id`.
+ *
+ * Performance: callers that already loaded source_questions for the
+ * preview maps can pass a pre-built `sourceGroupToCurrentId` map to
+ * skip the redundant lookup. The (app)/layout.tsx count path doesn't
+ * need previews, so it pays for one source_questions read.
+ *
+ * Cost: at most three round trips —
+ *   1. source_questions group→id resolution (skipped if map supplied)
+ *   2. attempts filtered by source_question_id (parallel with 3)
+ *   3. attempts filtered by angle_question_id (parallel with 2)
+ */
+export async function findResolvedQuestions(
+  supabase: SupabaseSsrClient,
+  userId: string,
+  groupIds: string[],
+  angleIds: string[],
+  options?: { sourceGroupToCurrentId?: Map<string, string> }
+): Promise<{ resolvedGroupIds: Set<string>; resolvedAngleIds: Set<string> }> {
+  const resolvedGroupIds = new Set<string>();
+  const resolvedAngleIds = new Set<string>();
+
+  // Empty-input fast path: nothing to resolve.
+  if (groupIds.length === 0 && angleIds.length === 0) {
+    return { resolvedGroupIds, resolvedAngleIds };
+  }
+
+  // Step 1 — resolve source group_id → current source_questions.id.
+  // The mistake/bookmark loaders already fetched this; they can hand
+  // us the map to skip the round trip.
+  let groupToId = options?.sourceGroupToCurrentId;
+  if (!groupToId) {
+    groupToId = new Map<string, string>();
+    if (groupIds.length > 0) {
+      const { data } = await supabase
+        .from("source_questions")
+        .select("id, question_group_id")
+        .in("question_group_id", groupIds)
+        .eq("is_current", true);
+      for (const row of (data ?? []) as Array<{
+        id: string;
+        question_group_id: string;
+      }>) {
+        groupToId.set(row.question_group_id, row.id);
+      }
+    }
+  }
+  const currentSourceIds = Array.from(groupToId.values());
+  const idToGroup = new Map<string, string>();
+  for (const [g, id] of groupToId) idToGroup.set(id, g);
+
+  // Step 2 — fetch attempts for the relevant question ids, sorted
+  // newest-first so the first row we see per question is the most
+  // recent one. RLS on `attempts` enforces user_id = auth.uid()
+  // but we also pin .eq("user_id", userId) defensively.
+  const [sourceAttemptsRes, angleAttemptsRes] = await Promise.all([
+    currentSourceIds.length > 0
+      ? supabase
+          .from("attempts")
+          .select("source_question_id, is_correct, attempted_at")
+          .eq("user_id", userId)
+          .eq("question_type", "source")
+          .in("source_question_id", currentSourceIds)
+          .order("attempted_at", { ascending: false })
+      : Promise.resolve({ data: [] as unknown }),
+    angleIds.length > 0
+      ? supabase
+          .from("attempts")
+          .select("angle_question_id, is_correct, attempted_at")
+          .eq("user_id", userId)
+          .eq("question_type", "angle")
+          .in("angle_question_id", angleIds)
+          .order("attempted_at", { ascending: false })
+      : Promise.resolve({ data: [] as unknown }),
+  ]);
+
+  // Step 3 — walk newest-first; first row per question id is the
+  // latest. If correct, that question is resolved.
+  const seenSourceIds = new Set<string>();
+  for (const a of (sourceAttemptsRes.data ?? []) as Array<{
+    source_question_id: string | null;
+    is_correct: boolean | null;
+  }>) {
+    if (!a.source_question_id) continue;
+    if (seenSourceIds.has(a.source_question_id)) continue;
+    seenSourceIds.add(a.source_question_id);
+    if (a.is_correct === true) {
+      const groupId = idToGroup.get(a.source_question_id);
+      if (groupId) resolvedGroupIds.add(groupId);
+    }
+  }
+
+  const seenAngleIds = new Set<string>();
+  for (const a of (angleAttemptsRes.data ?? []) as Array<{
+    angle_question_id: string | null;
+    is_correct: boolean | null;
+  }>) {
+    if (!a.angle_question_id) continue;
+    if (seenAngleIds.has(a.angle_question_id)) continue;
+    seenAngleIds.add(a.angle_question_id);
+    if (a.is_correct === true) {
+      resolvedAngleIds.add(a.angle_question_id);
+    }
+  }
+
+  return { resolvedGroupIds, resolvedAngleIds };
+}
+
+/**
+ * Sidebar-badge counts for /(app)/layout.tsx. Applies the same
+ * compute-at-read auto-resolve filter as getUserBookmarks /
+ * getUserMistakes so the badges match what the list pages show.
+ *
+ * One SELECT per table (rows + their question references — small
+ * payload), then a shared `findResolvedQuestions` call against the
+ * union of ids. Replaces the prior `count: exact, head: true`
+ * queries: those couldn't express the "latest attempt not correct"
+ * predicate without an RPC.
+ */
+export async function getActiveBookmarkAndMistakeCounts(
+  supabase: SupabaseSsrClient,
+  userId: string
+): Promise<{ bookmarksCount: number; mistakesCount: number }> {
+  const [bookmarksRes, mistakesRes] = await Promise.all([
+    supabase
+      .from("bookmarks")
+      .select("question_type, source_question_group_id, angle_question_id")
+      .eq("user_id", userId),
+    supabase
+      .from("mistakes")
+      .select("question_type, source_question_group_id, angle_question_id")
+      .eq("user_id", userId)
+      .eq("manually_removed", false),
+  ]);
+
+  const bookmarkRows = (bookmarksRes.data ?? []) as Array<{
+    question_type: string;
+    source_question_group_id: string | null;
+    angle_question_id: string | null;
+  }>;
+  const mistakeRows = (mistakesRes.data ?? []) as Array<{
+    question_type: string;
+    source_question_group_id: string | null;
+    angle_question_id: string | null;
+  }>;
+
+  // Union the ids — one resolve pass covers both lists.
+  const groupIdSet = new Set<string>();
+  const angleIdSet = new Set<string>();
+  for (const r of bookmarkRows.concat(mistakeRows)) {
+    if (r.question_type === "source" && r.source_question_group_id) {
+      groupIdSet.add(r.source_question_group_id);
+    } else if (r.question_type === "angle" && r.angle_question_id) {
+      angleIdSet.add(r.angle_question_id);
+    }
+  }
+
+  const { resolvedGroupIds, resolvedAngleIds } = await findResolvedQuestions(
+    supabase,
+    userId,
+    Array.from(groupIdSet),
+    Array.from(angleIdSet)
+  );
+
+  function isActive(r: {
+    question_type: string;
+    source_question_group_id: string | null;
+    angle_question_id: string | null;
+  }): boolean {
+    if (r.question_type === "source" && r.source_question_group_id) {
+      return !resolvedGroupIds.has(r.source_question_group_id);
+    }
+    if (r.question_type === "angle" && r.angle_question_id) {
+      return !resolvedAngleIds.has(r.angle_question_id);
+    }
+    return false;
+  }
+
+  return {
+    bookmarksCount: bookmarkRows.filter(isActive).length,
+    mistakesCount: mistakeRows.filter(isActive).length,
+  };
+}
+
 /**
  * Lists the user's active bookmarks, newest first. RLS on the bookmarks
  * table already filters by user_id. RLS on source_questions /
@@ -1100,6 +1303,10 @@ async function loadPreviewMaps(
  * still appear in the returned list but are flagged `isArchived=true`
  * with empty preview fields so the UI can render a "הוסר זמנית" badge
  * rather than a clickable row.
+ *
+ * Slice 6 cluster fix 1: rows are also hidden when the user's most
+ * recent attempt on that question is correct (see
+ * findResolvedQuestions for the source group_id↔id translation).
  */
 export async function getUserBookmarks(
   supabase: SupabaseSsrClient,
@@ -1132,9 +1339,25 @@ export async function getUserBookmarks(
     angleIds
   );
 
+  // Slice 6 fix 1 — hide bookmarks the user has since answered
+  // correctly. Reuse the loadPreviewMaps source_questions data so the
+  // helper doesn't re-fetch group→id.
+  const sourceGroupToCurrentId = new Map<string, string>();
+  for (const [groupId, row] of sources) {
+    sourceGroupToCurrentId.set(groupId, row.id);
+  }
+  const { resolvedGroupIds, resolvedAngleIds } = await findResolvedQuestions(
+    supabase,
+    userId,
+    groupIds,
+    angleIds,
+    { sourceGroupToCurrentId }
+  );
+
   const out: BookmarkListRow[] = [];
   for (const r of rows) {
     if (r.question_type === "source" && r.source_question_group_id) {
+      if (resolvedGroupIds.has(r.source_question_group_id)) continue;
       out.push({
         bookmarkId: r.id,
         questionType: "source",
@@ -1145,6 +1368,7 @@ export async function getUserBookmarks(
         ),
       });
     } else if (r.question_type === "angle" && r.angle_question_id) {
+      if (resolvedAngleIds.has(r.angle_question_id)) continue;
       out.push({
         bookmarkId: r.id,
         questionType: "angle",
@@ -1162,6 +1386,9 @@ export async function getUserBookmarks(
 /**
  * Lists the user's active mistakes (WHERE manually_removed = false),
  * most-recent mistake first. Same archived-handling as bookmarks.
+ *
+ * Slice 6 cluster fix 1: rows are also hidden when the user's most
+ * recent attempt on that question is correct.
  */
 export async function getUserMistakes(
   supabase: SupabaseSsrClient,
@@ -1195,9 +1422,25 @@ export async function getUserMistakes(
     angleIds
   );
 
+  // Slice 6 fix 1 — hide mistakes the user has since answered
+  // correctly. Same translation strategy as getUserBookmarks: reuse
+  // the loadPreviewMaps source_questions data instead of re-fetching.
+  const sourceGroupToCurrentId = new Map<string, string>();
+  for (const [groupId, row] of sources) {
+    sourceGroupToCurrentId.set(groupId, row.id);
+  }
+  const { resolvedGroupIds, resolvedAngleIds } = await findResolvedQuestions(
+    supabase,
+    userId,
+    groupIds,
+    angleIds,
+    { sourceGroupToCurrentId }
+  );
+
   const out: MistakeListRow[] = [];
   for (const r of rows) {
     if (r.question_type === "source" && r.source_question_group_id) {
+      if (resolvedGroupIds.has(r.source_question_group_id)) continue;
       out.push({
         mistakeId: r.id,
         questionType: "source",
@@ -1210,6 +1453,7 @@ export async function getUserMistakes(
         ),
       });
     } else if (r.question_type === "angle" && r.angle_question_id) {
+      if (resolvedAngleIds.has(r.angle_question_id)) continue;
       out.push({
         mistakeId: r.id,
         questionType: "angle",

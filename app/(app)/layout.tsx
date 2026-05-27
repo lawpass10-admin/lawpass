@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { AppSidebar } from "@/components/app/app-sidebar";
 import { MobileTopBar } from "@/components/app/mobile-top-bar";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
+import { getActiveBookmarkAndMistakeCounts } from "@/lib/db/practice";
 import { createClient } from "@/lib/supabase/server";
 
 // Routes inside (app) that don't require an active subscription. The user
@@ -118,20 +119,15 @@ export default async function AppLayout({
   // Counts for sidebar badges. Both tables' RLS policies require
   // has_active_subscription(); for users on subscription-exempt routes
   // (without a sub), RLS returns 0 rows → count is 0 (no error).
-  // head:true skips returning rows — server only returns the count integer.
-  const [bookmarksResult, mistakesResult] = await Promise.all([
-    supabase
-      .from("bookmarks")
-      .select("*", { count: "exact", head: true })
-      .eq("user_id", user.id),
-    supabase
-      .from("mistakes")
-      .select("*", { count: "exact", head: true })
-      .eq("user_id", user.id)
-      .eq("manually_removed", false),
-  ]);
-  const bookmarksCount = bookmarksResult.count ?? 0;
-  const mistakesCount = mistakesResult.count ?? 0;
+  //
+  // Slice 6 fix 1: badges must reflect the same auto-resolve filter as
+  // the list pages — a bookmark/mistake disappears once the user's
+  // most recent attempt on that question is correct. The compute-at-
+  // read predicate can't be expressed with `count: exact, head: true`,
+  // so we now fetch the rows minimally (id columns only) and count
+  // post-filter. See lib/db/practice.ts for the shared helper.
+  const { bookmarksCount, mistakesCount } =
+    await getActiveBookmarkAndMistakeCounts(supabase, user.id);
 
   return (
     <SidebarProvider>
