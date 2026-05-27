@@ -219,3 +219,15 @@ export const oauthCompletionSchema = z.object({
   }),
 });
 export type OAuthCompletionInput = z.infer<typeof oauthCompletionSchema>;
+
+/**
+ * /account profile editor (Slice 6) — full_name + exam_date_planned only.
+ * Composed from the field-level schemas above so any future tightening
+ * (e.g. tighter name validation) propagates without a second edit. The
+ * exam date stays .nullish() to keep it clearable from the UI.
+ */
+export const editProfileSchema = z.object({
+  full_name: fullNameSchema,
+  exam_date_planned: examDatePlannedSchema,
+});
+export type EditProfileInput = z.infer<typeof editProfileSchema>;
