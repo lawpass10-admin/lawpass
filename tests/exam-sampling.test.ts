@@ -5,7 +5,13 @@ import {
   sampleExamQuestions,
   type ExamPoolItem,
 } from "@/lib/db/exam";
-import { EXAM_CLUSTERS, EXAM_TOTAL_QUESTIONS } from "@/lib/exam/clusters";
+import {
+  clustersForMode,
+  EXAM_CLUSTERS,
+  EXAM_TOTAL_QUESTIONS,
+  SUBSTANTIVE_CHAPTER_CODES,
+  type ExamMode,
+} from "@/lib/exam/clusters";
 
 /**
  * Build a fixture pool that mimics today's production shape:
@@ -186,44 +192,68 @@ describe("bucketAndShuffleExamPool — starved cluster (ג)", () => {
   });
 });
 
+// =============================================================================
+// Shared fake-Supabase fixture — used by all three mode-specific guard
+// suites below. Slice 3 used an in-suite copy; Slice 9 lifts it to module
+// scope so the suites stay readable.
+// =============================================================================
+
+type SrcRow = {
+  id: string;
+  chapter: { code: string; track: "procedural" | "substantive" };
+};
+type AngleRow = { id: string; source_question_id: string };
+
+function buildFakeSupabase(srcRows: SrcRow[], angleRows: AngleRow[]) {
+  function thenable<T>(data: T) {
+    const builder: Record<string, unknown> = {};
+    const passthrough = () => builder;
+    builder.select = passthrough;
+    builder.eq = passthrough;
+    builder.in = passthrough;
+    builder.then = (resolve: (v: { data: T; error: null }) => unknown) =>
+      Promise.resolve({ data, error: null }).then(resolve);
+    return builder;
+  }
+  return {
+    from: (table: string) => {
+      if (table === "source_questions") return thenable(srcRows);
+      if (table === "angle_questions") return thenable(angleRows);
+      throw new Error(`unexpected from() call: ${table}`);
+    },
+  };
+}
+
+function makeSourceWithAngles(
+  rows: { srcRows: SrcRow[]; angleRows: AngleRow[] },
+  code: string,
+  track: "procedural" | "substantive",
+  sources: number,
+  anglesPerSource: number
+): void {
+  for (let i = 0; i < sources; i++) {
+    const sid = `${code}-src-${i}`;
+    rows.srcRows.push({ id: sid, chapter: { code, track } });
+    for (let a = 0; a < anglesPerSource; a++) {
+      rows.angleRows.push({
+        id: `${code}-ang-${i}-${a}`,
+        source_question_id: sid,
+      });
+    }
+  }
+}
+
 describe("sampleExamQuestions — procedural-only guard", () => {
   /**
    * Substantive-law chapters (contracts, property, etc — introduced by
    * migration 20260526000001) live in the same `source_questions`
    * table as procedural questions. They must NEVER appear in the
-   * 40-question bar-exam simulation: not in cluster picks (impossible
-   * — their codes are not in any cluster's chapter_codes), and not in
-   * the global padding pass either. This regression test seeds the
-   * mocked DB with a substantive source + a substantive angle and
-   * asserts both are absent from the final list.
+   * procedural-mode bar-exam simulation: not in cluster picks
+   * (impossible — their codes are not in any cluster's chapter_codes),
+   * and not in the global padding pass either. This regression test
+   * seeds the mocked DB with a substantive source + a substantive
+   * angle and asserts both are absent from the final list.
    */
-
-  type SrcRow = {
-    id: string;
-    chapter: { code: string; track: "procedural" | "substantive" };
-  };
-  type AngleRow = { id: string; source_question_id: string };
-
-  function buildFakeSupabase(srcRows: SrcRow[], angleRows: AngleRow[]) {
-    function thenable<T>(data: T) {
-      const builder: Record<string, unknown> = {};
-      const passthrough = () => builder;
-      builder.select = passthrough;
-      builder.eq = passthrough;
-      builder.in = passthrough;
-      builder.then = (resolve: (v: { data: T; error: null }) => unknown) =>
-        Promise.resolve({ data, error: null }).then(resolve);
-      return builder;
-    }
-    return {
-      from: (table: string) => {
-        if (table === "source_questions") return thenable(srcRows);
-        if (table === "angle_questions") return thenable(angleRows);
-        throw new Error(`unexpected from() call: ${table}`);
-      },
-    };
-  }
-
   it("never includes substantive-track questions, even via padding", async () => {
     // Production-shaped procedural pool (39 sources × 5 angles each =
     // 234 candidates) — comfortably above the 14/11/13 cluster targets.
@@ -236,52 +266,191 @@ describe("sampleExamQuestions — procedural-only guard", () => {
       insolvency_arbitration: 0,
     };
 
-    const srcRows: SrcRow[] = [];
-    const angleRows: AngleRow[] = [];
+    const rows = { srcRows: [] as SrcRow[], angleRows: [] as AngleRow[] };
     for (const [code, count] of Object.entries(proceduralCounts)) {
-      for (let i = 0; i < count; i++) {
-        const sid = `${code}-src-${i}`;
-        srcRows.push({
-          id: sid,
-          chapter: { code, track: "procedural" },
-        });
-        for (let a = 0; a < 5; a++) {
-          angleRows.push({
-            id: `${code}-ang-${i}-${a}`,
-            source_question_id: sid,
-          });
-        }
-      }
+      makeSourceWithAngles(rows, code, "procedural", count, 5);
     }
 
     // The "do not let through" markers: 1 substantive source + 1
     // substantive angle hanging off it. Cluster picks cannot reach
-    // them (no cluster contains "contracts"), and padding cannot
-    // either if `sampleExamQuestions` correctly filters them out
-    // BEFORE building the pool.
-    const SUBSTANTIVE_SRC_ID = "contracts-substantive-src";
-    const SUBSTANTIVE_ANGLE_ID = "contracts-substantive-ang";
-    srcRows.push({
+    // them (no cluster contains "contracts" in procedural mode), and
+    // padding cannot either if `sampleExamQuestions` correctly filters
+    // them out BEFORE building the pool.
+    const SUBSTANTIVE_SRC_ID = "contracts-src-99";
+    const SUBSTANTIVE_ANGLE_ID = "contracts-ang-99-0";
+    rows.srcRows.push({
       id: SUBSTANTIVE_SRC_ID,
       chapter: { code: "contracts", track: "substantive" },
     });
-    angleRows.push({
+    rows.angleRows.push({
       id: SUBSTANTIVE_ANGLE_ID,
       source_question_id: SUBSTANTIVE_SRC_ID,
     });
 
-    const fakeSupabase = buildFakeSupabase(srcRows, angleRows);
+    const fakeSupabase = buildFakeSupabase(rows.srcRows, rows.angleRows);
     // `sampleExamQuestions` is typed against the SSR client; we widen
     // here because the fake only implements the subset the sampler
     // actually calls.
     const result = await sampleExamQuestions(
-      fakeSupabase as unknown as Parameters<typeof sampleExamQuestions>[0]
+      fakeSupabase as unknown as Parameters<typeof sampleExamQuestions>[0],
+      "procedural"
     );
 
     expect(result.length).toBe(EXAM_TOTAL_QUESTIONS);
     const ids = new Set(result.map((r) => r.question_id));
     expect(ids.has(SUBSTANTIVE_SRC_ID)).toBe(false);
     expect(ids.has(SUBSTANTIVE_ANGLE_ID)).toBe(false);
+  });
+
+  it("default mode (no arg) keeps procedural behaviour — back-compat", async () => {
+    const proceduralCounts: Record<string, number> = {
+      civil_proc: 14,
+      criminal_proc: 11,
+      evidence: 4,
+      constitutional_intl: 5,
+      execution: 5,
+      insolvency_arbitration: 0,
+    };
+    const rows = { srcRows: [] as SrcRow[], angleRows: [] as AngleRow[] };
+    for (const [code, count] of Object.entries(proceduralCounts)) {
+      makeSourceWithAngles(rows, code, "procedural", count, 5);
+    }
+    // Slip a substantive row in to make sure the default arg still
+    // filters it out.
+    rows.srcRows.push({
+      id: "ethics-src-99",
+      chapter: { code: "ethics", track: "substantive" },
+    });
+    const fakeSupabase = buildFakeSupabase(rows.srcRows, rows.angleRows);
+    const result = await sampleExamQuestions(
+      fakeSupabase as unknown as Parameters<typeof sampleExamQuestions>[0]
+    );
+    expect(result.length).toBe(EXAM_TOTAL_QUESTIONS);
+    expect(new Set(result.map((r) => r.question_id)).has("ethics-src-99")).toBe(
+      false
+    );
+  });
+});
+
+describe("sampleExamQuestions — substantive-only guard (Slice 9)", () => {
+  it("only samples substantive-track questions; procedural is excluded", async () => {
+    const rows = { srcRows: [] as SrcRow[], angleRows: [] as AngleRow[] };
+    // Plenty of substantive supply, distributed across all 10 chapters
+    // (matches the production shape: ~73 substantive sources × ~4 angles).
+    for (const code of SUBSTANTIVE_CHAPTER_CODES) {
+      makeSourceWithAngles(rows, code, "substantive", 8, 4);
+    }
+    // A handful of procedural rows that should be filtered out.
+    makeSourceWithAngles(rows, "civil_proc", "procedural", 5, 5);
+    makeSourceWithAngles(rows, "criminal_proc", "procedural", 5, 5);
+
+    const fakeSupabase = buildFakeSupabase(rows.srcRows, rows.angleRows);
+    const result = await sampleExamQuestions(
+      fakeSupabase as unknown as Parameters<typeof sampleExamQuestions>[0],
+      "substantive"
+    );
+
+    expect(result.length).toBe(EXAM_TOTAL_QUESTIONS);
+    // None of the procedural ids should leak.
+    const ids = new Set(result.map((r) => r.question_id));
+    for (let i = 0; i < 5; i++) {
+      expect(ids.has(`civil_proc-src-${i}`)).toBe(false);
+      expect(ids.has(`criminal_proc-src-${i}`)).toBe(false);
+    }
+  });
+});
+
+describe("sampleExamQuestions — combined mode (Slice 9)", () => {
+  it("produces 40 items split per the combined cluster config (7/6/7 + 20)", async () => {
+    const rows = { srcRows: [] as SrcRow[], angleRows: [] as AngleRow[] };
+    // Procedural side — enough to satisfy each cluster's reduced target
+    // with headroom.
+    makeSourceWithAngles(rows, "civil_proc", "procedural", 6, 5); // cluster א
+    makeSourceWithAngles(rows, "criminal_proc", "procedural", 4, 5); // cluster ב
+    makeSourceWithAngles(rows, "evidence", "procedural", 3, 5); // cluster ב
+    makeSourceWithAngles(rows, "constitutional_intl", "procedural", 2, 5); // ב
+    makeSourceWithAngles(rows, "execution", "procedural", 5, 5); // ג
+    // Substantive side — broad supply.
+    for (const code of SUBSTANTIVE_CHAPTER_CODES) {
+      makeSourceWithAngles(rows, code, "substantive", 4, 4);
+    }
+
+    const fakeSupabase = buildFakeSupabase(rows.srcRows, rows.angleRows);
+    const result = await sampleExamQuestions(
+      fakeSupabase as unknown as Parameters<typeof sampleExamQuestions>[0],
+      "combined"
+    );
+    expect(result.length).toBe(EXAM_TOTAL_QUESTIONS);
+
+    // Re-bucket the result to verify the per-cluster allocation. We
+    // don't strictly require exact targets (padding can shift things)
+    // but the substantive bucket must hit ≥ 20 and the total must be
+    // exactly EXAM_TOTAL_QUESTIONS.
+    const proceduralChapters = new Set([
+      "civil_proc",
+      "criminal_proc",
+      "evidence",
+      "constitutional_intl",
+      "execution",
+      "insolvency_arbitration",
+    ]);
+    let proceduralCount = 0;
+    let substantiveCount = 0;
+    for (const item of result) {
+      // The pool item carried a `chapter_code`, but `sampleExamQuestions`
+      // returns ExamQuestionListItem which strips it. We can recover the
+      // chapter from the id prefix in this fixture.
+      const code = item.question_id.split("-")[0];
+      if (proceduralChapters.has(code)) proceduralCount++;
+      else substantiveCount++;
+    }
+    // Combined config: 20 procedural + 20 substantive. Padding can
+    // shift +/-, but with healthy supply on both sides each cluster
+    // hits its target exactly.
+    expect(proceduralCount + substantiveCount).toBe(EXAM_TOTAL_QUESTIONS);
+    expect(substantiveCount).toBeGreaterThanOrEqual(20);
+    expect(proceduralCount).toBeGreaterThanOrEqual(20);
+  });
+});
+
+describe("clustersForMode — per-mode invariants (Slice 9)", () => {
+  // Sanity layer above the module-load invariant in lib/exam/clusters.
+  // The module invariant only checks "targets don't OVER-allocate"; the
+  // PM contract for Slice 9 is tighter — per-mode targets sum to
+  // EXAM_TOTAL_QUESTIONS exactly for substantive and combined modes.
+  it("procedural targets sum to 38 (2 slots filled by padding)", () => {
+    const sum = clustersForMode("procedural").reduce(
+      (acc, c) => acc + c.target,
+      0
+    );
+    expect(sum).toBe(38);
+  });
+
+  it("substantive single cluster targets exactly 40", () => {
+    const clusters = clustersForMode("substantive");
+    expect(clusters).toHaveLength(1);
+    expect(clusters[0].target).toBe(EXAM_TOTAL_QUESTIONS);
+    // The single cluster must cover every substantive chapter code,
+    // otherwise the per-cluster pick can't see the full pool.
+    const codes = new Set(clusters[0].chapter_codes);
+    for (const c of SUBSTANTIVE_CHAPTER_CODES) {
+      expect(codes.has(c)).toBe(true);
+    }
+  });
+
+  it("combined four clusters sum to exactly 40 (7/6/7 + 20)", () => {
+    const clusters = clustersForMode("combined");
+    expect(clusters).toHaveLength(4);
+    expect(clusters.map((c) => c.target)).toEqual([7, 6, 7, 20]);
+    const sum = clusters.reduce((acc, c) => acc + c.target, 0);
+    expect(sum).toBe(EXAM_TOTAL_QUESTIONS);
+  });
+
+  it("every mode's targets stay ≤ EXAM_TOTAL_QUESTIONS", () => {
+    for (const mode of ["procedural", "substantive", "combined"] as ExamMode[]) {
+      const sum = clustersForMode(mode).reduce((acc, c) => acc + c.target, 0);
+      expect(sum).toBeLessThanOrEqual(EXAM_TOTAL_QUESTIONS);
+    }
   });
 });
 

@@ -21,7 +21,15 @@ const examPosition = z.number().int().min(0).max(39);
 // createExamSession — Phase 1 (kept here for the canonical re-export)
 // =============================================================================
 
-export const createExamSessionInput = z.object({});
+/**
+ * Slice 9 — the only client input is the chosen sampling mode. The set
+ * of valid modes is pinned by the DB CHECK constraint on
+ * `exam_sessions.mode`; any drift here would surface as an insert
+ * failure rather than as a silent miscategorisation.
+ */
+export const createExamSessionInput = z.object({
+  mode: z.enum(["procedural", "substantive", "combined"]),
+});
 export type CreateExamSessionInput = z.infer<typeof createExamSessionInput>;
 
 // =============================================================================

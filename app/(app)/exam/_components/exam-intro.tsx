@@ -7,15 +7,21 @@ import { toast } from "sonner";
 
 import { createExamSession } from "@/app/(app)/exam/_actions";
 import { Button, buttonVariants } from "@/components/ui/button";
+import type { ExamMode } from "@/lib/exam/clusters";
 import { cn } from "@/lib/utils";
 
 import { IntroContent } from "./intro-content";
 
 /**
- * Fresh-user entry point at `/exam`. Renders the shared IntroContent
- * and the two-button footer. "התחל בחינה" fires createExamSession;
- * on success we navigate to the play URL via window.location.assign
- * (same pattern as createPracticeSession in Slice 2).
+ * Fresh-user entry point at `/exam`. Renders the mode picker, the shared
+ * IntroContent (mode-aware) and the two-button footer. "התחל בחינה"
+ * fires createExamSession with the selected mode; on success we navigate
+ * to the play URL via window.location.assign (same pattern as
+ * createPracticeSession in Slice 2).
+ *
+ * Slice 9 — three modes (procedural / substantive / combined). The
+ * picker defaults to procedural; PM decision is no "last mode used"
+ * preference, so every fresh visit starts at the same default.
  *
  * Sidebar is hidden across the whole /exam/* subtree at the layout
  * level — see app/(app)/layout.tsx (Phase 0). This page therefore
@@ -24,12 +30,13 @@ import { IntroContent } from "./intro-content";
 export function ExamIntro() {
   const [isPending, startTransition] = useTransition();
   const [submitting, setSubmitting] = useState(false);
+  const [mode, setMode] = useState<ExamMode>("procedural");
 
   function handleStart() {
     if (submitting) return;
     setSubmitting(true);
     startTransition(async () => {
-      const result = await createExamSession();
+      const result = await createExamSession({ mode });
       if (!result.ok) {
         toast.error(
           result.error === "exam_pool_insufficient"
@@ -59,7 +66,10 @@ export function ExamIntro() {
 
   return (
     <>
-      <IntroContent />
+      <div className="mx-auto w-full max-w-3xl space-y-4 pt-6">
+        <ModePicker mode={mode} onChange={setMode} disabled={submitting} />
+      </div>
+      <IntroContent mode={mode} />
       <div className="mx-auto flex w-full max-w-3xl flex-col-reverse gap-2 pb-10 sm:flex-row sm:justify-end">
         <Link
           href="/dashboard"
@@ -78,5 +88,88 @@ export function ExamIntro() {
         </Button>
       </div>
     </>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Mode picker — 3 cards
+// ---------------------------------------------------------------------------
+
+type ModeCard = {
+  mode: ExamMode;
+  title: string;
+  blurb: string;
+};
+
+const MODE_CARDS: readonly ModeCard[] = [
+  {
+    mode: "procedural",
+    title: "דיוני בלבד",
+    blurb: "40 שאלות מאשכולות א/ב/ג — סדרי דין, ראיות, חוקתי, הוצאה לפועל.",
+  },
+  {
+    mode: "substantive",
+    title: "מהותי בלבד",
+    blurb: "40 שאלות מתחומי הדין המהותי — חוזים, קניין, חברות, נזיקין ועוד.",
+  },
+  {
+    mode: "combined",
+    title: "משולב",
+    blurb: "20 דיוני + 20 מהותי. כיסוי רחב יותר בסימולציה אחת.",
+  },
+];
+
+/**
+ * Radio-like card group. Each card is a button with `aria-pressed`;
+ * keyboard arrow-key navigation falls out of native focus order (the
+ * group is a `<div role="radiogroup">` but the cards are buttons rather
+ * than radios so the Tailwind variant utilities work cleanly — same
+ * tradeoff as <PlanCard /> in the pricing screen).
+ */
+function ModePicker({
+  mode,
+  onChange,
+  disabled,
+}: {
+  mode: ExamMode;
+  onChange: (next: ExamMode) => void;
+  disabled: boolean;
+}) {
+  return (
+    <div
+      role="radiogroup"
+      aria-label="בחר מצב סימולציה"
+      className="grid grid-cols-1 gap-3 sm:grid-cols-3"
+    >
+      {MODE_CARDS.map((card) => {
+        const selected = card.mode === mode;
+        return (
+          <button
+            key={card.mode}
+            type="button"
+            role="radio"
+            aria-checked={selected}
+            onClick={() => {
+              if (disabled) return;
+              if (card.mode !== mode) onChange(card.mode);
+            }}
+            disabled={disabled}
+            className={cn(
+              "flex flex-col gap-1 rounded-xl border p-4 text-start transition-colors",
+              "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500/60",
+              "disabled:cursor-not-allowed disabled:opacity-60",
+              selected
+                ? "border-amber-500 bg-amber-50 dark:bg-amber-950/20"
+                : "border-border bg-card hover:bg-muted/40"
+            )}
+          >
+            <span className="text-sm font-semibold">{card.title}</span>
+            <span className="text-xs leading-relaxed text-muted-foreground">
+              {card.blurb}
+            </span>
+          </button>
+        );
+      })}
+    </div>
   );
 }

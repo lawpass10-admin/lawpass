@@ -10,6 +10,7 @@ import {
 } from "@/app/(app)/exam/_actions";
 import { Button } from "@/components/ui/button";
 import type { ExamSessionRow } from "@/lib/db/exam";
+import type { ExamMode } from "@/lib/exam/clusters";
 import { examPlayUrl } from "@/lib/urls";
 import { cn } from "@/lib/utils";
 
@@ -18,9 +19,17 @@ import { IntroContent } from "./intro-content";
 type ResumePromptProps = {
   session: Pick<
     ExamSessionRow,
-    "id" | "questions_answered" | "status" | "active_window_token"
+    "id" | "questions_answered" | "status" | "active_window_token" | "mode"
   >;
 };
+
+/** Slice 9 — "start fresh" from the resume modal mints a new session
+ *  in the same mode as the one being abandoned. PM-confirmed: there's
+ *  no last-mode-used preference on the fresh-entry path, but inside
+ *  the resume flow it's clearest to mirror the in-progress mode (the
+ *  user is signalling "throw away this attempt, start over") rather
+ *  than silently switch them to procedural. */
+const FRESH_MODE_FALLBACK: ExamMode = "procedural";
 
 function persistWindowToken(sessionId: string, token: string): void {
   try {
@@ -73,7 +82,9 @@ export function ResumePrompt({ session }: ResumePromptProps) {
         setBusy(null);
         return;
       }
-      const createResult = await createExamSession();
+      const createResult = await createExamSession({
+        mode: session.mode ?? FRESH_MODE_FALLBACK,
+      });
       if (!createResult.ok) {
         toast.error(
           createResult.error === "exam_pool_insufficient"
@@ -91,9 +102,11 @@ export function ResumePrompt({ session }: ResumePromptProps) {
   return (
     <>
       {/* Frozen visual background — non-interactive (modal traps focus
-          and the buttons inside IntroContent are static markup). */}
+          and the buttons inside IntroContent are static markup). The
+          mode mirrors the in-progress session so the background frame
+          matches whatever the user was running. */}
       <div aria-hidden className="pointer-events-none select-none opacity-60">
-        <IntroContent />
+        <IntroContent mode={session.mode ?? FRESH_MODE_FALLBACK} />
       </div>
 
       <AlertDialog.Root open>

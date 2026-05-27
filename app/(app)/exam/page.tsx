@@ -30,6 +30,7 @@ export default async function ExamPage() {
           questions_answered: activeSession.questions_answered,
           status: activeSession.status,
           active_window_token: activeSession.active_window_token,
+          mode: activeSession.mode,
         }}
       />
     );

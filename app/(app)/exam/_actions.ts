@@ -16,6 +16,7 @@ import { examPlayUrl, examResultsUrl } from "@/lib/urls";
 import {
   abandonAndExitExamInput,
   claimExamWindowInput,
+  createExamSessionInput,
   pauseExamInput,
   resumeExamInput,
   skipExamQuestionInput,
@@ -58,17 +59,29 @@ type CreateExamSessionResult =
   | { ok: false; error: string };
 
 /**
- * Mint a new exam session. No client input — sampling is fully derived
- * from the caller's auth + the cluster config.
+ * Mint a new exam session. Slice 9 — the only client input is `mode`,
+ * which selects the sampling pool + cluster config:
+ *   - procedural: 40 procedural Qs (existing behaviour).
+ *   - substantive: 40 substantive Qs (Slice 9).
+ *   - combined: 20 procedural + 20 substantive (Slice 9).
  *
  * Steps:
- *   1. Abandon any prior active/paused session for the caller.
- *   2. Sample 40 questions via the cluster-weighted sampler.
- *   3. Mint an `active_window_token` and INSERT the row.
- *   4. revalidatePath layout (so the resume modal on `/exam` re-fetches).
- *   5. Return the play URL + sessionId + windowToken.
+ *   1. Validate input via zod (rejects unknown modes — DB CHECK adds
+ *      defense in depth).
+ *   2. Abandon any prior active/paused session for the caller.
+ *   3. Sample 40 questions via the cluster-weighted sampler in the
+ *      requested mode.
+ *   4. Mint an `active_window_token` and INSERT the row with `mode`.
+ *   5. revalidatePath layout (so the resume modal on `/exam` re-fetches).
+ *   6. Return the play URL + sessionId + windowToken.
  */
-export async function createExamSession(): Promise<CreateExamSessionResult> {
+export async function createExamSession(
+  input: unknown
+): Promise<CreateExamSessionResult> {
+  const parsed = createExamSessionInput.safeParse(input);
+  if (!parsed.success) return { ok: false, error: "invalid_input" };
+  const { mode } = parsed.data;
+
   const { user } = await requireActiveSubscription();
   const supabase = await createClient();
 
@@ -82,7 +95,7 @@ export async function createExamSession(): Promise<CreateExamSessionResult> {
       .eq("user_id", user.id)
       .in("status", ["active", "paused"]);
 
-    const questionList = await sampleExamQuestions(supabase);
+    const questionList = await sampleExamQuestions(supabase, mode);
     const windowToken = randomUUID();
 
     const { data: inserted, error: insertError } = await supabase
@@ -94,6 +107,7 @@ export async function createExamSession(): Promise<CreateExamSessionResult> {
         time_used_seconds: 0,
         status: "active",
         active_window_token: windowToken,
+        mode,
       })
       .select("id, active_window_token")
       .single();
@@ -103,7 +117,8 @@ export async function createExamSession(): Promise<CreateExamSessionResult> {
     }
 
     console.info(
-      `[exam] create_session OK user=${user.id} session=${inserted.id} items=${questionList.length}`
+      `[exam] create_session OK user=${user.id} session=${inserted.id} ` +
+        `mode=${mode} items=${questionList.length}`
     );
 
     revalidatePath("/", "layout");
@@ -118,7 +133,7 @@ export async function createExamSession(): Promise<CreateExamSessionResult> {
     const message = err instanceof Error ? err.message : String(err);
     const code = (err as { code?: string }).code;
     console.error(
-      `[exam] create_session FAILED user=${user.id} code=${
+      `[exam] create_session FAILED user=${user.id} mode=${mode} code=${
         code ?? "unknown"
       } message=${message}`
     );

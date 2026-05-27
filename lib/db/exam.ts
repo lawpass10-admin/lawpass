@@ -1,21 +1,22 @@
 /**
  * Slice 3 — Exam-mode DB helpers + sampling. Server-only.
+ * Slice 9 — Multi-mode (procedural / substantive / combined).
  *
  * Mirrors the shape of `lib/db/practice.ts`: caller is responsible for
  * `requireActiveSubscription()` before any of these run. Every read
  * goes through RLS; we never use the admin client.
  *
  * The cluster-weighted sampling logic is split in two layers:
- *   - `sampleExamQuestions(supabase)` — thin DB shim that fetches the
- *     full eligible pool (source + angle) and projects each row into a
- *     `PoolItem` carrying its chapter code.
+ *   - `sampleExamQuestions(supabase, mode)` — thin DB shim that fetches
+ *     the eligible pool (source + angle) for the requested mode and
+ *     projects each row into a `PoolItem` carrying its chapter code.
  *   - `bucketAndShuffleExamPool(pool, clusters)` — PURE function. No
  *     supabase, no I/O. Unit-tested with fixtures in
  *     `tests/exam-sampling.test.ts`. Lives here for colocation but
  *     stays import-free of anything async.
  *
  * The pure helper does three passes:
- *   1. Per-cluster pick (in `EXAM_CLUSTERS` order: א, ב, ג).
+ *   1. Per-cluster pick (in cluster order — depends on mode).
  *   2. Global padding from leftovers if any cluster underflowed.
  *   3. Final shuffle of the assembled 40 so the user doesn't see
  *      cluster grouping in the question stream.
@@ -24,7 +25,9 @@
 import {
   EXAM_TOTAL_QUESTIONS,
   type ExamCluster,
+  type ExamMode,
   EXAM_CLUSTERS,
+  clustersForMode,
 } from "@/lib/exam/clusters";
 import type { createClient } from "@/lib/supabase/server";
 
@@ -76,16 +79,23 @@ export type ExamSessionRow = {
   paused_at: string | null;
   completed_at: string | null;
   last_activity_at: string;
+  /** Slice 9 — which sampling pool was used for this session. Pre-Slice-9
+   *  rows are backfilled by the migration to 'procedural'. */
+  mode: ExamMode;
 };
 
 /**
  * Internal pool-item shape used during sampling. Carries the chapter
- * code so the bucketer can split by cluster without re-joining.
+ * code so the bucketer can split by cluster without re-joining. Slice 9
+ * adds the optional `track` field — informational for combined-mode
+ * diagnostics; bucketing keys off `chapter_code`, so cluster picks
+ * never depend on `track`.
  */
 export type ExamPoolItem = {
   question_type: ExamQuestionType;
   question_id: string;
   chapter_code: string;
+  track?: string;
 };
 
 // =============================================================================
@@ -177,7 +187,8 @@ export function bucketAndShuffleExamPool(
 const EXAM_SESSION_SELECT =
   "id, user_id, question_list, total_duration_seconds, time_used_seconds, " +
   "status, questions_answered, questions_correct, final_score, passed, " +
-  "active_window_token, started_at, paused_at, completed_at, last_activity_at";
+  "active_window_token, started_at, paused_at, completed_at, " +
+  "last_activity_at, mode";
 
 function parseQuestionList(v: unknown): ExamQuestionListItem[] {
   if (!Array.isArray(v)) return [];
@@ -203,6 +214,14 @@ function parseQuestionList(v: unknown): ExamQuestionListItem[] {
   return out;
 }
 
+function parseExamMode(v: unknown): ExamMode {
+  if (v === "procedural" || v === "substantive" || v === "combined") return v;
+  // Defensive fallback for any pre-Slice-9 row that somehow lost the
+  // backfilled value. The migration sets DEFAULT 'procedural' so this
+  // branch shouldn't fire in practice.
+  return "procedural";
+}
+
 function mapExamSession(data: Record<string, unknown>): ExamSessionRow {
   const status = data.status as ExamSessionStatus;
   return {
@@ -221,6 +240,7 @@ function mapExamSession(data: Record<string, unknown>): ExamSessionRow {
     paused_at: (data.paused_at as string | null) ?? null,
     completed_at: (data.completed_at as string | null) ?? null,
     last_activity_at: data.last_activity_at as string,
+    mode: parseExamMode(data.mode),
   };
 }
 
@@ -276,6 +296,8 @@ export async function getExamSessionById(
 type SourceRow = { id: string; chapter_code: string };
 type AngleRow = { id: string; source_question_id: string };
 
+type SourceRowWithTrack = SourceRow & { track: string };
+
 /**
  * Build the 40-question list for a new exam session. Returns items in
  * the order they will be presented (post-final-shuffle), with
@@ -284,38 +306,55 @@ type AngleRow = { id: string; source_question_id: string };
  * RLS-aware: every read goes through the SSR client. Archived /
  * non-current source questions are hidden by RLS, and angles whose
  * parent is RLS-hidden are also filtered out.
+ *
+ * Slice 9 — mode-aware. The track allowlist + cluster config are both
+ * derived from `mode`:
+ *   - procedural: track must be 'procedural'. 3 clusters (א/ב/ג).
+ *   - substantive: track must be 'substantive'. 1 cluster (מ).
+ *   - combined: track ∈ {procedural, substantive}. 4 clusters
+ *     (7/6/7 procedural + 20 substantive = 40).
  */
 export async function sampleExamQuestions(
-  supabase: SupabaseSsrClient
+  supabase: SupabaseSsrClient,
+  mode: ExamMode = "procedural"
 ): Promise<ExamQuestionListItem[]> {
-  // Step 1 — fetch all active+current PROCEDURAL-TRACK source questions
-  // with their chapter codes. The 40-question bar-exam simulation is
-  // procedural-only by product spec: substantive-track chapters
-  // (contracts, property, etc — introduced in the substantive-law
-  // taxonomy migration) live in the same `source_questions` table but
-  // MUST NOT be candidates for the exam. Filtering here, BEFORE the
-  // pool reaches `bucketAndShuffleExamPool`, guarantees they cannot
-  // leak via cluster picks (impossible — no cluster contains their
-  // codes) or via the padding pass (otherwise possible).
-  //
-  // Two layers of defense:
+  // Track allowlist for the current mode. Drives both the DB filter
+  // (single-track modes use `.eq`, combined uses `.in`) AND the JS-side
+  // defense-in-depth guard that drops any row whose `track` falls
+  // outside the allowlist.
+  const allowedTracks: string[] =
+    mode === "procedural"
+      ? ["procedural"]
+      : mode === "substantive"
+        ? ["substantive"]
+        : ["procedural", "substantive"];
+  const allowedTrackSet = new Set(allowedTracks);
+
+  // Step 1 — fetch active+current source questions with their chapter
+  // codes, restricted to the mode's allowed track(s). Two layers of
+  // defense, same pattern as Slice 3:
   //   1. DB-side: `!inner` makes the chapter embed an INNER join and
-  //      `.eq("chapter.track", "procedural")` filters at PostgREST.
+  //      `.eq("chapter.track", ...)` (or `.in(...)` for combined)
+  //      filters at PostgREST.
   //   2. JS-side: the loop below also drops any row whose `track` is
-  //      not exactly "procedural", in case the embedded-resource
+  //      not in `allowedTrackSet`, in case the embedded-resource
   //      filter is ever bypassed (FK schema change, PostgREST upgrade
   //      semantics, etc.).
-  const { data: srcRows, error: srcErr } = await supabase
+  const baseQuery = supabase
     .from("source_questions")
     .select(
       "id, chapter:chapters!source_questions_chapter_id_fkey!inner(code, track)"
     )
     .eq("is_current", true)
-    .eq("status", "active")
-    .eq("chapter.track", "procedural");
+    .eq("status", "active");
+  const filteredQuery =
+    allowedTracks.length === 1
+      ? baseQuery.eq("chapter.track", allowedTracks[0])
+      : baseQuery.in("chapter.track", allowedTracks);
+  const { data: srcRows, error: srcErr } = await filteredQuery;
   if (srcErr) throw srcErr;
 
-  const sourceById = new Map<string, SourceRow>();
+  const sourceById = new Map<string, SourceRowWithTrack>();
   for (const row of (srcRows ?? []) as Array<{
     id: string;
     chapter:
@@ -325,8 +364,12 @@ export async function sampleExamQuestions(
   }>) {
     const chapter = Array.isArray(row.chapter) ? row.chapter[0] : row.chapter;
     if (!chapter?.code) continue;
-    if (chapter.track !== "procedural") continue;
-    sourceById.set(row.id, { id: row.id, chapter_code: chapter.code });
+    if (!chapter.track || !allowedTrackSet.has(chapter.track)) continue;
+    sourceById.set(row.id, {
+      id: row.id,
+      chapter_code: chapter.code,
+      track: chapter.track,
+    });
   }
 
   // Step 2 — fetch every angle whose parent source is in the
@@ -345,6 +388,7 @@ export async function sampleExamQuestions(
       question_type: "source",
       question_id: src.id,
       chapter_code: src.chapter_code,
+      track: src.track,
     });
   }
   for (const ang of (angleRows ?? []) as AngleRow[]) {
@@ -354,11 +398,13 @@ export async function sampleExamQuestions(
       question_type: "angle",
       question_id: ang.id,
       chapter_code: parent.chapter_code,
+      track: parent.track,
     });
   }
 
-  // Step 4 — bucket + shuffle (pure).
-  const sampled = bucketAndShuffleExamPool(pool);
+  // Step 4 — bucket + shuffle (pure). Pass the mode-specific cluster
+  // config so the bucketer slots items into the right buckets.
+  const sampled = bucketAndShuffleExamPool(pool, clustersForMode(mode));
 
   // Step 5 — project to ExamQuestionListItem with display_order 1..40.
   return sampled.map((it, idx) => ({
@@ -682,7 +728,15 @@ export type ExamByPosition = {
 };
 
 export type ExamByCluster = {
+  /** Identifier for the bucket. For procedural/combined this is the
+   *  cluster code (א / ב / ג / מ). For substantive results, where the
+   *  byCluster array is dynamic-per-chapter, this is the chapter code
+   *  (contracts, torts, …). */
   code: import("@/lib/exam/clusters").ExamClusterCode;
+  /** Slice 9 — display label. Optional: procedural/combined cards render
+   *  from the cluster code in the UI; substantive cards need a label
+   *  (the chapter title) since the code itself is not user-facing. */
+  label?: string;
   correct: number;
   total: number;
 };
@@ -827,14 +881,20 @@ export async function getExamPositionStatuses(
 }
 
 /**
- * Resolve the chapter code for each item in `questionList`. Returns a
- * Map keyed by `${question_type}:${question_id}`. JOINs at read time
- * per PM decision #3 (no denormalisation onto the attempts row).
+ * Resolve the chapter code (and title — Slice 9) for each item in
+ * `questionList`. Returns a Map keyed by
+ * `${question_type}:${question_id}`. JOINs at read time per PM decision
+ * #3 (no denormalisation onto the attempts row).
+ *
+ * The title is needed by the substantive-mode results page, which
+ * renders one card per chapter (vs the static 3-cluster card layout of
+ * procedural mode).
  */
+type ChapterInfo = { code: string; title: string };
 async function resolveChapterCodesForList(
   supabase: SupabaseSsrClient,
   questionList: ExamQuestionListItem[]
-): Promise<Map<string, string>> {
+): Promise<Map<string, ChapterInfo>> {
   const sourceIds: string[] = [];
   const angleIds: string[] = [];
   for (const it of questionList) {
@@ -842,21 +902,29 @@ async function resolveChapterCodesForList(
     else angleIds.push(it.question_id);
   }
 
-  const map = new Map<string, string>();
+  const map = new Map<string, ChapterInfo>();
 
   if (sourceIds.length > 0) {
     const { data } = await supabase
       .from("source_questions")
       .select(
-        "id, chapter:chapters!source_questions_chapter_id_fkey(code)"
+        "id, chapter:chapters!source_questions_chapter_id_fkey(code, title)"
       )
       .in("id", sourceIds);
     for (const row of (data ?? []) as Array<{
       id: string;
-      chapter: { code: string } | { code: string }[] | null;
+      chapter:
+        | { code: string; title: string | null }
+        | { code: string; title: string | null }[]
+        | null;
     }>) {
       const chapter = Array.isArray(row.chapter) ? row.chapter[0] : row.chapter;
-      if (chapter?.code) map.set(`source:${row.id}`, chapter.code);
+      if (chapter?.code) {
+        map.set(`source:${row.id}`, {
+          code: chapter.code,
+          title: chapter.title ?? chapter.code,
+        });
+      }
     }
   }
 
@@ -864,14 +932,24 @@ async function resolveChapterCodesForList(
     const { data } = await supabase
       .from("angle_questions")
       .select(
-        "id, source_question:source_questions!angle_questions_source_question_id_fkey(chapter:chapters!source_questions_chapter_id_fkey(code))"
+        "id, source_question:source_questions!angle_questions_source_question_id_fkey(chapter:chapters!source_questions_chapter_id_fkey(code, title))"
       )
       .in("id", angleIds);
     for (const row of (data ?? []) as Array<{
       id: string;
       source_question:
-        | { chapter: { code: string } | { code: string }[] | null }
-        | { chapter: { code: string } | { code: string }[] | null }[]
+        | {
+            chapter:
+              | { code: string; title: string | null }
+              | { code: string; title: string | null }[]
+              | null;
+          }
+        | {
+            chapter:
+              | { code: string; title: string | null }
+              | { code: string; title: string | null }[]
+              | null;
+          }[]
         | null;
     }>) {
       const parent = Array.isArray(row.source_question)
@@ -882,7 +960,12 @@ async function resolveChapterCodesForList(
           ? parent.chapter[0]
           : parent.chapter
         : null;
-      if (chapter?.code) map.set(`angle:${row.id}`, chapter.code);
+      if (chapter?.code) {
+        map.set(`angle:${row.id}`, {
+          code: chapter.code,
+          title: chapter.title ?? chapter.code,
+        });
+      }
     }
   }
 
@@ -1041,10 +1124,19 @@ async function resolveChoicesForList(
 
 /**
  * Full aggregate for the results page: session + per-position status
- * (now with question-text excerpt) + per-cluster correct/total.
- * Cluster codes pulled from EXAM_CLUSTERS; any question whose chapter
- * doesn't fall under any cluster (impossible with the current config
- * but defensive) is excluded from the cluster cards but stays in the
+ * (with question-text excerpt) + mode-aware `byCluster` breakdown.
+ *
+ * Slice 9 — `byCluster` is mode-aware:
+ *   - procedural: 3 cluster cards (א/ב/ג) from PROCEDURAL_CLUSTERS.
+ *   - combined: 4 cluster cards (א/ב/ג/מ) from COMBINED_CLUSTERS.
+ *   - substantive: dynamic — one card per chapter present in this
+ *     session's question_list. Codes are chapter codes, labels are
+ *     chapter titles. Chapters with zero questions in the session
+ *     (impossible with the current single-cluster config, but
+ *     defensive) are omitted.
+ *
+ * Any question whose chapter doesn't fall under any cluster
+ * (defensive) is excluded from the cluster cards but stays in the
  * byPosition list.
  *
  * Slice 7.6 — each byPosition row now also carries the question's
@@ -1084,19 +1176,54 @@ export async function getExamResultsAggregate(
     };
   });
 
-  const byCluster: ExamByCluster[] = EXAM_CLUSTERS.map((cluster) => {
-    let correct = 0;
-    let total = 0;
+  let byCluster: ExamByCluster[];
+  if (session.mode === "substantive") {
+    // Per-chapter dynamic breakdown — group by chapter code, derive
+    // the human label from chapter title. Preserves the order in which
+    // chapters first appear in the session's question_list so the cards
+    // render in a stable, reproducible order across reloads.
+    const bucketByChapter = new Map<
+      string,
+      { code: string; label: string; correct: number; total: number }
+    >();
     for (let i = 0; i < session.question_list.length; i++) {
       const item = session.question_list[i];
-      const code = chapterByItem.get(`${item.question_type}:${item.question_id}`);
-      if (!code) continue;
-      if (!cluster.chapter_codes.includes(code)) continue;
-      total++;
-      if (byPosition[i]?.status === "correct") correct++;
+      const info = chapterByItem.get(
+        `${item.question_type}:${item.question_id}`
+      );
+      if (!info) continue;
+      let bucket = bucketByChapter.get(info.code);
+      if (!bucket) {
+        bucket = {
+          code: info.code,
+          label: info.title,
+          correct: 0,
+          total: 0,
+        };
+        bucketByChapter.set(info.code, bucket);
+      }
+      bucket.total++;
+      if (byPosition[i]?.status === "correct") bucket.correct++;
     }
-    return { code: cluster.code, correct, total };
-  });
+    byCluster = Array.from(bucketByChapter.values());
+  } else {
+    const clusters = clustersForMode(session.mode);
+    byCluster = clusters.map((cluster) => {
+      let correct = 0;
+      let total = 0;
+      for (let i = 0; i < session.question_list.length; i++) {
+        const item = session.question_list[i];
+        const info = chapterByItem.get(
+          `${item.question_type}:${item.question_id}`
+        );
+        if (!info) continue;
+        if (!cluster.chapter_codes.includes(info.code)) continue;
+        total++;
+        if (byPosition[i]?.status === "correct") correct++;
+      }
+      return { code: cluster.code, correct, total };
+    });
+  }
 
   return { session, byPosition, byCluster };
 }

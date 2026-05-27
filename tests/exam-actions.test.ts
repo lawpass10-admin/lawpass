@@ -119,6 +119,7 @@ function buildSession(overrides: Partial<ExamSessionRow> = {}): ExamSessionRow {
     paused_at: null,
     completed_at: null,
     last_activity_at: new Date(Date.now() - 5443).toISOString(),
+    mode: "procedural",
     ...overrides,
   };
 }

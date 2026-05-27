@@ -12,7 +12,7 @@ import type {
   ExamReviewChoice,
   ExamReviewRow,
 } from "@/lib/db/exam";
-import { EXAM_TOTAL_QUESTIONS } from "@/lib/exam/clusters";
+import { EXAM_TOTAL_QUESTIONS, type ExamMode } from "@/lib/exam/clusters";
 import { cn } from "@/lib/utils";
 
 /**
@@ -64,6 +64,12 @@ const STATUS_COPY: Record<string, { label: string; classes: string }> = {
  * collapse. Slice 7.6 extended it with the per-question inline
  * expansion (still on this same page — no new route, no modal).
  */
+const HERO_EYEBROW_BY_MODE: Record<ExamMode, string> = {
+  procedural: "סימולציית בחינה",
+  substantive: "סימולציית בחינה — דין מהותי",
+  combined: "סימולציה משולבת",
+};
+
 export function ExamResults({ aggregate }: Props) {
   const { session, byPosition, byCluster } = aggregate;
   const score = session.final_score ?? 0;
@@ -71,6 +77,19 @@ export function ExamResults({ aggregate }: Props) {
   const passed = session.passed === true;
   const pct = total > 0 ? Math.round((score / total) * 100) : 0;
   const minutesUsed = Math.max(0, Math.round(session.time_used_seconds / 60));
+  const heroEyebrow = HERO_EYEBROW_BY_MODE[session.mode] ?? HERO_EYEBROW_BY_MODE.procedural;
+  // Substantive results render one card per chapter (the cluster code IS
+  // a chapter code; the friendly title lives on `cluster.label`).
+  // Procedural + combined render the canonical "אשכול X" labels.
+  const isSubstantive = session.mode === "substantive";
+  // 3 columns on desktop fits א/ב/ג cleanly; combined has 4 cards so we
+  // bump to grid-cols-4 to keep them on one row, and substantive's
+  // dynamic per-chapter list flows on its own breakpoint.
+  const clusterGridClasses = isSubstantive
+    ? "grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3"
+    : byCluster.length >= 4
+      ? "grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4"
+      : "grid grid-cols-1 gap-3 md:grid-cols-3";
 
   const [creating, setCreating] = useState(false);
   const [showAll, setShowAll] = useState(false);
@@ -97,7 +116,10 @@ export function ExamResults({ aggregate }: Props) {
     if (creating) return;
     setCreating(true);
     startTransition(async () => {
-      const result = await createExamSession();
+      // PM-confirmed: "another simulation" reuses the mode of the
+      // finished session so a substantive-mode user staying in flow
+      // doesn't unexpectedly drop back to procedural.
+      const result = await createExamSession({ mode: session.mode });
       if (!result.ok) {
         toast.error(
           result.error === "exam_pool_insufficient"
@@ -144,7 +166,7 @@ export function ExamResults({ aggregate }: Props) {
           )}
         </div>
         <p className="text-xs font-mono uppercase tracking-wider text-muted-foreground">
-          סימולציית בחינה
+          {heroEyebrow}
         </p>
         <div className="flex items-baseline justify-center gap-1.5">
           <span className="text-5xl font-bold tabular-nums sm:text-7xl">
@@ -159,20 +181,30 @@ export function ExamResults({ aggregate }: Props) {
         </p>
       </header>
 
-      {/* B. Cluster cards */}
-      <section className="grid grid-cols-1 gap-3 md:grid-cols-3">
+      {/* B. Cluster / per-chapter cards.
+          - procedural: 3 cards labelled "אשכול א/ב/ג".
+          - combined: 4 cards (3 procedural + 1 substantive). The
+            substantive card is labelled "דין מהותי" instead of "אשכול מ".
+          - substantive: one card per chapter touched in this session,
+            labelled by chapter title (cluster.label). */}
+      <section className={clusterGridClasses}>
         {byCluster.map((cluster) => {
           const clusterPct =
             cluster.total > 0
               ? Math.round((cluster.correct / cluster.total) * 100)
               : 0;
+          const heading = isSubstantive
+            ? (cluster.label ?? cluster.code)
+            : cluster.code === "מ"
+              ? "דין מהותי"
+              : `אשכול ${cluster.code}`;
           return (
             <div
               key={cluster.code}
               className="rounded-xl border border-border bg-card p-5"
             >
               <p className="font-mono text-[11px] uppercase tracking-wider text-muted-foreground">
-                אשכול {cluster.code}
+                {heading}
               </p>
               <p className="mt-2 text-3xl font-bold tabular-nums">
                 {cluster.correct}
