@@ -33,14 +33,24 @@ export default function AdminNav() {
             key={item.href}
             href={item.href}
             aria-current={active ? "page" : undefined}
+            // Slice 7 polish (e): active state shifts from a solid
+            // primary tint to a gold underline + navy-ink text —
+            // lighter touch that aligns with the sidebar's gold
+            // accent without copying the full gradient.
             className={cn(
-              "rounded-md px-3 py-1.5 font-medium transition-colors",
+              "relative rounded-md px-3 py-1.5 font-medium transition-colors",
               active
-                ? "bg-primary/10 text-primary"
-                : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                ? "text-[var(--color-navy-ink)]"
+                : "text-[var(--color-ink-dim)] hover:bg-[var(--color-gold-tint)] hover:text-foreground"
             )}
           >
             {item.label}
+            {active ? (
+              <span
+                aria-hidden
+                className="pointer-events-none absolute inset-x-2 -bottom-1 h-[2px] rounded bg-[var(--color-gold)]"
+              />
+            ) : null}
           </Link>
         );
       })}

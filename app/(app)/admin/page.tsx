@@ -62,7 +62,9 @@ export default async function AdminHomePage({
     <div className="space-y-6">
       <StatsRow stats={stats} />
       <section className="space-y-3">
-        <h2 className="font-heebo text-lg font-semibold">תוכן לפי פרק</h2>
+        <h2 className="font-heebo text-lg font-semibold text-[var(--color-navy-ink)]">
+          תוכן לפי פרק
+        </h2>
         <FiltersBar
           availableYears={availableYears}
           currentYear={year}

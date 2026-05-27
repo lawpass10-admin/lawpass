@@ -55,15 +55,17 @@ function SubscriptionCell({
 export default function UsersTable({ rows }: { rows: AdminUserRow[] }) {
   if (rows.length === 0) {
     return (
-      <div className="rounded-md border bg-card p-6 text-sm text-muted-foreground">
+      <div className="rounded-md border border-[var(--color-line)] bg-card p-6 text-sm text-muted-foreground">
         אין משתמשים להצגה.
       </div>
     );
   }
   return (
-    <div className="overflow-hidden rounded-md border bg-card">
+    <div className="overflow-hidden rounded-md border border-[var(--color-line)] bg-card">
       <table className="w-full text-sm">
-        <thead className="bg-muted/50 text-right text-xs uppercase tracking-wide text-muted-foreground">
+        {/* Slice 7 polish (c, g): token border + Hebrew-friendly
+            header (no uppercase) + ink-dim text. */}
+        <thead className="bg-muted/50 text-right text-xs tracking-wide text-[var(--color-ink-dim)]">
           <tr>
             <th className="px-3 py-2 font-medium">שם</th>
             <th className="px-3 py-2 font-medium">אימייל</th>
@@ -73,11 +75,14 @@ export default function UsersTable({ rows }: { rows: AdminUserRow[] }) {
             <th className="px-3 py-2 font-medium">כניסה אחרונה</th>
           </tr>
         </thead>
-        <tbody className="divide-y">
+        <tbody className="divide-y divide-[var(--color-line)]">
           {rows.map((row) => (
             <tr
               key={row.userId}
-              className={cn("transition-colors hover:bg-muted/40")}
+              // Slice 7 polish (f): gold-tint hover.
+              className={cn(
+                "transition-colors hover:bg-[var(--color-gold-tint)]"
+              )}
             >
               <td className="px-3 py-2.5 align-top">
                 <Link

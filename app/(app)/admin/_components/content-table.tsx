@@ -28,6 +28,9 @@ function withFilters(href: string, filters: ContentFilters): string {
   return qs ? `${href}?${qs}` : href;
 }
 
+// Slice 7 polish (a): map flag tones to --color-status-* tokens
+// instead of raw amber/rose palettes. "alert" reads as a stronger
+// status-weak shade than "warn" via tone-specific copy + bg pairing.
 function Badge({
   tone,
   children,
@@ -41,9 +44,9 @@ function Badge({
         "inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium",
         tone === "neutral" && "bg-muted text-muted-foreground",
         tone === "warn" &&
-          "bg-amber-100 text-amber-900 dark:bg-amber-950 dark:text-amber-200",
+          "bg-[var(--color-status-weak-bg)] text-[var(--color-status-weak)]",
         tone === "alert" &&
-          "bg-rose-100 text-rose-900 dark:bg-rose-950 dark:text-rose-200"
+          "border border-[var(--color-status-weak)] bg-[var(--color-status-weak-bg)] text-[var(--color-status-weak)]"
       )}
     >
       {children}
@@ -95,15 +98,17 @@ export default function ContentTable({
 }) {
   if (rows.length === 0) {
     return (
-      <div className="rounded-md border bg-card p-6 text-sm text-muted-foreground">
+      <div className="rounded-md border border-[var(--color-line)] bg-card p-6 text-sm text-muted-foreground">
         אין פרקים שתואמים את הסינון.
       </div>
     );
   }
   return (
-    <div className="overflow-hidden rounded-md border bg-card">
+    <div className="overflow-hidden rounded-md border border-[var(--color-line)] bg-card">
       <table className="w-full text-sm">
-        <thead className="bg-muted/50 text-right text-xs uppercase tracking-wide text-muted-foreground">
+        {/* Slice 7 polish (c, g): token-color border + drop uppercase
+            from Hebrew table headers + tone the label colour. */}
+        <thead className="bg-muted/50 text-right text-xs tracking-wide text-[var(--color-ink-dim)]">
           <tr>
             <th className="px-3 py-2 font-medium">פרק</th>
             <th className="px-3 py-2 font-medium">מסלול</th>
@@ -112,11 +117,12 @@ export default function ContentTable({
             <th className="px-3 py-2 font-medium">בעיות</th>
           </tr>
         </thead>
-        <tbody className="divide-y">
+        <tbody className="divide-y divide-[var(--color-line)]">
           {rows.map((row) => (
             <tr
               key={row.chapterId}
-              className="transition-colors hover:bg-muted/40"
+              // Slice 7 polish (f): gold-tint hover.
+              className="transition-colors hover:bg-[var(--color-gold-tint)]"
             >
               <td className="px-3 py-2.5">
                 <Link

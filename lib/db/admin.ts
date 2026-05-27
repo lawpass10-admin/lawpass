@@ -457,41 +457,71 @@ export async function getChapterDrillDown(
  *  ~10 users today. */
 export const ADMIN_USERS_PAGE_SIZE = 50;
 
+export type UsersListSubscriptionFilter =
+  | "active"
+  | "expired"
+  | "cancelled"
+  | "none";
+export type UsersListPlanFilter = "3_months" | "6_months";
+export type UsersListSignupFilter = "email" | "google";
+
+export type UsersListFilters = {
+  /** Subscription-status filter. "none" means "users with no active sub". */
+  subscriptionStatus?: UsersListSubscriptionFilter | null;
+  /** Plan-type filter. Combined with subscriptionStatus when both set. */
+  planType?: UsersListPlanFilter | null;
+  /** Signup-source filter (profiles.signup_source). */
+  signupSource?: UsersListSignupFilter | null;
+  /**
+   * Search string. Always matches against profiles.full_name and
+   * profiles.phone (ilike). If the string contains '@', additionally
+   * searches auth.users.email via the service-role admin client (per
+   * Phase A discovery — direct schema('auth') select avoids the
+   * gotrue listUsers email_change bug).
+   */
+  q?: string | null;
+};
+
 /**
- * Build one page of /admin/users rows.
+ * Build one page of /admin/users rows, optionally narrowed by filters
+ * and a search query.
  *
  * Implementation note (fix-admin-users, May 2026): the Supabase Auth
  * Admin API's `listUsers()` endpoint is currently broken for this
  * project's gotrue version — it returns HTTP 500 with the underlying
  * Go error "sql: Scan error on column index 8, name \"email_change\":
- * converting NULL to string is unsupported". The list endpoint's
- * scanner can't handle NULL in `auth.users.email_change`, which is
- * NULL for every user who has never requested an email change (the
- * default). Confirmed via the Supabase auth-service logs.
+ * converting NULL to string is unsupported". So we drive pagination
+ * from `profiles` and fan out per-user `getUserById()` calls for the
+ * auth columns (the single-user endpoint uses a different scanner).
  *
- * Workaround: drive pagination from `profiles` (admin RLS lets us
- * read all rows ordered by created_at) and fan out per-user
- * `getUserById()` calls in parallel for the auth columns we need.
- * The single-user gotrue endpoint uses a different code path and is
- * NOT affected by the bug.
+ * Filter + search pipeline (slice 7 phase B):
+ *   1. Compute an "eligible id set" by intersecting:
+ *        - subscriptions filter      → user_ids matching the predicate
+ *        - profile name/phone search → user_ids ilike on full_name/phone
+ *        - email search              → user_ids ilike on auth.users.email
+ *          (only when q contains '@')
+ *      A null id set means "no constraint" for that axis.
+ *   2. Apply signup_source as a direct profiles.eq() predicate.
+ *   3. Order by profiles.created_at desc, .range(from, to) with exact
+ *      count → reliable hasMore.
+ *   4. Per-user getUserById + active-subs lookup against the page's
+ *      ids (unchanged from the listUsers workaround).
  *
- * Trade-off: N+1 HTTP calls to gotrue per page (capped at perPage,
- * default 50). All issued in parallel via Promise.all, so the wall-
- * clock cost is ~one gotrue round-trip. With ~10 users today this is
- * imperceptible; at the page cap of 50 users it's still under a
- * second.
- *
- * SSR client (admin RLS) for profiles + subscriptions. Service-role
- * client ONLY for the per-user auth fetch, and only the documented
- * columns (id, email, last_sign_in_at, created_at) — never
- * encrypted_password or any token column.
+ * SSR client (admin RLS) handles profiles + subscriptions. Service-
+ * role client (a) per-user getUserById for the row auth columns, and
+ * (b) bulk auth.users email ilike search when `q` contains '@'. In
+ * both cases only documented columns are projected.
  *
  * Caller must invoke requireAdmin() BEFORE creating the admin client.
  */
 export async function getUsersListPage(
   supabase: SupabaseSsrClient,
   admin: SupabaseAdminClient,
-  { page, perPage }: { page: number; perPage?: number }
+  {
+    page,
+    perPage,
+    filters,
+  }: { page: number; perPage?: number; filters?: UsersListFilters }
 ): Promise<{
   rows: AdminUserRow[];
   page: number;
@@ -500,21 +530,172 @@ export async function getUsersListPage(
 }> {
   const safePerPage = Math.max(1, Math.min(perPage ?? ADMIN_USERS_PAGE_SIZE, 200));
   const safePage = Math.max(1, page);
+  const subscriptionStatus = filters?.subscriptionStatus ?? null;
+  const planType = filters?.planType ?? null;
+  const signupSource = filters?.signupSource ?? null;
+  const rawQ = (filters?.q ?? "").trim();
+  const q = rawQ.length > 0 ? rawQ : null;
 
-  // profiles.created_at desc drives the page order. RLS policy
-  // admins_view_all_profiles grants cross-user SELECT; the partial
-  // unique index isn't needed here since we only ORDER BY.
-  // .range is 0-indexed inclusive on both ends.
+  // --------------------------------------------------------------------
+  // Step 1 — build the constrained id set (or null for "all profiles").
+  // --------------------------------------------------------------------
+
+  // 1a. Subscription filter.
+  let subscriptionIdSet: Set<string> | null = null;
+  if (subscriptionStatus !== null || planType !== null) {
+    const nowIso = new Date().toISOString();
+    if (subscriptionStatus === "none") {
+      // "No active subscription" — fetch ALL user_ids that DO have one
+      // (active predicate), then we'll later exclude them. The
+      // exclusion set is small (current 6 in the live DB).
+      const { data, error } = await supabase
+        .from("subscriptions")
+        .select("user_id")
+        .eq("is_current", true)
+        .eq("status", "active")
+        .gt("ends_at", nowIso);
+      if (error) {
+        throw new Error(`subscriptions filter failed: ${error.message}`);
+      }
+      const exclude = new Set(
+        ((data ?? []) as Array<{ user_id: string }>).map((r) => r.user_id)
+      );
+      subscriptionIdSet = exclude; // semantics flipped — handled below
+    } else {
+      let query = supabase
+        .from("subscriptions")
+        .select("user_id")
+        .eq("is_current", true);
+      if (subscriptionStatus === "active") {
+        query = query.eq("status", "active").gt("ends_at", nowIso);
+      } else if (subscriptionStatus === "expired") {
+        query = query.eq("status", "expired");
+      } else if (subscriptionStatus === "cancelled") {
+        query = query.eq("status", "cancelled");
+      }
+      if (planType !== null) {
+        query = query.eq("plan_type", planType);
+      }
+      const { data, error } = await query;
+      if (error) {
+        throw new Error(`subscriptions filter failed: ${error.message}`);
+      }
+      subscriptionIdSet = new Set(
+        ((data ?? []) as Array<{ user_id: string }>).map((r) => r.user_id)
+      );
+    }
+  }
+
+  // 1b. Search — combine profile name/phone hits with auth.users email
+  // hits (only when q contains '@').
+  let searchIdSet: Set<string> | null = null;
+  if (q !== null) {
+    // Escape '%' and ',' inside the search term so they don't break
+    // the postgrest .or() syntax. PostgREST .ilike accepts "%" as a
+    // literal pattern char; users searching for those should be rare,
+    // but the escape keeps us safe.
+    const safeQ = q.replace(/[%,]/g, "");
+    const profileMatchPromise = supabase
+      .from("profiles")
+      .select("id")
+      .or(`full_name.ilike.%${safeQ}%,phone.ilike.%${safeQ}%`);
+
+    const emailMatchPromise = q.includes("@")
+      ? admin
+          .schema("auth")
+          .from("users")
+          .select("id, email")
+          .ilike("email", `%${safeQ}%`)
+      : Promise.resolve({ data: [] as unknown });
+
+    const [profileRes, emailRes] = await Promise.all([
+      profileMatchPromise,
+      emailMatchPromise,
+    ]);
+
+    if (profileRes.error) {
+      throw new Error(`profile search failed: ${profileRes.error.message}`);
+    }
+
+    const ids = new Set<string>();
+    for (const r of (profileRes.data ?? []) as Array<{ id: string }>) {
+      ids.add(r.id);
+    }
+    for (const r of (emailRes.data ?? []) as Array<{ id: string }>) {
+      ids.add(r.id);
+    }
+    searchIdSet = ids;
+  }
+
+  // 1c. Intersect.
+  let eligibleIds: string[] | null = null;
+  if (subscriptionStatus === "none" && subscriptionIdSet) {
+    // Exclude semantics — postgrest doesn't have a clean NOT IN with
+    // a large UUID set, so we materialize: fetch the candidate id set
+    // (search result OR all profiles) and exclude.
+    if (searchIdSet) {
+      eligibleIds = Array.from(searchIdSet).filter(
+        (id) => !subscriptionIdSet!.has(id)
+      );
+    } else {
+      // No search → no candidate set yet. We need to enumerate all
+      // profile ids and exclude. At current scale (~10 users) this is
+      // free. For 10k+ users this would need an RPC.
+      const { data, error } = await supabase
+        .from("profiles")
+        .select("id");
+      if (error) {
+        throw new Error(`profiles enum failed: ${error.message}`);
+      }
+      eligibleIds = ((data ?? []) as Array<{ id: string }>)
+        .map((r) => r.id)
+        .filter((id) => !subscriptionIdSet!.has(id));
+    }
+  } else {
+    const candidateSets: Set<string>[] = [];
+    if (subscriptionIdSet) candidateSets.push(subscriptionIdSet);
+    if (searchIdSet) candidateSets.push(searchIdSet);
+    if (candidateSets.length > 0) {
+      // Intersect smallest first.
+      candidateSets.sort((a, b) => a.size - b.size);
+      const [first, ...rest] = candidateSets;
+      eligibleIds = Array.from(first).filter((id) =>
+        rest.every((s) => s.has(id))
+      );
+    }
+  }
+
+  // Empty constrained set → empty page, fast path.
+  if (eligibleIds !== null && eligibleIds.length === 0) {
+    return {
+      rows: [],
+      page: safePage,
+      perPage: safePerPage,
+      hasMore: false,
+    };
+  }
+
+  // --------------------------------------------------------------------
+  // Step 2 — paginate the (filtered) profiles set.
+  // --------------------------------------------------------------------
+
   const fromIdx = (safePage - 1) * safePerPage;
   const toIdx = fromIdx + safePerPage - 1;
+  let profilesQuery = supabase
+    .from("profiles")
+    .select("id, full_name, exam_date_planned, created_at", {
+      count: "exact",
+    })
+    .order("created_at", { ascending: false })
+    .range(fromIdx, toIdx);
+  if (eligibleIds !== null) {
+    profilesQuery = profilesQuery.in("id", eligibleIds);
+  }
+  if (signupSource !== null) {
+    profilesQuery = profilesQuery.eq("signup_source", signupSource);
+  }
   const { data: profilesPage, count: profilesCount, error: profilesErr } =
-    await supabase
-      .from("profiles")
-      .select("id, full_name, exam_date_planned, created_at", {
-        count: "exact",
-      })
-      .order("created_at", { ascending: false })
-      .range(fromIdx, toIdx);
+    await profilesQuery;
 
   if (profilesErr) {
     throw new Error(`profiles page query failed: ${profilesErr.message}`);
@@ -723,5 +904,266 @@ export async function getUserDetail(
       ? { planType: sub.plan_type, endsAt: sub.ends_at }
       : null,
     recentAttempts,
+  };
+}
+
+// =============================================================================
+// Public API — question content editor (Slice 7)
+// =============================================================================
+
+export type QuestionEditorChoice = {
+  id: string;
+  letter: "א" | "ב" | "ג" | "ד";
+  choiceText: string;
+  isCorrect: boolean;
+  displayOrder: number;
+};
+
+export type QuestionEditorSource = {
+  id: string;
+  externalId: string;
+  status: SourceQuestionStatus;
+  questionText: string;
+  legalTopicAnalysis: string;
+  fullExplanation: string;
+  commonPitfall: string;
+  summaryForMemory: string;
+  quickThinking360: string;
+  notesForAdmin: string;
+  conceptsAndSkills: string[];
+  referencesList: string[];
+  choices: QuestionEditorChoice[];
+};
+
+export type QuestionEditorAngle = {
+  id: string;
+  angleLetter: "א" | "ב" | "ג" | "ד" | "ה";
+  angleTitle: string | null;
+  displayOrder: number;
+  questionText: string;
+  legalTopicAnalysis: string;
+  fullExplanation: string;
+  commonPitfall: string;
+  summaryForMemory: string;
+  quickThinking360: string;
+  conceptsAndSkills: string[];
+  referencesList: string[];
+  choices: QuestionEditorChoice[];
+};
+
+export type QuestionEditorPayload = {
+  chapter: { id: string; code: string; title: string; track: ChapterTrack };
+  source: QuestionEditorSource;
+  angles: QuestionEditorAngle[];
+};
+
+function toChoice(row: {
+  id: string;
+  letter: string;
+  choice_text: string;
+  is_correct: boolean;
+  display_order: number;
+}): QuestionEditorChoice | null {
+  if (
+    row.letter !== "א" &&
+    row.letter !== "ב" &&
+    row.letter !== "ג" &&
+    row.letter !== "ד"
+  ) {
+    return null;
+  }
+  return {
+    id: row.id,
+    letter: row.letter,
+    choiceText: row.choice_text,
+    isCorrect: row.is_correct,
+    displayOrder: row.display_order,
+  };
+}
+
+function toAngleLetter(
+  s: string
+): "א" | "ב" | "ג" | "ד" | "ה" | null {
+  return s === "א" || s === "ב" || s === "ג" || s === "ד" || s === "ה"
+    ? s
+    : null;
+}
+
+function toStringArray(v: unknown): string[] {
+  if (!Array.isArray(v)) return [];
+  return v.filter((x): x is string => typeof x === "string");
+}
+
+/**
+ * Loads everything the question editor needs in one batched call:
+ *  - chapter metadata for the header
+ *  - the source question + its 4 choices
+ *  - every angle for that source + their choices
+ *
+ * Returns null when the source isn't found (or doesn't belong to the
+ * caller-supplied chapter — defense in depth against URL tampering).
+ * RLS via `admins_full_access_*` on the content tables grants the
+ * admin SSR client SELECT across all rows.
+ */
+export async function getQuestionEditorPayload(
+  supabase: SupabaseSsrClient,
+  chapterId: string,
+  sourceQuestionId: string
+): Promise<QuestionEditorPayload | null> {
+  const [chapterRes, sourceRes] = await Promise.all([
+    supabase
+      .from("chapters")
+      .select("id, code, title, track")
+      .eq("id", chapterId)
+      .maybeSingle(),
+    supabase
+      .from("source_questions")
+      .select(
+        "id, chapter_id, external_id, status, question_text, legal_topic_analysis, full_explanation, common_pitfall, summary_for_memory, quick_thinking_360, notes_for_admin, concepts_and_skills, references_list"
+      )
+      .eq("id", sourceQuestionId)
+      .maybeSingle(),
+  ]);
+
+  const chapterRow = chapterRes.data as
+    | { id: string; code: string; title: string; track: string | null }
+    | null;
+  const sourceRow = sourceRes.data as
+    | {
+        id: string;
+        chapter_id: string;
+        external_id: string;
+        status: string;
+        question_text: string;
+        legal_topic_analysis: string;
+        full_explanation: string;
+        common_pitfall: string;
+        summary_for_memory: string;
+        quick_thinking_360: string;
+        notes_for_admin: string | null;
+        concepts_and_skills: unknown;
+        references_list: unknown;
+      }
+    | null;
+
+  if (!chapterRow || !sourceRow) return null;
+  if (sourceRow.chapter_id !== chapterRow.id) return null;
+  if (!isChapterTrack(chapterRow.track)) return null;
+
+  // Choices for the source, every angle for the source, and choices for
+  // each angle — issued together so the editor's blocking time is one
+  // round-trip past the parallel pair above.
+  const [sourceChoicesRes, anglesRes] = await Promise.all([
+    supabase
+      .from("source_choices")
+      .select("id, letter, choice_text, is_correct, display_order")
+      .eq("source_question_id", sourceQuestionId)
+      .order("display_order", { ascending: true }),
+    supabase
+      .from("angle_questions")
+      .select(
+        "id, angle_letter, angle_title, display_order, question_text, legal_topic_analysis, full_explanation, common_pitfall, summary_for_memory, quick_thinking_360, concepts_and_skills, references_list"
+      )
+      .eq("source_question_id", sourceQuestionId)
+      .order("display_order", { ascending: true }),
+  ]);
+
+  const sourceChoices = ((sourceChoicesRes.data ?? []) as Array<{
+    id: string;
+    letter: string;
+    choice_text: string;
+    is_correct: boolean;
+    display_order: number;
+  }>)
+    .map(toChoice)
+    .filter((c): c is QuestionEditorChoice => c !== null);
+
+  type AngleRow = {
+    id: string;
+    angle_letter: string;
+    angle_title: string | null;
+    display_order: number;
+    question_text: string;
+    legal_topic_analysis: string;
+    full_explanation: string;
+    common_pitfall: string;
+    summary_for_memory: string;
+    quick_thinking_360: string;
+    concepts_and_skills: unknown;
+    references_list: unknown;
+  };
+  const angleRows = (anglesRes.data ?? []) as AngleRow[];
+
+  // Bulk-fetch angle choices in one query, then bucket by angle id.
+  const angleIds = angleRows.map((a) => a.id);
+  const anglesChoicesByAngle = new Map<string, QuestionEditorChoice[]>();
+  if (angleIds.length > 0) {
+    const { data: angleChoicesData } = await supabase
+      .from("angle_choices")
+      .select(
+        "id, angle_question_id, letter, choice_text, is_correct, display_order"
+      )
+      .in("angle_question_id", angleIds)
+      .order("display_order", { ascending: true });
+    for (const row of (angleChoicesData ?? []) as Array<{
+      id: string;
+      angle_question_id: string;
+      letter: string;
+      choice_text: string;
+      is_correct: boolean;
+      display_order: number;
+    }>) {
+      const choice = toChoice(row);
+      if (!choice) continue;
+      const arr = anglesChoicesByAngle.get(row.angle_question_id) ?? [];
+      arr.push(choice);
+      anglesChoicesByAngle.set(row.angle_question_id, arr);
+    }
+  }
+
+  const angles: QuestionEditorAngle[] = [];
+  for (const a of angleRows) {
+    const letter = toAngleLetter(a.angle_letter);
+    if (!letter) continue;
+    angles.push({
+      id: a.id,
+      angleLetter: letter,
+      angleTitle: a.angle_title,
+      displayOrder: a.display_order,
+      questionText: a.question_text,
+      legalTopicAnalysis: a.legal_topic_analysis,
+      fullExplanation: a.full_explanation,
+      commonPitfall: a.common_pitfall,
+      summaryForMemory: a.summary_for_memory,
+      quickThinking360: a.quick_thinking_360,
+      conceptsAndSkills: toStringArray(a.concepts_and_skills),
+      referencesList: toStringArray(a.references_list),
+      choices: anglesChoicesByAngle.get(a.id) ?? [],
+    });
+  }
+
+  return {
+    chapter: {
+      id: chapterRow.id,
+      code: chapterRow.code,
+      title: chapterRow.title,
+      track: chapterRow.track,
+    },
+    source: {
+      id: sourceRow.id,
+      externalId: sourceRow.external_id,
+      status: isSourceStatus(sourceRow.status) ? sourceRow.status : "draft",
+      questionText: sourceRow.question_text,
+      legalTopicAnalysis: sourceRow.legal_topic_analysis,
+      fullExplanation: sourceRow.full_explanation,
+      commonPitfall: sourceRow.common_pitfall,
+      summaryForMemory: sourceRow.summary_for_memory,
+      quickThinking360: sourceRow.quick_thinking_360,
+      notesForAdmin: sourceRow.notes_for_admin ?? "",
+      conceptsAndSkills: toStringArray(sourceRow.concepts_and_skills),
+      referencesList: toStringArray(sourceRow.references_list),
+      choices: sourceChoices,
+    },
+    angles,
   };
 }

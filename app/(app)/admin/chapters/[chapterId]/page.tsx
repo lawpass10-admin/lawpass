@@ -65,7 +65,9 @@ export default async function ChapterDrillDownPage({
     <div className="space-y-5">
       <div className="flex items-baseline justify-between">
         <div>
-          <h2 className="font-heebo text-xl font-semibold">{chapter.title}</h2>
+          <h2 className="font-heebo text-xl font-semibold text-[var(--color-navy-ink)]">
+            {chapter.title}
+          </h2>
           <div className="mt-0.5 text-xs text-muted-foreground" dir="ltr">
             {chapter.code}
           </div>
@@ -78,7 +80,11 @@ export default async function ChapterDrillDownPage({
         </Link>
       </div>
 
-      <QuestionsList chapterTrack={chapter.track} rows={rows} />
+      <QuestionsList
+        chapterId={chapter.id}
+        chapterTrack={chapter.track}
+        rows={rows}
+      />
     </div>
   );
 }

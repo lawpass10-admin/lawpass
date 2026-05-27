@@ -48,10 +48,15 @@ function fmtDateTime(iso: string | null): string {
   });
 }
 
+// Slice 7 polish (h): eyebrow-style field label — small uppercase
+// caps tracked text in the muted-ink tone the dashboard uses for
+// the same hierarchy.
 function Field({ label, value }: { label: string; value: React.ReactNode }) {
   return (
     <div className="flex flex-col gap-0.5">
-      <span className="text-xs text-muted-foreground">{label}</span>
+      <span className="text-[11px] font-medium uppercase tracking-wide text-[var(--color-ink-muted)]">
+        {label}
+      </span>
       <span className="text-sm">{value}</span>
     </div>
   );

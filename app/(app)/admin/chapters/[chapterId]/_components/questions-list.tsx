@@ -1,3 +1,5 @@
+import Link from "next/link";
+
 import { cn } from "@/lib/utils";
 import type { ChapterDrillRow, ChapterTrack } from "@/lib/db/admin";
 
@@ -12,14 +14,17 @@ const STATUS_LABEL: Record<ChapterDrillRow["status"], string> = {
   archived: "בארכיון",
 };
 
+// Slice 7 polish (a): status badges use the project's --color-status-*
+// tokens instead of raw amber/emerald palettes.
 function StatusBadge({ status }: { status: ChapterDrillRow["status"] }) {
   return (
     <span
       className={cn(
         "inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium",
-        status === "active" && "bg-emerald-100 text-emerald-900",
+        status === "active" &&
+          "bg-[var(--color-status-strong-bg)] text-[var(--color-status-strong)]",
         status === "draft" &&
-          "bg-amber-100 text-amber-900 dark:bg-amber-950 dark:text-amber-200",
+          "bg-[var(--color-status-weak-bg)] text-[var(--color-status-weak)]",
         status === "archived" && "bg-muted text-muted-foreground"
       )}
     >
@@ -29,23 +34,27 @@ function StatusBadge({ status }: { status: ChapterDrillRow["status"] }) {
 }
 
 export default function QuestionsList({
+  chapterId,
   chapterTrack,
   rows,
 }: {
+  chapterId: string;
   chapterTrack: ChapterTrack;
   rows: ChapterDrillRow[];
 }) {
   if (rows.length === 0) {
     return (
-      <div className="rounded-md border bg-card p-6 text-sm text-muted-foreground">
+      <div className="rounded-md border border-[var(--color-line)] bg-card p-6 text-sm text-muted-foreground">
         אין שאלות שתואמות את הסינון.
       </div>
     );
   }
   return (
-    <div className="overflow-hidden rounded-md border bg-card">
+    <div className="overflow-hidden rounded-md border border-[var(--color-line)] bg-card">
       <table className="w-full text-sm">
-        <thead className="bg-muted/50 text-right text-xs uppercase tracking-wide text-muted-foreground">
+        {/* Slice 7 polish (g): drop uppercase (Hebrew has no case),
+            shift colour to ink-dim. */}
+        <thead className="bg-muted/50 text-right text-xs tracking-wide text-[var(--color-ink-dim)]">
           <tr>
             <th className="px-3 py-2 font-medium">מזהה</th>
             <th className="px-3 py-2 font-medium">השאלה</th>
@@ -55,13 +64,15 @@ export default function QuestionsList({
             <th className="px-3 py-2 text-center font-medium">זוויות</th>
             <th className="px-3 py-2 text-center font-medium">קושי</th>
             <th className="px-3 py-2 font-medium">סטטוס</th>
+            <th className="px-3 py-2 font-medium" aria-label="פעולות" />
           </tr>
         </thead>
-        <tbody className="divide-y">
+        <tbody className="divide-y divide-[var(--color-line)]">
           {rows.map((row) => (
             <tr
               key={row.sourceId}
-              className="transition-colors hover:bg-muted/40"
+              // Slice 7 polish (f): gold-tint hover replaces bg-muted.
+              className="transition-colors hover:bg-[var(--color-gold-tint)]"
             >
               <td className="px-3 py-2.5 align-top">
                 <span dir="ltr" className="text-xs font-mono">
@@ -81,7 +92,10 @@ export default function QuestionsList({
               <td
                 className={cn(
                   "px-3 py-2.5 text-center align-top tabular-nums",
-                  row.angleCount !== 4 && "font-semibold text-amber-700"
+                  // Slice 7 polish (a): status-weak token for the
+                  // "wrong-angle-count" warning marker.
+                  row.angleCount !== 4 &&
+                    "font-semibold text-[var(--color-status-weak)]"
                 )}
               >
                 {row.angleCount}
@@ -91,6 +105,14 @@ export default function QuestionsList({
               </td>
               <td className="px-3 py-2.5 align-top">
                 <StatusBadge status={row.status} />
+              </td>
+              <td className="px-3 py-2.5 align-top">
+                <Link
+                  href={`/admin/chapters/${chapterId}/questions/${row.sourceId}`}
+                  className="text-sm font-medium text-[var(--color-gold-deep)] hover:underline"
+                >
+                  ערוך
+                </Link>
               </td>
             </tr>
           ))}

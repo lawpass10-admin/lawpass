@@ -53,9 +53,11 @@ export default function UserAttempts({
         {attempts.length === 0 ? (
           <p className="text-sm text-muted-foreground">אין ניסיונות לרשום.</p>
         ) : (
-          <div className="overflow-hidden rounded-md border">
+          // Slice 7 polish (a, c, f, g): tokens for border, hover,
+          // status text, and Hebrew-friendly header.
+          <div className="overflow-hidden rounded-md border border-[var(--color-line)]">
             <table className="w-full text-sm">
-              <thead className="bg-muted/50 text-right text-xs uppercase tracking-wide text-muted-foreground">
+              <thead className="bg-muted/50 text-right text-xs tracking-wide text-[var(--color-ink-dim)]">
                 <tr>
                   <th className="px-3 py-2 font-medium">תאריך</th>
                   <th className="px-3 py-2 font-medium">סוג</th>
@@ -64,11 +66,14 @@ export default function UserAttempts({
                   <th className="px-3 py-2 text-center font-medium">משך (שניות)</th>
                 </tr>
               </thead>
-              <tbody className="divide-y">
+              <tbody className="divide-y divide-[var(--color-line)]">
                 {attempts.map((a) => {
                   const status = statusLabel(a);
                   return (
-                    <tr key={a.id}>
+                    <tr
+                      key={a.id}
+                      className="transition-colors hover:bg-[var(--color-gold-tint)]"
+                    >
                       <td className="px-3 py-2 text-xs text-muted-foreground">
                         {fmtDateTime(a.attemptedAt)}
                       </td>
@@ -82,9 +87,9 @@ export default function UserAttempts({
                         <span
                           className={
                             status.tone === "ok"
-                              ? "text-emerald-700"
+                              ? "text-[var(--color-status-strong)]"
                               : status.tone === "wrong"
-                                ? "text-rose-700"
+                                ? "text-[var(--color-status-weak)]"
                                 : "text-muted-foreground"
                           }
                         >
