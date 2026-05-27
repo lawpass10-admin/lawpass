@@ -7,6 +7,7 @@ import {
   LogOut,
   Scale,
   Settings,
+  Shield,
   Timer,
   XCircle,
 } from "lucide-react";
@@ -192,12 +193,19 @@ export function AppSidebar({
   subscription,
   bookmarksCount,
   mistakesCount,
+  isAdmin,
 }: {
   userEmail: string;
   profileFullName: string;
   subscription: SubscriptionData;
   bookmarksCount: number;
   mistakesCount: number;
+  /**
+   * Slice 6 — server-decided flag from (app)/layout.tsx. The admin nav
+   * link only renders when this is true. The /admin pages call
+   * requireAdmin() themselves; this prop is purely a UX nicety.
+   */
+  isAdmin: boolean;
 }) {
   // usePathname (rather than a pathname prop from the layout): the layout
   // is a shared Server Component that gets cached across client-side
@@ -296,6 +304,35 @@ export function AppSidebar({
             })()}
           </SidebarMenu>
         </SidebarGroup>
+
+        {/* Slice 6 — admin nav. Renders only when the layout fetched
+            profile.is_admin === true. */}
+        {isAdmin ? (
+          <SidebarGroup>
+            <SidebarGroupLabel className={SECTION_LABEL_CLS}>
+              ניהול
+            </SidebarGroupLabel>
+            <SidebarMenu className="gap-1.5">
+              {(() => {
+                const active = isPathActive(pathname, "/admin");
+                return (
+                  <SidebarMenuItem className="relative">
+                    <SidebarMenuButton
+                      render={<Link href="/admin" />}
+                      isActive={active}
+                      className={NAV_BUTTON_CLS}
+                    >
+                      <Shield strokeWidth={1.5} />
+                      <span>ניהול</span>
+                    </SidebarMenuButton>
+                    {active ? <ActiveDot /> : null}
+                    {active ? <ActiveBar /> : null}
+                  </SidebarMenuItem>
+                );
+              })()}
+            </SidebarMenu>
+          </SidebarGroup>
+        ) : null}
       </SidebarContent>
 
       {/* Phase 14b: pb-4 ensures the subscription card has breathing

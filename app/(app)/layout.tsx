@@ -17,6 +17,7 @@ const SUBSCRIPTION_EXEMPT_PREFIXES = [
   "/checkout",
   "/onboarding",
   "/account",
+  "/admin",
 ];
 
 function isSubscriptionExempt(pathname: string): boolean {
@@ -56,7 +57,7 @@ export default async function AppLayout({
   const [profileResult, subscriptionResult] = await Promise.all([
     supabase
       .from("profiles")
-      .select("id, full_name, exam_date_planned")
+      .select("id, full_name, exam_date_planned, is_admin")
       .eq("id", user.id)
       .maybeSingle(),
     supabase
@@ -140,6 +141,7 @@ export default async function AppLayout({
         subscription={subscription}
         bookmarksCount={bookmarksCount}
         mistakesCount={mistakesCount}
+        isAdmin={profile.is_admin === true}
       />
       <SidebarInset>
         <MobileTopBar />
