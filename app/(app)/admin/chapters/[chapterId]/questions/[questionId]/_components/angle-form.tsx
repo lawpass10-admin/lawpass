@@ -124,6 +124,22 @@ export default function AngleForm({ angle }: { angle: QuestionEditorAngle }) {
             render={({ field }) => (
               <FormItem>
                 <FormLabel>חשיבה מהירה 360°</FormLabel>
+                {/* Slice 7.6 — render-time parser splits on
+                    **וריאציה N — title:** ← and turns each into a
+                    reveal card. Admins should keep this pattern when
+                    editing; rows without it fall back to a single
+                    block render. */}
+                <p className="text-xs text-muted-foreground" dir="rtl">
+                  השדה ירונדר כווריאציות נפרדות. תבנית:
+                  <code className="mx-1 rounded bg-muted px-1 py-0.5 font-mono text-[11px]" dir="ltr">
+                    **וריאציה N — כותרת:**
+                  </code>
+                  שאלה?{" "}
+                  <code className="mx-1 rounded bg-muted px-1 py-0.5 font-mono text-[11px]" dir="ltr">
+                    ←
+                  </code>{" "}
+                  תשובה.
+                </p>
                 <FormControl>
                   <Textarea dir="auto" rows={4} {...field} />
                 </FormControl>

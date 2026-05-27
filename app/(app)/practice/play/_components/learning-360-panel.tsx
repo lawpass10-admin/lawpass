@@ -2,6 +2,8 @@
 
 import {
   BookOpen,
+  ChevronDown,
+  ChevronUp,
   Compass,
   Eye,
   Gavel,
@@ -11,6 +13,7 @@ import {
   TriangleAlert,
   Zap,
 } from "lucide-react";
+import { useState } from "react";
 
 import type {
   AngleQuestionRow,
@@ -199,18 +202,15 @@ export function Learning360Panel({
         )}
       </Section>
 
-      {/* 7. Quick thinking 360° — gold accent, pre-wrap content */}
+      {/* 7. Quick thinking 360° — gold accent, parsed into per-variation
+          cards (Slice 7.6). Falls back to whitespace-pre-wrap when the
+          text doesn't carry the **וריאציה N — title:** ← answer pattern. */}
       <Section
         icon={<Zap className="size-3.5" />}
         title="חשיבה מהירה 360°"
         accent="gold"
       >
-        <div
-          dir="rtl"
-          className="rounded-md border-s-[3px] border-amber-500 bg-amber-50 p-4 text-[15px] leading-relaxed whitespace-pre-wrap dark:bg-amber-950/30"
-        >
-          {question.quick_thinking_360}
-        </div>
+        <QuickThinking360 text={question.quick_thinking_360} />
       </Section>
 
       {/* 8. Summary */}
@@ -234,6 +234,176 @@ export function Learning360Panel({
           <span className="text-muted-foreground">—</span>
         )}
       </Section>
+    </div>
+  );
+}
+
+// =============================================================================
+// quick_thinking_360 — parser + per-variation card stack (Slice 7.6)
+// =============================================================================
+
+type ParsedVariation = {
+  /** The visible question. May include trailing punctuation. */
+  question: string;
+  /** The hidden answer, revealed on click. Null when the variation
+   *  has no " ← " separator (rare seed-data edge case). */
+  answer: string | null;
+};
+
+type Parsed360 =
+  | { kind: "parsed"; variations: ParsedVariation[] }
+  | { kind: "fallback"; text: string };
+
+/**
+ * Splits a `quick_thinking_360` string into variations.
+ *
+ * Canonical input shape (per Sharon's content, 730+ rows verified):
+ *   "[asterisks]וריאציה 1 — title:[asterisks] question? ← answer.
+ *    [asterisks]וריאציה 2 — title:[asterisks] question? ← answer."
+ *   ...where [asterisks] is the literal two-star bold delimiter.
+ *
+ * Strategy — see VARIATION_HEADER_RE below:
+ *   1. Split on the marker regex — a lazy match from the opening
+ *      bold-asterisks וריאציה N through to the next bold-asterisks
+ *      that closes the title. Each segment after the first split is
+ *      a variation body (the marker-and-title preface is consumed by
+ *      the regex itself).
+ *   2. If we found < 1 variation body (e.g. legacy free-form text
+ *      with no markers), return kind: "fallback" so the renderer
+ *      keeps the prior whitespace-pre-wrap behaviour.
+ *   3. Per body: split on " ← " (space + LTR arrow + space). When
+ *      the arrow is absent (~13% of source / ~13% of angle rows have
+ *      glued question+answer due to a seed-data import quirk), the
+ *      whole body becomes the question and answer is null — the card
+ *      renders without a reveal button.
+ */
+const VARIATION_HEADER_RE = /\*\*וריאציה\s*\d+[\s\S]*?\*\*/;
+function parseQuickThinking360(raw: string): Parsed360 {
+  if (!raw) return { kind: "fallback", text: "" };
+
+  // Lazy match the whole header (opening bold asterisks through the
+  // title's closing bold asterisks). The split discards the header
+  // text and yields the bodies.
+  const segments = raw.split(VARIATION_HEADER_RE);
+
+  // segments[0] is the preamble (almost always empty/whitespace).
+  // segments[1+] are the variation bodies.
+  const bodies = segments.slice(1);
+  if (bodies.length === 0) {
+    return { kind: "fallback", text: raw };
+  }
+
+  const variations: ParsedVariation[] = [];
+  for (const raw_body of bodies) {
+    const body = raw_body.trim();
+    if (!body) continue;
+    const arrowIdx = body.indexOf(" ← ");
+    if (arrowIdx === -1) {
+      variations.push({ question: body, answer: null });
+    } else {
+      const question = body.slice(0, arrowIdx).trim();
+      const answer = body.slice(arrowIdx + 3).trim();
+      variations.push({
+        question,
+        answer: answer.length > 0 ? answer : null,
+      });
+    }
+  }
+
+  if (variations.length === 0) {
+    return { kind: "fallback", text: raw };
+  }
+  return { kind: "parsed", variations };
+}
+
+/**
+ * Renders the parsed `quick_thinking_360` body inside the existing
+ * gold-accent container. Each variation is its own card with the
+ * question always visible and the answer behind a click-to-reveal
+ * button. Local state tracks which indices are revealed.
+ *
+ * Fallback branch (parser found no markers): renders the raw string
+ * in the prior `<div whitespace-pre-wrap>` so existing layouts for
+ * legacy rows aren't disturbed.
+ */
+function QuickThinking360({ text }: { text: string }) {
+  const parsed = parseQuickThinking360(text);
+  const [revealed, setRevealed] = useState<Set<number>>(() => new Set());
+
+  if (parsed.kind === "fallback") {
+    return (
+      <div
+        dir="rtl"
+        className="rounded-md border-s-[3px] border-amber-500 bg-amber-50 p-4 text-[15px] leading-relaxed whitespace-pre-wrap dark:bg-amber-950/30"
+      >
+        {parsed.text}
+      </div>
+    );
+  }
+
+  function toggle(index: number): void {
+    setRevealed((prev) => {
+      const next = new Set(prev);
+      if (next.has(index)) next.delete(index);
+      else next.add(index);
+      return next;
+    });
+  }
+
+  return (
+    <div className="flex flex-col gap-2">
+      {parsed.variations.map((v, i) => {
+        const isOpen = revealed.has(i);
+        return (
+          <article
+            key={i}
+            dir="rtl"
+            className="rounded-md border-s-[3px] border-amber-500 bg-amber-50 p-4 text-[15px] leading-relaxed dark:bg-amber-950/30"
+          >
+            <p
+              dir="auto"
+              className="whitespace-pre-wrap font-medium text-foreground/90"
+            >
+              {v.question}
+            </p>
+            {v.answer !== null ? (
+              <>
+                {isOpen ? (
+                  <p
+                    dir="auto"
+                    className="mt-3 whitespace-pre-wrap border-t border-amber-200 pt-3 text-foreground/85 dark:border-amber-900/50"
+                  >
+                    {v.answer}
+                  </p>
+                ) : null}
+                <button
+                  type="button"
+                  onClick={() => toggle(i)}
+                  aria-expanded={isOpen}
+                  className={cn(
+                    "mt-3 inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium",
+                    "text-amber-800 hover:bg-amber-100/70",
+                    "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500/40",
+                    "dark:text-amber-200 dark:hover:bg-amber-900/40"
+                  )}
+                >
+                  {isOpen ? (
+                    <>
+                      <span>הסתר תשובה</span>
+                      <ChevronUp className="size-3.5" aria-hidden />
+                    </>
+                  ) : (
+                    <>
+                      <span>הראה תשובה</span>
+                      <ChevronDown className="size-3.5" aria-hidden />
+                    </>
+                  )}
+                </button>
+              </>
+            ) : null}
+          </article>
+        );
+      })}
     </div>
   );
 }

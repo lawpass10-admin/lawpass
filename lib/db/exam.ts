@@ -667,9 +667,18 @@ export async function getExamBookmarkState(
 
 export type ExamPositionStatus = "correct" | "wrong" | "skipped" | "unanswered";
 
+export type ExamLetter = "א" | "ב" | "ג" | "ד";
+
 export type ExamByPosition = {
   position: number;
   status: ExamPositionStatus;
+  /**
+   * Slice 7.6 — letter the user actually picked, when they answered.
+   * `null` for skipped / unanswered / no-letter-recorded. The progress
+   * strip ignores this; the results-page review uses it to highlight
+   * the user's wrong-choice pick.
+   */
+  selectedLetter: ExamLetter | null;
 };
 
 export type ExamByCluster = {
@@ -678,16 +687,28 @@ export type ExamByCluster = {
   total: number;
 };
 
+export type ExamReviewChoice = {
+  letter: ExamLetter;
+  choiceText: string;
+  isCorrect: boolean;
+  distractorAnalysis: string | null;
+  displayOrder: number;
+};
+
 /**
- * Results-page row. Extends the base `ExamByPosition` with a short
- * excerpt of the question text so the review list can show "what was
- * the question?" without a drill-in.
+ * Results-page row. Extends the base `ExamByPosition` with the data
+ * the review list needs:
+ *  - excerpt (truncated question_text for the collapsed row)
+ *  - questionText (full text for the expanded panel)
+ *  - choices (4 entries with distractor analyses) — Slice 7.6
  *
- * The play page's progress strip uses the base `ExamByPosition` shape
- * (no excerpt needed there); only the results page enriches.
+ * The play page's progress strip uses only `ExamByPosition.status`;
+ * the extra fields here cost nothing for it.
  */
 export type ExamReviewRow = ExamByPosition & {
   excerpt: string;
+  questionText: string;
+  choices: ExamReviewChoice[];
 };
 
 export type ExamResultsAggregate = {
@@ -721,6 +742,7 @@ export function computePositionStatuses(
     angle_question_id: string | null;
     is_correct: boolean | null;
     was_skipped: boolean;
+    selected_letter?: string | null;
   }>
 ): ExamByPosition[] {
   const attemptByKey = new Map<
@@ -728,24 +750,37 @@ export function computePositionStatuses(
     {
       is_correct: boolean | null;
       was_skipped: boolean;
+      selected_letter: ExamLetter | null;
     }
   >();
   for (const a of attempts) {
     const id =
       a.question_type === "source" ? a.source_question_id : a.angle_question_id;
     if (!id) continue;
+    const letter: ExamLetter | null =
+      a.selected_letter === "א" ||
+      a.selected_letter === "ב" ||
+      a.selected_letter === "ג" ||
+      a.selected_letter === "ד"
+        ? a.selected_letter
+        : null;
     attemptByKey.set(`${a.question_type}:${id}`, {
       is_correct: a.is_correct,
       was_skipped: a.was_skipped,
+      selected_letter: letter,
     });
   }
   return questionList.map((item, position) => {
     const key = `${item.question_type}:${item.question_id}`;
     const a = attemptByKey.get(key);
-    if (!a) return { position, status: "unanswered" };
-    if (a.was_skipped) return { position, status: "skipped" };
-    if (a.is_correct === true) return { position, status: "correct" };
-    return { position, status: "wrong" };
+    if (!a) return { position, status: "unanswered", selectedLetter: null };
+    if (a.was_skipped) {
+      return { position, status: "skipped", selectedLetter: a.selected_letter };
+    }
+    if (a.is_correct === true) {
+      return { position, status: "correct", selectedLetter: a.selected_letter };
+    }
+    return { position, status: "wrong", selectedLetter: a.selected_letter };
   });
 }
 
@@ -763,7 +798,7 @@ export async function getExamPositionStatuses(
   const { data, error } = await supabase
     .from("attempts")
     .select(
-      "question_type, source_question_id, angle_question_id, is_correct, was_skipped"
+      "question_type, source_question_id, angle_question_id, is_correct, was_skipped, selected_letter"
     )
     .eq("exam_session_id", sessionId);
   if (error || !data) {
@@ -775,6 +810,7 @@ export async function getExamPositionStatuses(
     return questionList.map((_, position) => ({
       position,
       status: "unanswered" as const,
+      selectedLetter: null,
     }));
   }
   return computePositionStatuses(
@@ -785,6 +821,7 @@ export async function getExamPositionStatuses(
       angle_question_id: string | null;
       is_correct: boolean | null;
       was_skipped: boolean;
+      selected_letter: string | null;
     }>
   );
 }
@@ -901,12 +938,118 @@ async function resolveQuestionTextsForList(
 }
 
 /**
+ * Slice 7.6 — fetch all choices for every question in `questionList`,
+ * returning a Map keyed by `${question_type}:${question_id}` whose
+ * value is the choice list sorted by `display_order`. Powers the
+ * per-question expansion on the exam-results page (4 choices + their
+ * distractor analyses).
+ *
+ * Two parallel `.in()` queries — one for source_choices, one for
+ * angle_choices. Both tables are RLS-gated by the parent question's
+ * active+is_current status, which holds for any question the user
+ * actually attempted in the session.
+ */
+async function resolveChoicesForList(
+  supabase: SupabaseSsrClient,
+  questionList: ExamQuestionListItem[]
+): Promise<Map<string, ExamReviewChoice[]>> {
+  const sourceIds: string[] = [];
+  const angleIds: string[] = [];
+  for (const it of questionList) {
+    if (it.question_type === "source") sourceIds.push(it.question_id);
+    else angleIds.push(it.question_id);
+  }
+
+  const [sourceRes, angleRes] = await Promise.all([
+    sourceIds.length > 0
+      ? supabase
+          .from("source_choices")
+          .select(
+            "source_question_id, letter, choice_text, is_correct, distractor_analysis, display_order"
+          )
+          .in("source_question_id", sourceIds)
+      : Promise.resolve({ data: null as unknown }),
+    angleIds.length > 0
+      ? supabase
+          .from("angle_choices")
+          .select(
+            "angle_question_id, letter, choice_text, is_correct, distractor_analysis, display_order"
+          )
+          .in("angle_question_id", angleIds)
+      : Promise.resolve({ data: null as unknown }),
+  ]);
+
+  const map = new Map<string, ExamReviewChoice[]>();
+  function pushChoice(
+    key: string,
+    row: {
+      letter: string;
+      choice_text: string;
+      is_correct: boolean;
+      distractor_analysis: string | null;
+      display_order: number;
+    }
+  ): void {
+    if (
+      row.letter !== "א" &&
+      row.letter !== "ב" &&
+      row.letter !== "ג" &&
+      row.letter !== "ד"
+    ) {
+      return;
+    }
+    const choice: ExamReviewChoice = {
+      letter: row.letter,
+      choiceText: row.choice_text,
+      isCorrect: row.is_correct,
+      distractorAnalysis: row.distractor_analysis,
+      displayOrder: row.display_order,
+    };
+    const arr = map.get(key) ?? [];
+    arr.push(choice);
+    map.set(key, arr);
+  }
+
+  for (const row of (sourceRes.data ?? []) as Array<{
+    source_question_id: string;
+    letter: string;
+    choice_text: string;
+    is_correct: boolean;
+    distractor_analysis: string | null;
+    display_order: number;
+  }>) {
+    pushChoice(`source:${row.source_question_id}`, row);
+  }
+  for (const row of (angleRes.data ?? []) as Array<{
+    angle_question_id: string;
+    letter: string;
+    choice_text: string;
+    is_correct: boolean;
+    distractor_analysis: string | null;
+    display_order: number;
+  }>) {
+    pushChoice(`angle:${row.angle_question_id}`, row);
+  }
+
+  // Sort each bucket by display_order so the renderer can render
+  // א/ב/ג/ד in their canonical order regardless of insert order.
+  for (const list of map.values()) {
+    list.sort((a, b) => a.displayOrder - b.displayOrder);
+  }
+  return map;
+}
+
+/**
  * Full aggregate for the results page: session + per-position status
  * (now with question-text excerpt) + per-cluster correct/total.
  * Cluster codes pulled from EXAM_CLUSTERS; any question whose chapter
  * doesn't fall under any cluster (impossible with the current config
  * but defensive) is excluded from the cluster cards but stays in the
  * byPosition list.
+ *
+ * Slice 7.6 — each byPosition row now also carries the question's
+ * full text + its 4 choices with distractor analyses, so the results
+ * page can render an inline per-question expansion without a drill-in.
  *
  * Returns null if the session isn't loadable (page redirects).
  */
@@ -918,17 +1061,27 @@ export async function getExamResultsAggregate(
   const session = await getExamSessionById(supabase, userId, sessionId);
   if (!session) return null;
 
-  const [statuses, chapterByItem, textByItem] = await Promise.all([
-    getExamPositionStatuses(supabase, sessionId, session.question_list),
-    resolveChapterCodesForList(supabase, session.question_list),
-    resolveQuestionTextsForList(supabase, session.question_list),
-  ]);
+  const [statuses, chapterByItem, textByItem, choicesByItem] = await Promise.all(
+    [
+      getExamPositionStatuses(supabase, sessionId, session.question_list),
+      resolveChapterCodesForList(supabase, session.question_list),
+      resolveQuestionTextsForList(supabase, session.question_list),
+      resolveChoicesForList(supabase, session.question_list),
+    ]
+  );
 
-  // Enrich the status array with excerpts in one pass.
+  // Enrich the status array with excerpts + full question text +
+  // choices in one pass.
   const byPosition: ExamReviewRow[] = statuses.map((s, i) => {
     const item = session.question_list[i];
-    const text = textByItem.get(`${item.question_type}:${item.question_id}`);
-    return { ...s, excerpt: makeExcerpt(text) };
+    const key = `${item.question_type}:${item.question_id}`;
+    const text = textByItem.get(key);
+    return {
+      ...s,
+      excerpt: makeExcerpt(text),
+      questionText: text ?? "",
+      choices: choicesByItem.get(key) ?? [],
+    };
   });
 
   const byCluster: ExamByCluster[] = EXAM_CLUSTERS.map((cluster) => {

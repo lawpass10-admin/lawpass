@@ -1,12 +1,17 @@
 "use client";
 
-import { Check, ChevronDown, Play, X } from "lucide-react";
+import { Check, ChevronDown, ChevronUp, Play, X } from "lucide-react";
 import { useState, useTransition } from "react";
 import { toast } from "sonner";
 
 import { createExamSession } from "@/app/(app)/exam/_actions";
 import { Button } from "@/components/ui/button";
-import type { ExamResultsAggregate } from "@/lib/db/exam";
+import type {
+  ExamLetter,
+  ExamResultsAggregate,
+  ExamReviewChoice,
+  ExamReviewRow,
+} from "@/lib/db/exam";
 import { EXAM_TOTAL_QUESTIONS } from "@/lib/exam/clusters";
 import { cn } from "@/lib/utils";
 
@@ -44,15 +49,20 @@ const STATUS_COPY: Record<string, { label: string; classes: string }> = {
 };
 
 /**
- * Final exam results screen. PM-locked layout (no drill-in, no
- * subtopic labels, no "פירוט" buttons, no "הצג את כל 40" collapse —
- * the 40 rows render directly).
+ * Final exam results screen.
  *
  * Sections:
  *   A. Hero: pass/fail pill + big score + percent + time + threshold.
  *   B. 3 cluster cards (correct/total + progress bar).
- *   C. 40-row review (position number + status pill only).
+ *   C. Review list — each row [position #][excerpt][status pill]
+ *      with an inline expansion panel below (Slice 7.6) showing the
+ *      full question + all 4 choices with their distractor analyses.
+ *      Multiple rows can be expanded simultaneously.
  *   D. Footer CTAs: dashboard + new exam.
+ *
+ * History: the layout was locked in Phase 4 with no drill-in / no
+ * collapse. Slice 7.6 extended it with the per-question inline
+ * expansion (still on this same page — no new route, no modal).
  */
 export function ExamResults({ aggregate }: Props) {
   const { session, byPosition, byCluster } = aggregate;
@@ -64,7 +74,19 @@ export function ExamResults({ aggregate }: Props) {
 
   const [creating, setCreating] = useState(false);
   const [showAll, setShowAll] = useState(false);
+  // Slice 7.6 — expanded position indices. Non-exclusive: the user
+  // can open multiple rows at once.
+  const [expanded, setExpanded] = useState<Set<number>>(() => new Set());
   const [, startTransition] = useTransition();
+
+  function toggleExpanded(position: number): void {
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      if (next.has(position)) next.delete(position);
+      else next.add(position);
+      return next;
+    });
+  }
 
   const visibleRows = showAll
     ? byPosition
@@ -172,7 +194,9 @@ export function ExamResults({ aggregate }: Props) {
         })}
       </section>
 
-      {/* C. Question review */}
+      {/* C. Question review — Slice 7.6: rows are clickable to reveal
+          an inline panel with full question text + 4 choices and
+          their distractor analyses. */}
       <section className="overflow-hidden rounded-xl border border-border bg-card">
         <header className="border-b border-border px-5 py-3">
           <h2 className="text-sm font-semibold">סקירת שאלות</h2>
@@ -184,31 +208,52 @@ export function ExamResults({ aggregate }: Props) {
             // `hasHiddenRows`, the expand button sits below the list
             // and we still want the divider above it.
             const isLast = idx === visibleRows.length - 1 && !hasHiddenRows;
+            const isOpen = expanded.has(row.position);
             return (
               <li
                 key={row.position}
-                className={cn(
-                  "grid grid-cols-[2.5rem_1fr_auto] items-center gap-3 px-5 py-3 text-sm",
-                  !isLast && "border-b border-border/70"
-                )}
+                className={cn(!isLast && "border-b border-border/70")}
               >
-                <span className="font-mono text-muted-foreground tabular-nums">
-                  {String(row.position + 1).padStart(2, "0")}
-                </span>
-                <span
-                  dir="auto"
-                  className="min-w-0 overflow-hidden text-ellipsis whitespace-nowrap text-muted-foreground"
-                >
-                  {row.excerpt}
-                </span>
-                <span
+                <button
+                  type="button"
+                  onClick={() => toggleExpanded(row.position)}
+                  aria-expanded={isOpen}
                   className={cn(
-                    "inline-flex shrink-0 rounded-full px-2.5 py-0.5 text-xs font-semibold",
-                    meta.classes
+                    "grid w-full grid-cols-[2.5rem_1fr_auto_auto] items-center gap-3 px-5 py-3 text-start text-sm transition-colors",
+                    "hover:bg-muted/40",
+                    "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
                   )}
                 >
-                  {meta.label}
-                </span>
+                  <span className="font-mono text-muted-foreground tabular-nums">
+                    {String(row.position + 1).padStart(2, "0")}
+                  </span>
+                  <span
+                    dir="auto"
+                    className="min-w-0 overflow-hidden text-ellipsis whitespace-nowrap text-muted-foreground"
+                  >
+                    {row.excerpt}
+                  </span>
+                  <span
+                    className={cn(
+                      "inline-flex shrink-0 rounded-full px-2.5 py-0.5 text-xs font-semibold",
+                      meta.classes
+                    )}
+                  >
+                    {meta.label}
+                  </span>
+                  {isOpen ? (
+                    <ChevronUp
+                      className="size-4 text-muted-foreground"
+                      aria-hidden
+                    />
+                  ) : (
+                    <ChevronDown
+                      className="size-4 text-muted-foreground"
+                      aria-hidden
+                    />
+                  )}
+                </button>
+                {isOpen ? <QuestionExpansion row={row} /> : null}
               </li>
             );
           })}
@@ -260,6 +305,121 @@ export function ExamResults({ aggregate }: Props) {
           {!creating && <Play className="ms-2 size-4" aria-hidden />}
         </Button>
       </div>
+    </div>
+  );
+}
+
+// =============================================================================
+// Per-question expansion (Slice 7.6)
+// =============================================================================
+
+/**
+ * The expanded panel rendered below a clicked row. Shows the full
+ * question text and all four choices, each with its distractor
+ * analysis. Indicator conventions per choice:
+ *  - correct       → green ✓ accent (status-strong tokens)
+ *  - selected wrong → red ✗ accent (status-weak tokens)
+ *  - other wrong   → neutral (no accent)
+ *
+ * When `selectedLetter` is null (skipped or unanswered), only the
+ * correct choice gets the ✓ accent; the rest are neutral.
+ */
+function QuestionExpansion({ row }: { row: ExamReviewRow }) {
+  return (
+    <div className="border-t border-border/70 bg-muted/20 px-5 py-4">
+      {row.questionText ? (
+        <p
+          dir="auto"
+          className="mb-3 whitespace-pre-wrap text-sm leading-relaxed text-foreground/90"
+        >
+          {row.questionText}
+        </p>
+      ) : null}
+      {row.choices.length > 0 ? (
+        <ul className="space-y-2">
+          {row.choices.map((choice) => (
+            <li key={choice.letter}>
+              <ChoiceAnalysisRow
+                choice={choice}
+                selectedLetter={row.selectedLetter}
+              />
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="text-sm text-muted-foreground">
+          אין נתוני בחירות זמינים לשאלה זו.
+        </p>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Single-choice row inside the expansion panel. Indicator + letter +
+ * choice_text on the first line, distractor_analysis below (when
+ * present). Tones come from the project's status tokens so the visual
+ * matches admin-content badges.
+ */
+function ChoiceAnalysisRow({
+  choice,
+  selectedLetter,
+}: {
+  choice: ExamReviewChoice;
+  selectedLetter: ExamLetter | null;
+}) {
+  const isUserPick = selectedLetter !== null && choice.letter === selectedLetter;
+  const isWrongPick = isUserPick && !choice.isCorrect;
+
+  let toneClasses: string;
+  let icon: React.ReactNode;
+  if (choice.isCorrect) {
+    toneClasses =
+      "border-[color:var(--color-status-strong)]/40 bg-[var(--color-status-strong-bg)] text-[var(--color-status-strong)]";
+    icon = <Check className="size-3.5" aria-hidden />;
+  } else if (isWrongPick) {
+    toneClasses =
+      "border-[color:var(--color-status-weak)]/40 bg-[var(--color-status-weak-bg)] text-[var(--color-status-weak)]";
+    icon = <X className="size-3.5" aria-hidden />;
+  } else {
+    toneClasses = "border-border bg-card text-muted-foreground";
+    icon = null;
+  }
+
+  return (
+    <div
+      className={cn(
+        "rounded-md border p-3 text-sm leading-relaxed",
+        toneClasses
+      )}
+    >
+      <div className="flex items-start gap-2">
+        <span
+          className={cn(
+            "mt-0.5 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded text-[11px] font-semibold",
+            choice.isCorrect && "bg-[var(--color-status-strong)] text-white",
+            isWrongPick && "bg-[var(--color-status-weak)] text-white",
+            !choice.isCorrect && !isWrongPick && "bg-muted"
+          )}
+          aria-hidden
+        >
+          {choice.letter}
+        </span>
+        <span dir="auto" className="flex-1 text-foreground">
+          {choice.choiceText}
+        </span>
+        {icon !== null ? (
+          <span className="mt-0.5 shrink-0">{icon}</span>
+        ) : null}
+      </div>
+      {choice.distractorAnalysis ? (
+        <p
+          dir="auto"
+          className="mt-2 whitespace-pre-wrap pe-7 text-[13px] text-foreground/80"
+        >
+          {choice.distractorAnalysis}
+        </p>
+      ) : null}
     </div>
   );
 }
