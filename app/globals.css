@@ -278,3 +278,24 @@
     animation: timerPulse 1s ease-in-out infinite;
   }
 }
+
+/* ============================================
+   Slice 8 — page-transition fade-in for (app) route segments.
+   Layout-applied via the `.page-fade-in` class on <main> in
+   app/(app)/layout.tsx. The class only renders for the (app)
+   group; auth pages and the root layout stay un-animated.
+   Disabled under prefers-reduced-motion to match the timer/journey
+   precedent above.
+   ============================================ */
+@keyframes pageFadeIn {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.page-fade-in {
+  animation: pageFadeIn 180ms ease-out;
+}
+@media (prefers-reduced-motion: reduce) {
+  .page-fade-in {
+    animation: none;
+  }
+}

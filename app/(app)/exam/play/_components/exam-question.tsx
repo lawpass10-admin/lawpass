@@ -15,6 +15,7 @@ import {
 } from "@/app/(app)/exam/_actions";
 import { Choice } from "@/app/(app)/practice/play/_components/choice";
 import { Button } from "@/components/ui/button";
+import { LoadingAnimation } from "@/components/ui/loading-animation";
 import type {
   Choice as ChoiceType,
   ExamPositionStatus,
@@ -184,6 +185,13 @@ export function ExamQuestion({
   const [bookmarked, setBookmarked] = useState(isBookmarked);
   const [bookmarkPending, setBookmarkPending] = useState(false);
   const [submitConfirmOpen, setSubmitConfirmOpen] = useState(false);
+  // Slice 8 — tracks the actual `submitFinalExam` in-flight phase
+  // (post-confirm / direct-manual / auto-submit). Drives both the
+  // dialog's content swap and the standalone overlay below. Distinct
+  // from `actionPending` (useTransition) — handleSubmitFinal is not
+  // wrapped in startTransition, so we manage the pending boolean
+  // explicitly.
+  const [submittingFinal, setSubmittingFinal] = useState(false);
   const [actionPending, startTransition] = useTransition();
 
   const totalQuestions = session.question_list.length;
@@ -368,11 +376,17 @@ export function ExamQuestion({
       return;
     }
 
+    // Slice 8 — flip the pending flag BEFORE the await so the dialog
+    // content swap / standalone overlay paint while submitFinalExam
+    // is in flight. On error we reset; on success the redirect fires
+    // and the page unmounts.
+    setSubmittingFinal(true);
     const result = await submitFinalExam({
       sessionId: session.id,
       windowToken: token,
     });
     if (!result.ok) {
+      setSubmittingFinal(false);
       if (result.error === "window_conflict") handleWindowConflict();
       else toast.error("אירעה שגיאה. נסה שוב");
       return;
@@ -610,8 +624,25 @@ export function ExamQuestion({
         unansweredCount={unansweredCount}
         onConfirm={() => void handleSubmitFinal(true)}
         onCancel={() => setSubmitConfirmOpen(false)}
-        pending={actionPending}
+        // Slice 8 — pass our explicit `submittingFinal` flag so the
+        // dialog swap fires regardless of `actionPending` (which
+        // stays false because handleSubmitFinal isn't wrapped in
+        // startTransition).
+        pending={actionPending || submittingFinal}
       />
+
+      {/* Slice 8 — standalone overlay for the manual-direct + auto-
+          submit paths, which never open the dialog. When the dialog
+          IS open the swap inside it handles the visual; this overlay
+          is gated to !submitConfirmOpen so the two never double up. */}
+      {submittingFinal && !submitConfirmOpen ? (
+        <div
+          aria-live="polite"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-background/95 backdrop-blur-sm"
+        >
+          <LoadingAnimation size="lg" label="מחשבים את התוצאות..." />
+        </div>
+      ) : null}
     </div>
   );
 }

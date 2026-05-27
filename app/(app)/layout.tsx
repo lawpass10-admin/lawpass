@@ -113,7 +113,9 @@ export default async function AppLayout({
   // since neither sidebar nor badges render on /exam/*.
   const isExamRoute = pathname === "/exam" || pathname.startsWith("/exam/");
   if (isExamRoute) {
-    return <main className="flex-1 p-6">{children}</main>;
+    return (
+      <main className="page-fade-in flex-1 p-6">{children}</main>
+    );
   }
 
   // Counts for sidebar badges. Both tables' RLS policies require
@@ -141,7 +143,7 @@ export default async function AppLayout({
       />
       <SidebarInset>
         <MobileTopBar />
-        <main className="flex-1 p-4 md:p-6">{children}</main>
+        <main className="page-fade-in flex-1 p-4 md:p-6">{children}</main>
       </SidebarInset>
     </SidebarProvider>
   );
