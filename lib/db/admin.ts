@@ -16,9 +16,12 @@
  * through the `public.is_admin()` companion RLS policies.
  */
 
+import type { SupabaseClient } from "@supabase/supabase-js";
+
 import type { createClient } from "@/lib/supabase/server";
 
 type SupabaseSsrClient = Awaited<ReturnType<typeof createClient>>;
+type SupabaseAdminClient = SupabaseClient;
 
 // =============================================================================
 // Types
@@ -55,6 +58,52 @@ export type ChapterContentRow = {
   sourcesWithWrongAngleCount: number;
   /** Source questions whose status is not 'active' (after year filter). */
   sourcesNotActive: number;
+};
+
+/** One row in the /admin/users table. */
+export type AdminUserRow = {
+  userId: string;
+  fullName: string;
+  email: string | null;
+  signedUpAt: string; // ISO timestamp from profiles.created_at
+  examDatePlanned: string | null; // YYYY-MM-DD or null
+  lastSignInAt: string | null; // ISO timestamp or null
+  activeSubscription:
+    | { planType: string; endsAt: string }
+    | null;
+};
+
+/** Full payload for the /admin/users/[userId] detail page. */
+export type AdminUserDetail = {
+  userId: string;
+  profile: {
+    fullName: string;
+    phone: string | null;
+    gender: string;
+    birthDate: string; // YYYY-MM-DD
+    examDatePlanned: string | null;
+    signupSource: string;
+    createdAt: string;
+  };
+  auth: {
+    email: string | null;
+    lastSignInAt: string | null;
+    emailConfirmedAt: string | null;
+  };
+  activeSubscription:
+    | { planType: string; endsAt: string }
+    | null;
+  recentAttempts: AdminAttemptRow[];
+};
+
+export type AdminAttemptRow = {
+  id: string;
+  attemptedAt: string;
+  questionType: "source" | "angle";
+  mode: "practice" | "exam";
+  isCorrect: boolean | null;
+  wasSkipped: boolean;
+  durationSeconds: number | null;
 };
 
 /** Drill-down row for a single chapter's source-question list. */
@@ -398,4 +447,232 @@ export async function getChapterDrillDown(
     .sort((a, b) => a.externalId.localeCompare(b.externalId, "he"));
 
   return { chapter, rows };
+}
+
+// =============================================================================
+// Public API — users list (Phase B)
+// =============================================================================
+
+/** Cap on /admin/users page size. The brief asks for 50; the dataset is
+ *  ~10 users today. */
+export const ADMIN_USERS_PAGE_SIZE = 50;
+
+/**
+ * Build one page of /admin/users rows. Pagination follows the Supabase
+ * Auth Admin API's page/perPage convention — auth.users is the
+ * authoritative paginated source, and we stitch profiles +
+ * subscriptions against the page's user ids.
+ *
+ * SSR client (RLS-scoped, admin policies grant cross-user read) handles
+ * profiles + subscriptions. Service-role client ONLY for the auth.users
+ * read — and only via the documented Auth Admin API listUsers().
+ *
+ * Caller must invoke requireAdmin() BEFORE creating the admin client.
+ */
+export async function getUsersListPage(
+  supabase: SupabaseSsrClient,
+  admin: SupabaseAdminClient,
+  { page, perPage }: { page: number; perPage?: number }
+): Promise<{
+  rows: AdminUserRow[];
+  page: number;
+  perPage: number;
+  hasMore: boolean;
+}> {
+  const safePerPage = Math.max(1, Math.min(perPage ?? ADMIN_USERS_PAGE_SIZE, 200));
+  const safePage = Math.max(1, page);
+
+  // Auth Admin API listUsers — supabase-js page/perPage convention. Page
+  // is 1-indexed. The endpoint orders by created_at desc by default.
+  const { data: authData, error: authErr } = await admin.auth.admin.listUsers({
+    page: safePage,
+    perPage: safePerPage,
+  });
+  if (authErr) {
+    throw new Error(`admin.auth.admin.listUsers failed: ${authErr.message}`);
+  }
+
+  const users = authData?.users ?? [];
+  const ids = users.map((u) => u.id);
+
+  if (ids.length === 0) {
+    return { rows: [], page: safePage, perPage: safePerPage, hasMore: false };
+  }
+
+  const nowIso = new Date().toISOString();
+  const [profilesRes, subsRes] = await Promise.all([
+    supabase
+      .from("profiles")
+      .select("id, full_name, exam_date_planned, created_at")
+      .in("id", ids),
+    supabase
+      .from("subscriptions")
+      .select("user_id, plan_type, ends_at")
+      .in("user_id", ids)
+      .eq("is_current", true)
+      .eq("status", "active")
+      .gt("ends_at", nowIso),
+  ]);
+
+  const profileById = new Map<
+    string,
+    {
+      full_name: string;
+      exam_date_planned: string | null;
+      created_at: string;
+    }
+  >();
+  for (const p of (profilesRes.data ?? []) as Array<{
+    id: string;
+    full_name: string;
+    exam_date_planned: string | null;
+    created_at: string;
+  }>) {
+    profileById.set(p.id, {
+      full_name: p.full_name,
+      exam_date_planned: p.exam_date_planned,
+      created_at: p.created_at,
+    });
+  }
+
+  const subByUser = new Map<string, { planType: string; endsAt: string }>();
+  for (const s of (subsRes.data ?? []) as Array<{
+    user_id: string;
+    plan_type: string;
+    ends_at: string;
+  }>) {
+    subByUser.set(s.user_id, { planType: s.plan_type, endsAt: s.ends_at });
+  }
+
+  const rows: AdminUserRow[] = users.map((u) => {
+    const p = profileById.get(u.id);
+    return {
+      userId: u.id,
+      fullName: p?.full_name ?? "—",
+      email: u.email ?? null,
+      signedUpAt: p?.created_at ?? u.created_at ?? "",
+      examDatePlanned: p?.exam_date_planned ?? null,
+      lastSignInAt: u.last_sign_in_at ?? null,
+      activeSubscription: subByUser.get(u.id) ?? null,
+    };
+  });
+
+  // listUsers returns no total count, so we infer "has more" by whether
+  // this page was completely full.
+  const hasMore = users.length >= safePerPage;
+
+  return { rows, page: safePage, perPage: safePerPage, hasMore };
+}
+
+// =============================================================================
+// Public API — user detail (Phase B)
+// =============================================================================
+
+export const ADMIN_USER_RECENT_ATTEMPTS_LIMIT = 10;
+
+/**
+ * Fetch all data needed by /admin/users/[userId]: profile row, auth
+ * fields (via the Auth Admin API), the user's current active
+ * subscription, and the N most recent attempts. Returns null when the
+ * user doesn't exist.
+ *
+ * SSR client for profiles + subscriptions + attempts (admin RLS),
+ * admin client ONLY for auth.users (and only the documented columns —
+ * never encrypted_password or any token column).
+ */
+export async function getUserDetail(
+  supabase: SupabaseSsrClient,
+  admin: SupabaseAdminClient,
+  userId: string
+): Promise<AdminUserDetail | null> {
+  const [authRes, profileRes, subsRes, attemptsRes] = await Promise.all([
+    admin.auth.admin.getUserById(userId),
+    supabase
+      .from("profiles")
+      .select(
+        "full_name, phone, gender, birth_date, exam_date_planned, signup_source, created_at"
+      )
+      .eq("id", userId)
+      .maybeSingle(),
+    supabase
+      .from("subscriptions")
+      .select("plan_type, ends_at")
+      .eq("user_id", userId)
+      .eq("is_current", true)
+      .eq("status", "active")
+      .gt("ends_at", new Date().toISOString())
+      .maybeSingle(),
+    supabase
+      .from("attempts")
+      .select(
+        "id, attempted_at, question_type, mode, is_correct, was_skipped, duration_seconds"
+      )
+      .eq("user_id", userId)
+      .order("attempted_at", { ascending: false })
+      .limit(ADMIN_USER_RECENT_ATTEMPTS_LIMIT),
+  ]);
+
+  const authUser = authRes.data?.user ?? null;
+  const profile = profileRes.data as
+    | {
+        full_name: string;
+        phone: string | null;
+        gender: string;
+        birth_date: string;
+        exam_date_planned: string | null;
+        signup_source: string;
+        created_at: string;
+      }
+    | null;
+
+  if (!authUser && !profile) return null;
+
+  const sub = subsRes.data as
+    | { plan_type: string; ends_at: string }
+    | null;
+
+  const recentAttempts: AdminAttemptRow[] = [];
+  for (const a of (attemptsRes.data ?? []) as Array<{
+    id: string;
+    attempted_at: string;
+    question_type: string;
+    mode: string;
+    is_correct: boolean | null;
+    was_skipped: boolean;
+    duration_seconds: number | null;
+  }>) {
+    if (a.question_type !== "source" && a.question_type !== "angle") continue;
+    if (a.mode !== "practice" && a.mode !== "exam") continue;
+    recentAttempts.push({
+      id: a.id,
+      attemptedAt: a.attempted_at,
+      questionType: a.question_type,
+      mode: a.mode,
+      isCorrect: a.is_correct,
+      wasSkipped: a.was_skipped,
+      durationSeconds: a.duration_seconds,
+    });
+  }
+
+  return {
+    userId,
+    profile: {
+      fullName: profile?.full_name ?? "—",
+      phone: profile?.phone ?? null,
+      gender: profile?.gender ?? "—",
+      birthDate: profile?.birth_date ?? "",
+      examDatePlanned: profile?.exam_date_planned ?? null,
+      signupSource: profile?.signup_source ?? "—",
+      createdAt: profile?.created_at ?? authUser?.created_at ?? "",
+    },
+    auth: {
+      email: authUser?.email ?? null,
+      lastSignInAt: authUser?.last_sign_in_at ?? null,
+      emailConfirmedAt: authUser?.email_confirmed_at ?? null,
+    },
+    activeSubscription: sub
+      ? { planType: sub.plan_type, endsAt: sub.ends_at }
+      : null,
+    recentAttempts,
+  };
 }
