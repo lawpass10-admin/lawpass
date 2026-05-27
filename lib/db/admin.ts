@@ -458,14 +458,33 @@ export async function getChapterDrillDown(
 export const ADMIN_USERS_PAGE_SIZE = 50;
 
 /**
- * Build one page of /admin/users rows. Pagination follows the Supabase
- * Auth Admin API's page/perPage convention — auth.users is the
- * authoritative paginated source, and we stitch profiles +
- * subscriptions against the page's user ids.
+ * Build one page of /admin/users rows.
  *
- * SSR client (RLS-scoped, admin policies grant cross-user read) handles
- * profiles + subscriptions. Service-role client ONLY for the auth.users
- * read — and only via the documented Auth Admin API listUsers().
+ * Implementation note (fix-admin-users, May 2026): the Supabase Auth
+ * Admin API's `listUsers()` endpoint is currently broken for this
+ * project's gotrue version — it returns HTTP 500 with the underlying
+ * Go error "sql: Scan error on column index 8, name \"email_change\":
+ * converting NULL to string is unsupported". The list endpoint's
+ * scanner can't handle NULL in `auth.users.email_change`, which is
+ * NULL for every user who has never requested an email change (the
+ * default). Confirmed via the Supabase auth-service logs.
+ *
+ * Workaround: drive pagination from `profiles` (admin RLS lets us
+ * read all rows ordered by created_at) and fan out per-user
+ * `getUserById()` calls in parallel for the auth columns we need.
+ * The single-user gotrue endpoint uses a different code path and is
+ * NOT affected by the bug.
+ *
+ * Trade-off: N+1 HTTP calls to gotrue per page (capped at perPage,
+ * default 50). All issued in parallel via Promise.all, so the wall-
+ * clock cost is ~one gotrue round-trip. With ~10 users today this is
+ * imperceptible; at the page cap of 50 users it's still under a
+ * second.
+ *
+ * SSR client (admin RLS) for profiles + subscriptions. Service-role
+ * client ONLY for the per-user auth fetch, and only the documented
+ * columns (id, email, last_sign_in_at, created_at) — never
+ * encrypted_password or any token column.
  *
  * Caller must invoke requireAdmin() BEFORE creating the admin client.
  */
@@ -482,29 +501,56 @@ export async function getUsersListPage(
   const safePerPage = Math.max(1, Math.min(perPage ?? ADMIN_USERS_PAGE_SIZE, 200));
   const safePage = Math.max(1, page);
 
-  // Auth Admin API listUsers — supabase-js page/perPage convention. Page
-  // is 1-indexed. The endpoint orders by created_at desc by default.
-  const { data: authData, error: authErr } = await admin.auth.admin.listUsers({
-    page: safePage,
-    perPage: safePerPage,
-  });
-  if (authErr) {
-    throw new Error(`admin.auth.admin.listUsers failed: ${authErr.message}`);
+  // profiles.created_at desc drives the page order. RLS policy
+  // admins_view_all_profiles grants cross-user SELECT; the partial
+  // unique index isn't needed here since we only ORDER BY.
+  // .range is 0-indexed inclusive on both ends.
+  const fromIdx = (safePage - 1) * safePerPage;
+  const toIdx = fromIdx + safePerPage - 1;
+  const { data: profilesPage, count: profilesCount, error: profilesErr } =
+    await supabase
+      .from("profiles")
+      .select("id, full_name, exam_date_planned, created_at", {
+        count: "exact",
+      })
+      .order("created_at", { ascending: false })
+      .range(fromIdx, toIdx);
+
+  if (profilesErr) {
+    throw new Error(`profiles page query failed: ${profilesErr.message}`);
   }
 
-  const users = authData?.users ?? [];
-  const ids = users.map((u) => u.id);
+  const pageProfiles = (profilesPage ?? []) as Array<{
+    id: string;
+    full_name: string;
+    exam_date_planned: string | null;
+    created_at: string;
+  }>;
+  const ids = pageProfiles.map((p) => p.id);
 
   if (ids.length === 0) {
     return { rows: [], page: safePage, perPage: safePerPage, hasMore: false };
   }
 
+  // Fan-out per-user auth lookups in parallel. Each `getUserById` hits
+  // GET /auth/v1/admin/users/{id}, which uses a different gotrue
+  // scanner than the list endpoint and tolerates NULL email_change.
+  const authPromise = Promise.all(
+    ids.map((id) =>
+      admin.auth.admin.getUserById(id).then(
+        (res) => ({ id, user: res.data?.user ?? null, error: res.error }),
+        (err: unknown) => ({
+          id,
+          user: null,
+          error: err instanceof Error ? err : new Error(String(err)),
+        })
+      )
+    )
+  );
+
   const nowIso = new Date().toISOString();
-  const [profilesRes, subsRes] = await Promise.all([
-    supabase
-      .from("profiles")
-      .select("id, full_name, exam_date_planned, created_at")
-      .in("id", ids),
+  const [authResults, subsRes] = await Promise.all([
+    authPromise,
     supabase
       .from("subscriptions")
       .select("user_id, plan_type, ends_at")
@@ -514,24 +560,27 @@ export async function getUsersListPage(
       .gt("ends_at", nowIso),
   ]);
 
-  const profileById = new Map<
+  const authByUser = new Map<
     string,
-    {
-      full_name: string;
-      exam_date_planned: string | null;
-      created_at: string;
-    }
+    { email: string | null; lastSignInAt: string | null; createdAt: string }
   >();
-  for (const p of (profilesRes.data ?? []) as Array<{
-    id: string;
-    full_name: string;
-    exam_date_planned: string | null;
-    created_at: string;
-  }>) {
-    profileById.set(p.id, {
-      full_name: p.full_name,
-      exam_date_planned: p.exam_date_planned,
-      created_at: p.created_at,
+  for (const r of authResults) {
+    if (r.error) {
+      // Log but don't fail the whole page — a single missing auth row
+      // (e.g. the user was deleted from auth but profile orphaned)
+      // shouldn't take down the table. The row renders with email="—".
+      console.error(
+        `[admin] getUserById failed for ${r.id}: ${
+          r.error instanceof Error ? r.error.message : "unknown"
+        }`
+      );
+      continue;
+    }
+    if (!r.user) continue;
+    authByUser.set(r.id, {
+      email: r.user.email ?? null,
+      lastSignInAt: r.user.last_sign_in_at ?? null,
+      createdAt: r.user.created_at ?? "",
     });
   }
 
@@ -544,22 +593,22 @@ export async function getUsersListPage(
     subByUser.set(s.user_id, { planType: s.plan_type, endsAt: s.ends_at });
   }
 
-  const rows: AdminUserRow[] = users.map((u) => {
-    const p = profileById.get(u.id);
+  const rows: AdminUserRow[] = pageProfiles.map((p) => {
+    const auth = authByUser.get(p.id);
     return {
-      userId: u.id,
-      fullName: p?.full_name ?? "—",
-      email: u.email ?? null,
-      signedUpAt: p?.created_at ?? u.created_at ?? "",
-      examDatePlanned: p?.exam_date_planned ?? null,
-      lastSignInAt: u.last_sign_in_at ?? null,
-      activeSubscription: subByUser.get(u.id) ?? null,
+      userId: p.id,
+      fullName: p.full_name,
+      email: auth?.email ?? null,
+      signedUpAt: p.created_at,
+      examDatePlanned: p.exam_date_planned,
+      lastSignInAt: auth?.lastSignInAt ?? null,
+      activeSubscription: subByUser.get(p.id) ?? null,
     };
   });
 
-  // listUsers returns no total count, so we infer "has more" by whether
-  // this page was completely full.
-  const hasMore = users.length >= safePerPage;
+  // exact count from the head query → reliable hasMore.
+  const totalRows = profilesCount ?? rows.length;
+  const hasMore = fromIdx + rows.length < totalRows;
 
   return { rows, page: safePage, perPage: safePerPage, hasMore };
 }
