@@ -4,6 +4,8 @@ import { createClient } from "@/lib/supabase/server";
 import {
   ADMIN_USERS_PAGE_SIZE,
   getUsersListPage,
+  type SortableColumn,
+  type SortDir,
   type UsersListFilters,
   type UsersListPlanFilter,
   type UsersListSignupFilter,
@@ -44,6 +46,24 @@ function parseSignupSource(
   return v === "email" || v === "google" ? v : null;
 }
 
+// Slice 7.5 — sort + direction parsing. Both default at the loader
+// level (sort='activity', dir='desc') when undefined; invalid values
+// silently drop to undefined so they don't pollute the URL.
+function parseSort(v: string | undefined): SortableColumn | undefined {
+  return v === "name" ||
+    v === "email" ||
+    v === "signup" ||
+    v === "exam" ||
+    v === "subscription" ||
+    v === "activity"
+    ? v
+    : undefined;
+}
+
+function parseDir(v: string | undefined): SortDir | undefined {
+  return v === "asc" || v === "desc" ? v : undefined;
+}
+
 /**
  * /admin/users — paginated users table with subscription / plan /
  * signup-source filters and a name+phone+email search. The URL is the
@@ -58,6 +78,8 @@ export default async function AdminUsersPage({
     plan?: string | string[];
     src?: string | string[];
     q?: string | string[];
+    sort?: string | string[];
+    dir?: string | string[];
   }>;
 }) {
   await requireAdmin();
@@ -70,13 +92,20 @@ export default async function AdminUsersPage({
     signupSource: parseSignupSource(pickStr(params.src)),
     q: pickStr(params.q) ?? null,
   };
+  // Slice 7.5 — sort + dir flow through to getUsersListPage. The
+  // helper applies its own defaults (activity / desc) when both are
+  // undefined; we explicitly resolve them here too so the header
+  // component knows the effective current state and can render the
+  // active arrow correctly.
+  const sort: SortableColumn = parseSort(pickStr(params.sort)) ?? "activity";
+  const dir: SortDir = parseDir(pickStr(params.dir)) ?? "desc";
 
   const supabase = await createClient();
   const adminClient = createAdminClient();
   const { rows, hasMore, perPage } = await getUsersListPage(
     supabase,
     adminClient,
-    { page, perPage: ADMIN_USERS_PAGE_SIZE, filters }
+    { page, perPage: ADMIN_USERS_PAGE_SIZE, filters, sort, dir }
   );
 
   return (
@@ -95,7 +124,7 @@ export default async function AdminUsersPage({
         currentSource={filters.signupSource ?? null}
         currentQ={filters.q ?? ""}
       />
-      <UsersTable rows={rows} />
+      <UsersTable rows={rows} sort={sort} dir={dir} />
       <UsersPager page={page} hasMore={hasMore} perPage={perPage} />
     </div>
   );

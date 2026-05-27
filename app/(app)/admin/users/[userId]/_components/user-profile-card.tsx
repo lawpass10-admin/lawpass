@@ -124,9 +124,14 @@ export default function UserProfileCard({
               )
             }
           />
+          {/* Slice 7.5 — was "כניסה אחרונה" sourced from
+              auth.users.last_sign_in_at, which is stale while
+              long-lived refresh tokens stay in play. Now shows the
+              same computed MAX as the users-table column so the
+              detail page stays consistent with the list. */}
           <Field
-            label="כניסה אחרונה"
-            value={fmtDateTime(detail.auth.lastSignInAt)}
+            label="פעילות אחרונה"
+            value={fmtDateTime(detail.lastActivityAt)}
           />
           <Field
             label="אימות מייל"

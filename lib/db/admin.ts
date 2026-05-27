@@ -67,7 +67,16 @@ export type AdminUserRow = {
   email: string | null;
   signedUpAt: string; // ISO timestamp from profiles.created_at
   examDatePlanned: string | null; // YYYY-MM-DD or null
-  lastSignInAt: string | null; // ISO timestamp or null
+  /**
+   * Slice 7.5 — computed MAX over four activity sources:
+   *   - auth.users.last_sign_in_at
+   *   - attempts.attempted_at
+   *   - practice_sessions.last_activity_at
+   *   - exam_sessions.last_activity_at
+   * NULL only when all four are NULL (a user who signed up but never
+   * actually used the app).
+   */
+  lastActivityAt: string | null;
   activeSubscription:
     | { planType: string; endsAt: string }
     | null;
@@ -87,9 +96,15 @@ export type AdminUserDetail = {
   };
   auth: {
     email: string | null;
-    lastSignInAt: string | null;
     emailConfirmedAt: string | null;
   };
+  /**
+   * Slice 7.5 — same computed-MAX rule as AdminUserRow.lastActivityAt.
+   * Replaces the prior `auth.lastSignInAt` surface on this page: fresh
+   * sign-ins are only one of four activity signals, and the panel
+   * previously misrepresented active users as inactive.
+   */
+  lastActivityAt: string | null;
   activeSubscription:
     | { planType: string; endsAt: string }
     | null;
@@ -450,12 +465,166 @@ export async function getChapterDrillDown(
 }
 
 // =============================================================================
-// Public API — users list (Phase B)
+// Public API — users list (Phase B + Slice 7.5)
 // =============================================================================
 
 /** Cap on /admin/users page size. The brief asks for 50; the dataset is
  *  ~10 users today. */
 export const ADMIN_USERS_PAGE_SIZE = 50;
+
+/**
+ * Sortable columns on /admin/users. Three are orderable directly on
+ * the profiles query (DB ORDER BY); three are computed and sorted in
+ * TS after pre-resolving the order key for the full filtered set.
+ * Default sort is `activity` desc (slice 7.5 product decision).
+ */
+export type SortableColumn =
+  | "name"
+  | "email"
+  | "signup"
+  | "exam"
+  | "subscription"
+  | "activity";
+
+export type SortDir = "asc" | "desc";
+
+const DB_ORDERABLE_COLUMNS: ReadonlySet<SortableColumn> = new Set([
+  "name",
+  "signup",
+  "exam",
+]);
+
+/**
+ * Profiles-column mapping for DB-orderable columns. Hebrew collation
+ * on profiles.full_name is set in migration 0003 so .order() handles
+ * Hebrew alphabetic sort natively.
+ */
+const DB_ORDERABLE_PROFILE_COLUMN: Record<
+  Extract<SortableColumn, "name" | "signup" | "exam">,
+  string
+> = {
+  name: "full_name",
+  signup: "created_at",
+  exam: "exam_date_planned",
+};
+
+const DEFAULT_SORT: SortableColumn = "activity";
+const DEFAULT_DIR: SortDir = "desc";
+
+/**
+ * Reads attempts / practice_sessions / exam_sessions + last_sign_in_at
+ * for the given user IDs and returns a Map<userId, ISO | null> of the
+ * MAX across the four sources.
+ *
+ * Three batched queries against the activity tables run in parallel
+ * with the auth fan-out (per-user `getUserById` — gotrue list endpoint
+ * is broken for this project's gotrue version, see fix-admin-users).
+ * All three activity tables have composite `(user_id, *)` indexes so
+ * the IN(...) scan is index-friendly; we read the rows ordered desc
+ * and take the first per user (i.e. MAX) — same pattern as
+ * `findResolvedQuestions` in lib/db/practice.ts.
+ *
+ * At current scale (~10 users, ≤1k attempts total) this is
+ * microseconds; at >10k users this would justify a SECURITY DEFINER
+ * RPC that computes the GROUP BY MAX in SQL.
+ */
+async function fetchLastActivityMap(
+  supabase: SupabaseSsrClient,
+  admin: SupabaseAdminClient,
+  userIds: string[]
+): Promise<Map<string, string | null>> {
+  const out = new Map<string, string | null>();
+  if (userIds.length === 0) return out;
+  for (const id of userIds) out.set(id, null);
+
+  const [attemptsRes, practiceRes, examRes, authResults] = await Promise.all([
+    supabase
+      .from("attempts")
+      .select("user_id, attempted_at")
+      .in("user_id", userIds)
+      .order("attempted_at", { ascending: false }),
+    supabase
+      .from("practice_sessions")
+      .select("user_id, last_activity_at")
+      .in("user_id", userIds)
+      .order("last_activity_at", { ascending: false }),
+    supabase
+      .from("exam_sessions")
+      .select("user_id, last_activity_at")
+      .in("user_id", userIds)
+      .order("last_activity_at", { ascending: false }),
+    Promise.all(
+      userIds.map((id) =>
+        admin.auth.admin.getUserById(id).then(
+          (res) => ({
+            id,
+            lastSignInAt: res.data?.user?.last_sign_in_at ?? null,
+          }),
+          () => ({ id, lastSignInAt: null as string | null })
+        )
+      )
+    ),
+  ]);
+
+  function bump(userId: string, candidate: string | null): void {
+    if (!candidate) return;
+    const prev = out.get(userId);
+    if (!prev || candidate > prev) out.set(userId, candidate);
+  }
+
+  // Ordered desc → first per user is the MAX. Walk once with a seen set.
+  const seenAttempts = new Set<string>();
+  for (const row of (attemptsRes.data ?? []) as Array<{
+    user_id: string;
+    attempted_at: string;
+  }>) {
+    if (seenAttempts.has(row.user_id)) continue;
+    seenAttempts.add(row.user_id);
+    bump(row.user_id, row.attempted_at);
+  }
+
+  const seenPractice = new Set<string>();
+  for (const row of (practiceRes.data ?? []) as Array<{
+    user_id: string;
+    last_activity_at: string;
+  }>) {
+    if (seenPractice.has(row.user_id)) continue;
+    seenPractice.add(row.user_id);
+    bump(row.user_id, row.last_activity_at);
+  }
+
+  const seenExam = new Set<string>();
+  for (const row of (examRes.data ?? []) as Array<{
+    user_id: string;
+    last_activity_at: string;
+  }>) {
+    if (seenExam.has(row.user_id)) continue;
+    seenExam.add(row.user_id);
+    bump(row.user_id, row.last_activity_at);
+  }
+
+  for (const r of authResults) bump(r.id, r.lastSignInAt);
+
+  return out;
+}
+
+/**
+ * String-or-null comparator with NULLS LAST in both directions —
+ * matches the locked product decision: missing values predictably
+ * sink to the bottom whether sort is asc or desc.
+ */
+function compareNullsLast(
+  a: string | null,
+  b: string | null,
+  ascending: boolean
+): number {
+  if (a === null && b === null) return 0;
+  if (a === null) return 1;
+  if (b === null) return -1;
+  if (a === b) return 0;
+  const lt = ascending ? a < b : a > b;
+  return lt ? -1 : 1;
+}
 
 export type UsersListSubscriptionFilter =
   | "active"
@@ -521,7 +690,15 @@ export async function getUsersListPage(
     page,
     perPage,
     filters,
-  }: { page: number; perPage?: number; filters?: UsersListFilters }
+    sort,
+    dir,
+  }: {
+    page: number;
+    perPage?: number;
+    filters?: UsersListFilters;
+    sort?: SortableColumn;
+    dir?: SortDir;
+  }
 ): Promise<{
   rows: AdminUserRow[];
   page: number;
@@ -535,6 +712,9 @@ export async function getUsersListPage(
   const signupSource = filters?.signupSource ?? null;
   const rawQ = (filters?.q ?? "").trim();
   const q = rawQ.length > 0 ? rawQ : null;
+  const sortCol: SortableColumn = sort ?? DEFAULT_SORT;
+  const sortDir: SortDir = dir ?? DEFAULT_DIR;
+  const isDBOrderable = DB_ORDERABLE_COLUMNS.has(sortCol);
 
   // --------------------------------------------------------------------
   // Step 1 — build the constrained id set (or null for "all profiles").
@@ -676,46 +856,196 @@ export async function getUsersListPage(
   }
 
   // --------------------------------------------------------------------
-  // Step 2 — paginate the (filtered) profiles set.
+  // Step 2 — paginate the (filtered) profiles set, with sort branching.
+  //
+  // DB-orderable columns (name, signup, exam date) take the cheap
+  // path: one .order().range() query against profiles. TS-orderable
+  // columns (email, subscription, activity) need to pre-resolve the
+  // sort key across the entire filtered set before slicing — same
+  // pattern as the existing "subscriptionStatus === 'none'" branch.
   // --------------------------------------------------------------------
 
   const fromIdx = (safePage - 1) * safePerPage;
   const toIdx = fromIdx + safePerPage - 1;
-  let profilesQuery = supabase
-    .from("profiles")
-    .select("id, full_name, exam_date_planned, created_at", {
-      count: "exact",
-    })
-    .order("created_at", { ascending: false })
-    .range(fromIdx, toIdx);
-  if (eligibleIds !== null) {
-    profilesQuery = profilesQuery.in("id", eligibleIds);
-  }
-  if (signupSource !== null) {
-    profilesQuery = profilesQuery.eq("signup_source", signupSource);
-  }
-  const { data: profilesPage, count: profilesCount, error: profilesErr } =
-    await profilesQuery;
+  const nowIso = new Date().toISOString();
 
-  if (profilesErr) {
-    throw new Error(`profiles page query failed: ${profilesErr.message}`);
-  }
-
-  const pageProfiles = (profilesPage ?? []) as Array<{
+  type ProfileRow = {
     id: string;
     full_name: string;
     exam_date_planned: string | null;
     created_at: string;
-  }>;
+  };
+
+  let pageProfiles: ProfileRow[] = [];
+  let totalRows = 0;
+  // Pre-resolved activity map for the page (and, in the sort=activity
+  // branch, the full eligible set). Used to render the column AND to
+  // sort by it.
+  let activityMap: Map<string, string | null> | null = null;
+
+  if (isDBOrderable) {
+    // --- DB-orderable branch ---
+    // Single paginated profiles query with .order + .range. The
+    // composite filters (eligibleIds + signup_source) ride along as
+    // .in() / .eq() — count: 'exact' still gives reliable hasMore.
+    const orderCol =
+      DB_ORDERABLE_PROFILE_COLUMN[
+        sortCol as "name" | "signup" | "exam"
+      ];
+    let profilesQuery = supabase
+      .from("profiles")
+      .select("id, full_name, exam_date_planned, created_at", {
+        count: "exact",
+      })
+      .order(orderCol, {
+        ascending: sortDir === "asc",
+        // NULLS LAST in BOTH directions — matches the locked product
+        // decision that missing values predictably sink. PostgREST
+        // .order honours nullsFirst when set explicitly.
+        nullsFirst: false,
+      })
+      .range(fromIdx, toIdx);
+    if (eligibleIds !== null) {
+      profilesQuery = profilesQuery.in("id", eligibleIds);
+    }
+    if (signupSource !== null) {
+      profilesQuery = profilesQuery.eq("signup_source", signupSource);
+    }
+    const { data, count, error } = await profilesQuery;
+    if (error) {
+      throw new Error(`profiles page query failed: ${error.message}`);
+    }
+    pageProfiles = (data ?? []) as ProfileRow[];
+    totalRows = count ?? pageProfiles.length;
+  } else {
+    // --- TS-orderable branch (email / subscription / activity) ---
+    // Step 2a — materialize the full filtered candidate set (apply
+    // eligibleIds + signupSource at SELECT-id time). At current scale
+    // (~10 users) this is cheap; at >10k users a SECURITY DEFINER RPC
+    // would carry the sort into SQL.
+    let candidateQuery = supabase.from("profiles").select("id");
+    if (eligibleIds !== null) {
+      candidateQuery = candidateQuery.in("id", eligibleIds);
+    }
+    if (signupSource !== null) {
+      candidateQuery = candidateQuery.eq("signup_source", signupSource);
+    }
+    const { data: candidateData, error: candidateErr } = await candidateQuery;
+    if (candidateErr) {
+      throw new Error(`candidates query failed: ${candidateErr.message}`);
+    }
+    const candidateIds = ((candidateData ?? []) as Array<{ id: string }>).map(
+      (r) => r.id
+    );
+
+    if (candidateIds.length === 0) {
+      return {
+        rows: [],
+        page: safePage,
+        perPage: safePerPage,
+        hasMore: false,
+      };
+    }
+
+    // Step 2b — resolve the sort key per candidate.
+    let sortKey: Map<string, string | null>;
+    if (sortCol === "email") {
+      const { data: emailData, error: emailErr } = await admin
+        .schema("auth")
+        .from("users")
+        .select("id, email")
+        .in("id", candidateIds);
+      if (emailErr) {
+        throw new Error(`email sort key fetch failed: ${emailErr.message}`);
+      }
+      sortKey = new Map<string, string | null>();
+      for (const id of candidateIds) sortKey.set(id, null);
+      for (const r of (emailData ?? []) as Array<{
+        id: string;
+        email: string | null;
+      }>) {
+        sortKey.set(r.id, r.email ?? null);
+      }
+    } else if (sortCol === "subscription") {
+      // Order key = active sub's ends_at. Users without an active
+      // sub get null (→ NULLS LAST per locked decision).
+      const { data: subData, error: subErr } = await supabase
+        .from("subscriptions")
+        .select("user_id, ends_at")
+        .in("user_id", candidateIds)
+        .eq("is_current", true)
+        .eq("status", "active")
+        .gt("ends_at", nowIso);
+      if (subErr) {
+        throw new Error(`subscription sort key fetch failed: ${subErr.message}`);
+      }
+      sortKey = new Map<string, string | null>();
+      for (const id of candidateIds) sortKey.set(id, null);
+      for (const r of (subData ?? []) as Array<{
+        user_id: string;
+        ends_at: string;
+      }>) {
+        sortKey.set(r.user_id, r.ends_at);
+      }
+    } else {
+      // sortCol === "activity"
+      activityMap = await fetchLastActivityMap(
+        supabase,
+        admin,
+        candidateIds
+      );
+      sortKey = activityMap;
+    }
+
+    // Step 2c — sort the candidate ids by their key (stable, NULLS LAST).
+    const ascending = sortDir === "asc";
+    const sorted = [...candidateIds].sort((a, b) =>
+      compareNullsLast(sortKey.get(a) ?? null, sortKey.get(b) ?? null, ascending)
+    );
+
+    // Step 2d — slice the page and load the actual profile rows. The
+    // .in() returns in arbitrary order; we re-order into the sorted
+    // slice via a Map lookup.
+    totalRows = sorted.length;
+    const pageIds = sorted.slice(fromIdx, toIdx + 1);
+    if (pageIds.length === 0) {
+      return {
+        rows: [],
+        page: safePage,
+        perPage: safePerPage,
+        hasMore: false,
+      };
+    }
+    const { data: pageProfilesData, error: pageProfilesErr } = await supabase
+      .from("profiles")
+      .select("id, full_name, exam_date_planned, created_at")
+      .in("id", pageIds);
+    if (pageProfilesErr) {
+      throw new Error(
+        `profiles page query failed: ${pageProfilesErr.message}`
+      );
+    }
+    const profileById = new Map<string, ProfileRow>();
+    for (const p of (pageProfilesData ?? []) as ProfileRow[]) {
+      profileById.set(p.id, p);
+    }
+    pageProfiles = pageIds
+      .map((id) => profileById.get(id))
+      .filter((p): p is ProfileRow => p !== undefined);
+  }
+
   const ids = pageProfiles.map((p) => p.id);
 
   if (ids.length === 0) {
     return { rows: [], page: safePage, perPage: safePerPage, hasMore: false };
   }
 
-  // Fan-out per-user auth lookups in parallel. Each `getUserById` hits
-  // GET /auth/v1/admin/users/{id}, which uses a different gotrue
-  // scanner than the list endpoint and tolerates NULL email_change.
+  // --------------------------------------------------------------------
+  // Step 3 — per-page lookups: auth fan-out + subscriptions + activity.
+  // The activity map may already be populated from the sort branch;
+  // skip the redundant fetch in that case.
+  // --------------------------------------------------------------------
+
   const authPromise = Promise.all(
     ids.map((id) =>
       admin.auth.admin.getUserById(id).then(
@@ -729,21 +1059,31 @@ export async function getUsersListPage(
     )
   );
 
-  const nowIso = new Date().toISOString();
-  const [authResults, subsRes] = await Promise.all([
+  const subsPromise = supabase
+    .from("subscriptions")
+    .select("user_id, plan_type, ends_at")
+    .in("user_id", ids)
+    .eq("is_current", true)
+    .eq("status", "active")
+    .gt("ends_at", nowIso);
+
+  // Reuse the precomputed map when sorting by activity — its candidate
+  // set is a superset of the page ids. Otherwise fetch just for the
+  // page.
+  const activityPromise: Promise<Map<string, string | null>> =
+    activityMap !== null
+      ? Promise.resolve(activityMap)
+      : fetchLastActivityMap(supabase, admin, ids);
+
+  const [authResults, subsRes, resolvedActivityMap] = await Promise.all([
     authPromise,
-    supabase
-      .from("subscriptions")
-      .select("user_id, plan_type, ends_at")
-      .in("user_id", ids)
-      .eq("is_current", true)
-      .eq("status", "active")
-      .gt("ends_at", nowIso),
+    subsPromise,
+    activityPromise,
   ]);
 
   const authByUser = new Map<
     string,
-    { email: string | null; lastSignInAt: string | null; createdAt: string }
+    { email: string | null; createdAt: string }
   >();
   for (const r of authResults) {
     if (r.error) {
@@ -760,7 +1100,6 @@ export async function getUsersListPage(
     if (!r.user) continue;
     authByUser.set(r.id, {
       email: r.user.email ?? null,
-      lastSignInAt: r.user.last_sign_in_at ?? null,
       createdAt: r.user.created_at ?? "",
     });
   }
@@ -782,13 +1121,13 @@ export async function getUsersListPage(
       email: auth?.email ?? null,
       signedUpAt: p.created_at,
       examDatePlanned: p.exam_date_planned,
-      lastSignInAt: auth?.lastSignInAt ?? null,
+      lastActivityAt: resolvedActivityMap.get(p.id) ?? null,
       activeSubscription: subByUser.get(p.id) ?? null,
     };
   });
 
-  // exact count from the head query → reliable hasMore.
-  const totalRows = profilesCount ?? rows.length;
+  // Reliable hasMore: DB branch gets the count from postgrest's exact
+  // header; TS branch gets it from candidateIds.length.
   const hasMore = fromIdx + rows.length < totalRows;
 
   return { rows, page: safePage, perPage: safePerPage, hasMore };
@@ -815,32 +1154,52 @@ export async function getUserDetail(
   admin: SupabaseAdminClient,
   userId: string
 ): Promise<AdminUserDetail | null> {
-  const [authRes, profileRes, subsRes, attemptsRes] = await Promise.all([
-    admin.auth.admin.getUserById(userId),
-    supabase
-      .from("profiles")
-      .select(
-        "full_name, phone, gender, birth_date, exam_date_planned, signup_source, created_at"
-      )
-      .eq("id", userId)
-      .maybeSingle(),
-    supabase
-      .from("subscriptions")
-      .select("plan_type, ends_at")
-      .eq("user_id", userId)
-      .eq("is_current", true)
-      .eq("status", "active")
-      .gt("ends_at", new Date().toISOString())
-      .maybeSingle(),
-    supabase
-      .from("attempts")
-      .select(
-        "id, attempted_at, question_type, mode, is_correct, was_skipped, duration_seconds"
-      )
-      .eq("user_id", userId)
-      .order("attempted_at", { ascending: false })
-      .limit(ADMIN_USER_RECENT_ATTEMPTS_LIMIT),
-  ]);
+  // Slice 7.5 — two extra parallel reads (practice_sessions MAX,
+  // exam_sessions MAX) so we can compute lastActivityAt the same way
+  // the table does. attempts MAX comes for free from attemptsRes[0]
+  // (already ordered desc), and auth.users.last_sign_in_at from
+  // authRes.
+  const [authRes, profileRes, subsRes, attemptsRes, practiceMaxRes, examMaxRes] =
+    await Promise.all([
+      admin.auth.admin.getUserById(userId),
+      supabase
+        .from("profiles")
+        .select(
+          "full_name, phone, gender, birth_date, exam_date_planned, signup_source, created_at"
+        )
+        .eq("id", userId)
+        .maybeSingle(),
+      supabase
+        .from("subscriptions")
+        .select("plan_type, ends_at")
+        .eq("user_id", userId)
+        .eq("is_current", true)
+        .eq("status", "active")
+        .gt("ends_at", new Date().toISOString())
+        .maybeSingle(),
+      supabase
+        .from("attempts")
+        .select(
+          "id, attempted_at, question_type, mode, is_correct, was_skipped, duration_seconds"
+        )
+        .eq("user_id", userId)
+        .order("attempted_at", { ascending: false })
+        .limit(ADMIN_USER_RECENT_ATTEMPTS_LIMIT),
+      supabase
+        .from("practice_sessions")
+        .select("last_activity_at")
+        .eq("user_id", userId)
+        .order("last_activity_at", { ascending: false })
+        .limit(1)
+        .maybeSingle(),
+      supabase
+        .from("exam_sessions")
+        .select("last_activity_at")
+        .eq("user_id", userId)
+        .order("last_activity_at", { ascending: false })
+        .limit(1)
+        .maybeSingle(),
+    ]);
 
   const authUser = authRes.data?.user ?? null;
   const profile = profileRes.data as
@@ -884,6 +1243,27 @@ export async function getUserDetail(
     });
   }
 
+  // Slice 7.5 — compute the same MAX-over-four-sources used by the
+  // table. attempts[0]?.attempted_at is the per-user MAX from
+  // attemptsRes (already ordered desc, limit 10 — first row is the
+  // MAX regardless of limit). practice/exam MAX from the dedicated
+  // limit-1-ordered-desc subqueries above. last_sign_in_at from auth.
+  const practiceMax =
+    (practiceMaxRes.data as { last_activity_at: string } | null)
+      ?.last_activity_at ?? null;
+  const examMax =
+    (examMaxRes.data as { last_activity_at: string } | null)
+      ?.last_activity_at ?? null;
+  const attemptsMax = recentAttempts[0]?.attemptedAt ?? null;
+  const signInMax = authUser?.last_sign_in_at ?? null;
+  let lastActivityAt: string | null = null;
+  for (const candidate of [practiceMax, examMax, attemptsMax, signInMax]) {
+    if (!candidate) continue;
+    if (!lastActivityAt || candidate > lastActivityAt) {
+      lastActivityAt = candidate;
+    }
+  }
+
   return {
     userId,
     profile: {
@@ -897,9 +1277,9 @@ export async function getUserDetail(
     },
     auth: {
       email: authUser?.email ?? null,
-      lastSignInAt: authUser?.last_sign_in_at ?? null,
       emailConfirmedAt: authUser?.email_confirmed_at ?? null,
     },
+    lastActivityAt,
     activeSubscription: sub
       ? { planType: sub.plan_type, endsAt: sub.ends_at }
       : null,
