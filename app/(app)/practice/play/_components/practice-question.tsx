@@ -19,7 +19,6 @@ import {
   toggleBookmark,
 } from "@/app/(app)/practice/play/_actions";
 import { Button } from "@/components/ui/button";
-import { LoadingAnimation } from "@/components/ui/loading-animation";
 import type {
   AngleQuestionRow,
   AttemptRow,
@@ -517,21 +516,6 @@ export function PracticeQuestion({
         }}
         pending={advancing}
       />
-
-      {/* Slice 8 — full-screen overlay during the post-last-answer
-          advance to the summary page. Only fires for the final
-          question; non-final advances keep the existing button-text
-          toggle ("טוען..."). The backdrop sits over the in-question
-          UI so the user gets a clear "graduation moment" cue while
-          the redirect to /practice/summary lands. */}
-      {advancing && isLastQuestion ? (
-        <div
-          aria-live="polite"
-          className="fixed inset-0 z-50 flex items-center justify-center bg-background/95 backdrop-blur-sm"
-        >
-          <LoadingAnimation size="lg" label="מסכמים את התרגול..." />
-        </div>
-      ) : null}
     </>
   );
 }

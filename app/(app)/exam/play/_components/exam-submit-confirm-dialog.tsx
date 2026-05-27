@@ -3,7 +3,6 @@
 import { AlertDialog } from "@base-ui/react/alert-dialog";
 
 import { Button } from "@/components/ui/button";
-import { LoadingAnimation } from "@/components/ui/loading-animation";
 import { cn } from "@/lib/utils";
 
 type Props = {
@@ -18,12 +17,6 @@ type Props = {
  * Manual-submit confirmation. The parent only opens this dialog when
  * there ARE unanswered questions. If everything is answered, the
  * parent calls `submitFinalExam` directly and skips this UI.
- *
- * Slice 8 — when `pending` flips true after the user confirms, swap
- * the dialog's title+buttons for the LoadingAnimation. The dialog
- * stays open until window.location.assign() fires from the parent,
- * so the user sees the "graduation moment" cue during the actual
- * score-computation wait.
  */
 export function ExamSubmitConfirmDialog({
   open,
@@ -50,36 +43,20 @@ export function ExamSubmitConfirmDialog({
             "data-ending-style:opacity-0 data-starting-style:opacity-0"
           )}
         >
-          {pending ? (
-            // Post-confirm swap. The Title is kept (as visually-hidden
-            // text via sr-only) so AlertDialog stays accessible; the
-            // body is replaced by the LoadingAnimation.
-            <>
-              <AlertDialog.Title className="sr-only">
-                מחשבים את התוצאות
-              </AlertDialog.Title>
-              <div className="flex items-center justify-center py-4">
-                <LoadingAnimation size="lg" label="מחשבים את התוצאות..." />
-              </div>
-            </>
-          ) : (
-            <>
-              <AlertDialog.Title className="text-lg font-semibold">
-                סיים בחינה?
-              </AlertDialog.Title>
-              <AlertDialog.Description className="mt-2 text-sm text-muted-foreground">
-                יש {unansweredCount} שאלות לא ענויות. הן ייספרו כשגויות.
-              </AlertDialog.Description>
-              <div className="mt-6 flex flex-col gap-2 sm:flex-row sm:justify-end">
-                <Button variant="ghost" onClick={onCancel} disabled={pending}>
-                  חזור לבחינה
-                </Button>
-                <Button onClick={() => void onConfirm()} disabled={pending}>
-                  סיים בחינה
-                </Button>
-              </div>
-            </>
-          )}
+          <AlertDialog.Title className="text-lg font-semibold">
+            סיים בחינה?
+          </AlertDialog.Title>
+          <AlertDialog.Description className="mt-2 text-sm text-muted-foreground">
+            יש {unansweredCount} שאלות לא ענויות. הן ייספרו כשגויות.
+          </AlertDialog.Description>
+          <div className="mt-6 flex flex-col gap-2 sm:flex-row sm:justify-end">
+            <Button variant="ghost" onClick={onCancel} disabled={pending}>
+              חזור לבחינה
+            </Button>
+            <Button onClick={() => void onConfirm()} disabled={pending}>
+              {pending ? "מסיים..." : "סיים בחינה"}
+            </Button>
+          </div>
         </AlertDialog.Popup>
       </AlertDialog.Portal>
     </AlertDialog.Root>

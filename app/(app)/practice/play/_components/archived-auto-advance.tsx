@@ -1,10 +1,10 @@
 "use client";
 
+import { Loader2 } from "lucide-react";
 import { useEffect, useRef } from "react";
 import { toast } from "sonner";
 
 import { advanceToNext } from "@/app/(app)/practice/play/_actions";
-import { LoadingAnimation } from "@/components/ui/loading-animation";
 
 type ArchivedAutoAdvanceProps = {
   sessionId: string;
@@ -46,7 +46,10 @@ export function ArchivedAutoAdvance({
 
   return (
     <div className="flex min-h-[40vh] items-center justify-center">
-      <LoadingAnimation size="md" label="מעבר לשאלה הבאה..." />
+      <div className="flex flex-col items-center gap-3 text-muted-foreground">
+        <Loader2 className="size-6 animate-spin" aria-hidden />
+        <p className="text-sm">מעבר לשאלה הבאה...</p>
+      </div>
     </div>
   );
 }

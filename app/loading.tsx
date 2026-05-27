@@ -1,16 +1,17 @@
-import { LoadingAnimation } from "@/components/ui/loading-animation";
+import { Loader2 } from "lucide-react";
 
 /**
  * Top-level loading fallback shown by Next.js while a Server Component
  * tree is suspended (initial render, route transitions, data fetches).
- * Slice 8: swapped the Loader2 spinner for the looping mortarboard
- * animation; reduced-motion users fall back to the spinner inside
- * LoadingAnimation itself.
+ * Server Component — no client-side state needed.
  */
 export default function RootLoading() {
   return (
     <div className="flex min-h-screen items-center justify-center p-6">
-      <LoadingAnimation />
+      <div className="flex flex-col items-center gap-3 text-muted-foreground">
+        <Loader2 className="size-6 animate-spin" aria-hidden />
+        <p className="text-sm">טוען...</p>
+      </div>
     </div>
   );
 }
