@@ -1,7 +1,7 @@
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
-import { Copy, KeyRound, LogOut } from "lucide-react";
+import { Bug, Copy, KeyRound, LogOut } from "lucide-react";
 import { useState, useTransition } from "react";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
@@ -11,6 +11,7 @@ import {
   adminEditProfileNameAction,
   adminForceSignOutAction,
   adminSendPasswordResetAction,
+  adminSetQaTesterAction,
 } from "@/app/(app)/admin/_actions";
 import { Button } from "@/components/ui/button";
 import {
@@ -48,14 +49,21 @@ export default function UserActions({
   currentFullName,
   email,
   isSelf,
+  isQaTester,
 }: {
   userId: string;
   currentFullName: string;
   email: string | null;
   isSelf: boolean;
+  /** Slice 10 Phase B-2 — drives the QA-tester toggle row. */
+  isQaTester: boolean;
 }) {
   const [resetPending, startResetTransition] = useTransition();
   const [signOutPending, startSignOutTransition] = useTransition();
+  const [qaPending, startQaTransition] = useTransition();
+  // Optimistic local mirror so the button label flips immediately on
+  // click; reverted from the server response when the action fails.
+  const [qaTesterLocal, setQaTesterLocal] = useState(isQaTester);
 
   function handleSendPasswordReset() {
     startResetTransition(async () => {
@@ -65,6 +73,24 @@ export default function UserActions({
         return;
       }
       toast.success("מייל איפוס סיסמה נשלח");
+    });
+  }
+
+  function handleToggleQaTester() {
+    if (qaPending) return;
+    const next = !qaTesterLocal;
+    setQaTesterLocal(next);
+    startQaTransition(async () => {
+      const result = await adminSetQaTesterAction({
+        userId,
+        isQaTester: next,
+      });
+      if (!result.ok) {
+        setQaTesterLocal(!next);
+        toast.error(result.error);
+        return;
+      }
+      toast.success(next ? "המשתמש סומן כבודק QA" : "סימון בודק QA הוסר");
     });
   }
 
@@ -137,6 +163,33 @@ export default function UserActions({
               להתנתקות אישית השתמש בכפתור בסרגל הצד.
             </p>
           ) : null}
+        </div>
+
+        <div className="space-y-2">
+          <h3 className="text-sm font-semibold">הרשאות</h3>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              type="button"
+              variant={qaTesterLocal ? "destructive" : "outline"}
+              onClick={handleToggleQaTester}
+              disabled={qaPending}
+              className="h-9"
+            >
+              <Bug />
+              <span>
+                {qaPending
+                  ? "מעדכן..."
+                  : qaTesterLocal
+                    ? "הסר בודק QA"
+                    : "סמן כבודק QA"}
+              </span>
+            </Button>
+            <span className="text-xs text-muted-foreground">
+              {qaTesterLocal
+                ? "המשתמש רואה את כפתור הדיווח בכל דף."
+                : "המשתמש לא רואה את כפתור הדיווח."}
+            </span>
+          </div>
         </div>
 
         <div className="space-y-2">

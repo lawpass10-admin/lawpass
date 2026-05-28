@@ -249,3 +249,146 @@ export async function adminForceSignOutAction(
 
   return { ok: true };
 }
+
+// =============================================================================
+// Slice 10 Phase B-2 — QA admin actions
+// =============================================================================
+
+const qaReportStatusSchema = z.enum(["open", "in_progress", "resolved"], {
+  message: "סטטוס לא תקין",
+});
+
+const adminSetQaReportStatusInput = z.object({
+  reportId: z.string().uuid({ message: "מזהה דיווח לא תקין" }),
+  status: qaReportStatusSchema,
+});
+
+/**
+ * Move a QA report between statuses. The qa_reports_admins_update_all
+ * RLS policy (Slice 10 migration) permits the SSR-client UPDATE; we
+ * still call requireAdmin() at the action boundary so a non-admin
+ * doesn't get an obscure RLS error.
+ *
+ * Audit row carries the previous status so the log tells the full
+ * "from → to" story without a second lookup.
+ */
+export async function adminSetQaReportStatusAction(
+  input: unknown
+): Promise<ActionResult> {
+  const { user: admin } = await requireAdmin();
+
+  const parsed = adminSetQaReportStatusInput.safeParse(input);
+  if (!parsed.success) {
+    return {
+      ok: false,
+      error: parsed.error.issues[0]?.message ?? "טופס לא תקין",
+    };
+  }
+  const { reportId, status } = parsed.data;
+
+  const supabase = await createClient();
+
+  // Fetch the prior row so the audit log can include from→to AND so we
+  // know which user the report belongs to for the audit row's
+  // target_user_id (admin_actions_log convention).
+  const { data: priorRow } = await supabase
+    .from("qa_reports")
+    .select("status, user_id")
+    .eq("id", reportId)
+    .maybeSingle();
+  if (!priorRow) {
+    return { ok: false, error: "הדיווח לא נמצא" };
+  }
+  const prior = priorRow as { status: string; user_id: string };
+
+  const { error } = await supabase
+    .from("qa_reports")
+    .update({ status })
+    .eq("id", reportId);
+
+  if (error) {
+    console.error(
+      `[admin] qa set_status FAILED admin=${admin.id} report=${reportId} code=${
+        (error as { code?: string }).code ?? "unknown"
+      } msg=${error.message}`
+    );
+    return { ok: false, error: "עדכון הסטטוס נכשל. נסה שוב" };
+  }
+
+  await logAdminAction({
+    adminId: admin.id,
+    actionType: "qa.set_status",
+    targetUserId: prior.user_id,
+    details: { report_id: reportId, from: prior.status, to: status },
+  });
+
+  // Bust the layout cache so the open-count badge on AdminNav reflects
+  // the new state on the next render. /admin shares one layout above
+  // /admin/qa/[id], so the layout-level revalidate is correct.
+  revalidatePath("/admin", "layout");
+  return { ok: true };
+}
+
+const adminSetQaTesterInput = z.object({
+  userId: userIdSchema,
+  isQaTester: z.boolean(),
+});
+
+/**
+ * Toggle profiles.is_qa_tester. The admins_update_all_profiles RLS
+ * policy (Slice 1 / SPEC §9.4) already permits the UPDATE — no new
+ * policy was needed for Slice 10. Audit row carries from→to so the
+ * log shows who was promoted/demoted and when.
+ */
+export async function adminSetQaTesterAction(
+  input: unknown
+): Promise<ActionResult> {
+  const { user: admin } = await requireAdmin();
+
+  const parsed = adminSetQaTesterInput.safeParse(input);
+  if (!parsed.success) {
+    return {
+      ok: false,
+      error: parsed.error.issues[0]?.message ?? "טופס לא תקין",
+    };
+  }
+  const { userId, isQaTester } = parsed.data;
+
+  const supabase = await createClient();
+
+  const { data: priorRow } = await supabase
+    .from("profiles")
+    .select("is_qa_tester")
+    .eq("id", userId)
+    .maybeSingle();
+  const prior =
+    (priorRow as { is_qa_tester: boolean } | null)?.is_qa_tester ?? false;
+
+  const { error } = await supabase
+    .from("profiles")
+    .update({ is_qa_tester: isQaTester })
+    .eq("id", userId);
+
+  if (error) {
+    console.error(
+      `[admin] set_qa_tester FAILED admin=${admin.id} target=${userId} code=${
+        (error as { code?: string }).code ?? "unknown"
+      } msg=${error.message}`
+    );
+    return { ok: false, error: "עדכון ההרשאה נכשל. נסה שוב" };
+  }
+
+  await logAdminAction({
+    adminId: admin.id,
+    actionType: isQaTester ? "qa.grant_tester" : "qa.revoke_tester",
+    targetUserId: userId,
+    details: { from: prior, to: isQaTester },
+  });
+
+  // The (app) layout's profile SELECT now includes is_qa_tester (Slice
+  // 10 Phase B-1), so a fresh render must run for the target user's
+  // next page load to see the new flag. /admin is fine without further
+  // revalidate — the user-detail page re-fetches via getUserDetail.
+  revalidatePath("/", "layout");
+  return { ok: true };
+}

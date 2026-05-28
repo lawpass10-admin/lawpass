@@ -11,13 +11,18 @@
  *     calls auth.getUser() and refuses to run for non-testers) — these
  *     helpers DO NOT re-check tester status themselves.
  *
- * No service-role client is used here. Phase B-1 is tester-only writes;
- * admin reads + status updates land in Phase B-2.
+ * Phase B-1: tester-only writes (createQaReport).
+ * Phase B-2: admin-side reads (listQaReports, getQaReportDetail,
+ *   countOpenQaReports, resolveChapterForQuestion) + the admin status
+ *   action lives in app/(app)/admin/_actions.ts.
  */
+
+import type { SupabaseClient } from "@supabase/supabase-js";
 
 import type { createClient } from "@/lib/supabase/server";
 
 type SupabaseSsrClient = Awaited<ReturnType<typeof createClient>>;
+type SupabaseAdminClient = SupabaseClient;
 
 // =============================================================================
 // Types
@@ -151,8 +156,7 @@ export async function createQaReport(
  * Server Action after upload.
  */
 export async function updateQaReportScreenshotPath(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  adminClient: any,
+  adminClient: SupabaseAdminClient,
   id: string,
   screenshotPath: string
 ): Promise<{ ok: true } | { ok: false; error: string }> {
@@ -164,4 +168,246 @@ export async function updateQaReportScreenshotPath(
     return { ok: false, error: error.message };
   }
   return { ok: true };
+}
+
+// =============================================================================
+// Phase B-2 — admin-side reads + helpers
+// =============================================================================
+
+export type ListQaReportsFilters = {
+  status?: QaReportStatus | null;
+  reportType?: QaReportType | null;
+  /** Filter by reporter user_id. The /admin/qa list lets the admin
+   *  drill into one user's reports via a profile link from the list. */
+  reporterId?: string | null;
+};
+
+/** One row in the /admin/qa list table — joined with the reporter's
+ *  display name so the list can render without N+1. */
+export type QaReportListRow = {
+  id: string;
+  reportType: QaReportType;
+  pagePath: string;
+  status: QaReportStatus;
+  createdAt: string;
+  reporterUserId: string;
+  reporterFullName: string | null;
+  screenshotPath: string | null;
+};
+
+/** Detail row for /admin/qa/[id]. Reporter join is fetched in a second
+ *  step so the type stays stable across PostgREST embed shape changes. */
+export type QaReportDetailRow = {
+  id: string;
+  userId: string;
+  reportType: QaReportType;
+  pagePath: string;
+  questionId: string | null;
+  questionType: QaReportQuestionType | null;
+  problemText: string;
+  expectedText: string;
+  screenshotPath: string | null;
+  userAgent: string | null;
+  viewport: string | null;
+  status: QaReportStatus;
+  createdAt: string;
+  reporterFullName: string | null;
+};
+
+/**
+ * Count `qa_reports` rows with status='open'. Drives the open-count
+ * badge on the admin nav. Uses `head: true` + `count: 'exact'` so we
+ * never materialize the rows; only the count comes back.
+ *
+ * RLS-scoped via the SSR client — the admin policy
+ * `qa_reports_admins_view_all` lets the count proceed. Returns 0 when
+ * the table is empty or RLS returned nothing.
+ */
+export async function countOpenQaReports(
+  supabase: SupabaseSsrClient
+): Promise<number> {
+  const { count, error } = await supabase
+    .from("qa_reports")
+    .select("id", { count: "exact", head: true })
+    .eq("status", "open");
+  if (error || count === null) return 0;
+  return count;
+}
+
+/**
+ * List QA reports newest-first, optionally filtered. Joins the
+ * reporter's profiles.full_name in a second pass (keeps the typing
+ * trivial even if PostgREST changes embed shape between minor
+ * versions).
+ *
+ * Admin RLS handles authorisation — `qa_reports_admins_view_all`
+ * permits the SELECT.
+ */
+export async function listQaReports(
+  supabase: SupabaseSsrClient,
+  filters: ListQaReportsFilters = {}
+): Promise<QaReportListRow[]> {
+  let query = supabase
+    .from("qa_reports")
+    .select(
+      "id, user_id, report_type, page_path, status, created_at, screenshot_path"
+    )
+    .order("created_at", { ascending: false });
+
+  if (filters.status) query = query.eq("status", filters.status);
+  if (filters.reportType) query = query.eq("report_type", filters.reportType);
+  if (filters.reporterId) query = query.eq("user_id", filters.reporterId);
+
+  const { data, error } = await query;
+  if (error || !data) return [];
+
+  const rows = data as Array<{
+    id: string;
+    user_id: string;
+    report_type: QaReportType;
+    page_path: string;
+    status: QaReportStatus;
+    created_at: string;
+    screenshot_path: string | null;
+  }>;
+
+  // Reporter names — single batched IN() so the list stays one
+  // round-trip beyond the main query.
+  const userIds = Array.from(new Set(rows.map((r) => r.user_id)));
+  const nameById = new Map<string, string | null>();
+  if (userIds.length > 0) {
+    const { data: profileRows } = await supabase
+      .from("profiles")
+      .select("id, full_name")
+      .in("id", userIds);
+    for (const p of (profileRows ?? []) as Array<{
+      id: string;
+      full_name: string | null;
+    }>) {
+      nameById.set(p.id, p.full_name);
+    }
+  }
+
+  return rows.map((r) => ({
+    id: r.id,
+    reportType: r.report_type,
+    pagePath: r.page_path,
+    status: r.status,
+    createdAt: r.created_at,
+    reporterUserId: r.user_id,
+    reporterFullName: nameById.get(r.user_id) ?? null,
+    screenshotPath: r.screenshot_path,
+  }));
+}
+
+/**
+ * Fetch a single report by id with the reporter's display name. Used
+ * by the detail page; the page resolves the reporter's email
+ * separately via the Auth Admin API (same pattern as getUserDetail in
+ * lib/db/admin.ts — never via PostgREST against auth.users).
+ *
+ * Returns null when the row doesn't exist or RLS hid it.
+ */
+export async function getQaReportDetail(
+  supabase: SupabaseSsrClient,
+  id: string
+): Promise<QaReportDetailRow | null> {
+  const { data, error } = await supabase
+    .from("qa_reports")
+    .select(SELECT_FIELDS)
+    .eq("id", id)
+    .maybeSingle();
+  if (error || !data) return null;
+  const row = data as unknown as QaReportRow;
+
+  let reporterFullName: string | null = null;
+  if (row.user_id) {
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("full_name")
+      .eq("id", row.user_id)
+      .maybeSingle();
+    reporterFullName =
+      (profile as { full_name: string | null } | null)?.full_name ?? null;
+  }
+
+  return {
+    id: row.id,
+    userId: row.user_id,
+    reportType: row.report_type,
+    pagePath: row.page_path,
+    questionId: row.question_id,
+    questionType: row.question_type,
+    problemText: row.problem_text,
+    expectedText: row.expected_text,
+    screenshotPath: row.screenshot_path,
+    userAgent: row.user_agent,
+    viewport: row.viewport,
+    status: row.status,
+    createdAt: row.created_at,
+    reporterFullName,
+  };
+}
+
+/**
+ * Resolve the chapter id for a question identity captured on a QA
+ * report. Drives the "פתח עורך תוכן" link on the detail page:
+ *
+ *   - source: chapter_id is on source_questions directly.
+ *   - angle:  angle_questions.source_question_id → source_questions.chapter_id.
+ *
+ * Returns the chapter id when resolvable, otherwise null (RLS hidden
+ * row, archived question, or question_id no longer in the DB). The
+ * caller falls back to plain id/type text when null.
+ */
+export async function resolveChapterForQuestion(
+  supabase: SupabaseSsrClient,
+  questionType: QaReportQuestionType,
+  questionId: string
+): Promise<string | null> {
+  if (questionType === "source") {
+    const { data } = await supabase
+      .from("source_questions")
+      .select("chapter_id")
+      .eq("id", questionId)
+      .maybeSingle();
+    return (data as { chapter_id: string } | null)?.chapter_id ?? null;
+  }
+  // angle: indirect.
+  const { data: angleRow } = await supabase
+    .from("angle_questions")
+    .select("source_question_id")
+    .eq("id", questionId)
+    .maybeSingle();
+  const sourceId = (angleRow as { source_question_id: string } | null)
+    ?.source_question_id;
+  if (!sourceId) return null;
+  const { data: sourceRow } = await supabase
+    .from("source_questions")
+    .select("chapter_id")
+    .eq("id", sourceId)
+    .maybeSingle();
+  return (sourceRow as { chapter_id: string } | null)?.chapter_id ?? null;
+}
+
+/**
+ * On the detail page the chapter editor link points to the source row
+ * — angle URLs also live under /admin/chapters/[chapterId]/questions/
+ * [sourceQuestionId] (the source page hosts the angle editor inline).
+ * This helper resolves the source row's id for an angle question, so
+ * the link can target the correct path. Returns the source id (or the
+ * input id for `source` questions).
+ */
+export async function resolveQuestionEditorTargetId(
+  supabase: SupabaseSsrClient,
+  questionType: QaReportQuestionType,
+  questionId: string
+): Promise<string | null> {
+  if (questionType === "source") return questionId;
+  const { data } = await supabase
+    .from("angle_questions")
+    .select("source_question_id")
+    .eq("id", questionId)
+    .maybeSingle();
+  return (data as { source_question_id: string } | null)?.source_question_id ?? null;
 }

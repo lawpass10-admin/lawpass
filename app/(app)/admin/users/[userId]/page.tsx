@@ -74,6 +74,7 @@ export default async function AdminUserDetailPage({
         currentFullName={detail.profile.fullName}
         email={detail.auth.email}
         isSelf={isSelf}
+        isQaTester={detail.profile.isQaTester}
       />
 
       <UserAttempts attempts={detail.recentAttempts} />

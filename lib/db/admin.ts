@@ -93,6 +93,9 @@ export type AdminUserDetail = {
     examDatePlanned: string | null;
     signupSource: string;
     createdAt: string;
+    /** Slice 10 — surfaces the per-user QA tester permission so the
+     *  /admin/users/[userId] page can render the toggle. */
+    isQaTester: boolean;
   };
   auth: {
     email: string | null;
@@ -1165,7 +1168,7 @@ export async function getUserDetail(
       supabase
         .from("profiles")
         .select(
-          "full_name, phone, gender, birth_date, exam_date_planned, signup_source, created_at"
+          "full_name, phone, gender, birth_date, exam_date_planned, signup_source, created_at, is_qa_tester"
         )
         .eq("id", userId)
         .maybeSingle(),
@@ -1211,6 +1214,7 @@ export async function getUserDetail(
         exam_date_planned: string | null;
         signup_source: string;
         created_at: string;
+        is_qa_tester: boolean | null;
       }
     | null;
 
@@ -1274,6 +1278,7 @@ export async function getUserDetail(
       examDatePlanned: profile?.exam_date_planned ?? null,
       signupSource: profile?.signup_source ?? "—",
       createdAt: profile?.created_at ?? authUser?.created_at ?? "",
+      isQaTester: profile?.is_qa_tester === true,
     },
     auth: {
       email: authUser?.email ?? null,

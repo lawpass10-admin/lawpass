@@ -8,6 +8,7 @@ import { cn } from "@/lib/utils";
 const NAV_ITEMS = [
   { href: "/admin", label: "תוכן" },
   { href: "/admin/users", label: "משתמשים" },
+  { href: "/admin/qa", label: "QA" },
 ] as const;
 
 /**
@@ -16,18 +17,29 @@ const NAV_ITEMS = [
  * uses — Next's Router Cache reuses the layout segment across same-group
  * navigations, which would otherwise pin the active tab to whichever
  * route the user landed on first.
+ *
+ * Slice 10 Phase B-2 — the QA tab carries an open-reports COUNT badge.
+ * `openQaCount` is fetched in app/(app)/admin/layout.tsx (the layout is
+ * a Server Component) and passed in here. Zero badge → no pill rendered
+ * (avoids visual noise when the queue is empty).
  */
-export default function AdminNav() {
+export default function AdminNav({
+  openQaCount = 0,
+}: {
+  openQaCount?: number;
+}) {
   const pathname = usePathname() ?? "";
   return (
     <nav className="flex gap-1 text-sm">
       {NAV_ITEMS.map((item) => {
         // /admin is the content home; only mark it active on exact match.
-        // /admin/users (and any nested route) marks the users tab.
+        // /admin/users (and any nested route) marks the users tab; same
+        // for /admin/qa.
         const active =
           item.href === "/admin"
             ? pathname === "/admin"
             : pathname === item.href || pathname.startsWith(`${item.href}/`);
+        const showQaBadge = item.href === "/admin/qa" && openQaCount > 0;
         return (
           <Link
             key={item.href}
@@ -38,13 +50,24 @@ export default function AdminNav() {
             // lighter touch that aligns with the sidebar's gold
             // accent without copying the full gradient.
             className={cn(
-              "relative rounded-md px-3 py-1.5 font-medium transition-colors",
+              "relative inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 font-medium transition-colors",
               active
                 ? "text-[var(--color-navy-ink)]"
                 : "text-[var(--color-ink-dim)] hover:bg-[var(--color-gold-tint)] hover:text-foreground"
             )}
           >
-            {item.label}
+            <span>{item.label}</span>
+            {showQaBadge ? (
+              <span
+                aria-label={`${openQaCount} דיווחים פתוחים`}
+                className={cn(
+                  "inline-flex h-5 min-w-[1.25rem] items-center justify-center rounded-full px-1.5",
+                  "bg-amber-500 text-[11px] font-semibold leading-none text-primary-foreground tabular-nums"
+                )}
+              >
+                {openQaCount}
+              </span>
+            ) : null}
             {active ? (
               <span
                 aria-hidden
