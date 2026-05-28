@@ -13,7 +13,7 @@ import {
 import { createClient } from "@/lib/supabase/server";
 import { practicePlayUrl, practiceSummaryUrl } from "@/lib/urls";
 
-import { QaContextProvider } from "../../../_components/qa-context";
+import { QaQuestionSetter } from "../../../_components/qa-question-setter";
 import { ArchivedAutoAdvance } from "../_components/archived-auto-advance";
 import { PracticeQuestion } from "../_components/practice-question";
 
@@ -125,16 +125,18 @@ export default async function PracticePlayPage({
         };
 
   return (
-    // Slice 10 — same wrap as the exam play page; provider sits ABOVE
-    // PracticeQuestion so the QA widget popup never causes a remount of
-    // the interactive subtree. view.question.id is the resolved
-    // source/angle row; view.kind discriminates the union.
-    <QaContextProvider
-      value={{
-        questionId: view.question.id,
-        questionType: view.kind,
-      }}
-    >
+    // Slice 10.2 — same pattern as the exam play page. The setter is
+    // a sibling of <PracticeQuestion>; it writes the question identity
+    // into the module-level qa-question-store on mount and clears it
+    // on unmount, so the QA widget (mounted in the layout above) can
+    // read it via getQaQuestionContext() at submit time.
+    // view.question.id is the resolved source/angle row id;
+    // view.kind discriminates the union ('source' | 'angle').
+    <>
+      <QaQuestionSetter
+        questionId={view.question.id}
+        questionType={view.kind}
+      />
       <PracticeQuestion
         session={session}
         view={view}
@@ -143,6 +145,6 @@ export default async function PracticePlayPage({
         existingAttempt={existingAttempt}
         bookmarked={bookmarked}
       />
-    </QaContextProvider>
+    </>
   );
 }

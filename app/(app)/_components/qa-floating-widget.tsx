@@ -11,7 +11,7 @@ import { Textarea } from "@/components/ui/textarea";
 import type { ReportType } from "@/lib/validators/qa-reports";
 import { cn } from "@/lib/utils";
 
-import { useQaContext } from "./qa-context";
+import { getQaQuestionContext } from "./qa-question-store";
 
 /**
  * Slice 10.1 — QA widget UX overhaul.
@@ -73,7 +73,12 @@ export function QaFloatingWidget({ isQaTester }: { isQaTester: boolean }) {
   // Hook order MUST be stable across renders — call hooks BEFORE the
   // isQaTester early-return guard.
   const pathname = usePathname() ?? "/";
-  const { questionId, questionType } = useQaContext();
+  // Slice 10.2 — current question identity is no longer carried via
+  // React context (the widget is mounted ABOVE every page in the
+  // tree, so context reads always returned the default). We read it
+  // from the module-level store at SUBMIT time instead. The play
+  // pages mount <QaQuestionSetter> which writes the store on mount
+  // and clears it on unmount.
 
   const [open, setOpen] = useState(false);
   const [reportType, setReportType] = useState<ReportType>("bug");
@@ -162,6 +167,12 @@ export function QaFloatingWidget({ isQaTester }: { isQaTester: boolean }) {
         : null;
     const userAgent =
       typeof navigator !== "undefined" ? navigator.userAgent : null;
+    // Slice 10.2 — read the active question identity from the
+    // module-level store at submit time. Reading here (vs. at render
+    // time) is intentional: the user may have opened the panel on a
+    // different page than the one they file the report from (the panel
+    // is non-modal — they can navigate while it's open).
+    const { questionId, questionType } = getQaQuestionContext();
 
     setSubmitting(true);
     startTransition(async () => {

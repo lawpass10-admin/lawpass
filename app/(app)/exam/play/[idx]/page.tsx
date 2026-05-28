@@ -14,7 +14,7 @@ import {
 import { createClient } from "@/lib/supabase/server";
 import { examPlayUrl, examResultsUrl } from "@/lib/urls";
 
-import { QaContextProvider } from "../../../_components/qa-context";
+import { QaQuestionSetter } from "../../../_components/qa-question-setter";
 import { ExamQuestion } from "../_components/exam-question";
 
 const UUID_RE =
@@ -96,16 +96,18 @@ export default async function ExamPlayPage({
   );
 
   return (
-    // Slice 10 — wrap the interactive subtree so the QA widget can read
-    // the current question identity. Provider sits ABOVE the question
-    // component so opening the widget popup does not remount the play
-    // tree (and therefore can't disturb the timer / window-token guard).
-    <QaContextProvider
-      value={{
-        questionId: item.question_id,
-        questionType: item.question_type,
-      }}
-    >
+    // Slice 10.2 — mount the QaQuestionSetter as a SIBLING of
+    // <ExamQuestion>. The setter writes the active question identity
+    // into the module-level qa-question-store on mount and clears it
+    // on unmount, so the QA widget (mounted in the (app) layout
+    // ABOVE this page) can read it via getQaQuestionContext() at
+    // submit time. No tree-position constraint, no provider, no
+    // remount of the question component.
+    <>
+      <QaQuestionSetter
+        questionId={item.question_id}
+        questionType={item.question_type}
+      />
       <ExamQuestion
         session={{
           id: session.id,
@@ -122,6 +124,6 @@ export default async function ExamPlayPage({
         isBookmarked={bookmarked}
         positionStatuses={positionStatuses.map((p) => p.status)}
       />
-    </QaContextProvider>
+    </>
   );
 }
