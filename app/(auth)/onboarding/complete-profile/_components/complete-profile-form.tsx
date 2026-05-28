@@ -37,8 +37,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { ACADEMIC_INSTITUTIONS } from "@/lib/profile/institutions";
-import { LEGAL_SPECIALIZATIONS } from "@/lib/profile/specializations";
+import {
+  ACADEMIC_INSTITUTIONS,
+  getAcademicInstitutionLabel,
+} from "@/lib/profile/institutions";
+import {
+  LEGAL_SPECIALIZATIONS,
+  getLegalSpecializationLabel,
+} from "@/lib/profile/specializations";
 import {
   oauthCompletionSchema,
   type OAuthCompletionInput,
@@ -326,7 +332,16 @@ export default function CompleteProfileForm({
 
             {/* Slice 13 — academic institution + legal specialization.
                 Placed AFTER exam_date_planned and BEFORE terms_accepted.
-                Both REQUIRED — same closed lists the signup wizard uses. */}
+                Both REQUIRED — same closed lists the signup wizard uses.
+
+                Slice 13 follow-up — Bug 1: <SelectContent> widens to
+                fit the longest Hebrew label (`w-auto`) with a
+                trigger-width minimum (`min-w-(--anchor-width)`) and a
+                cap to keep the panel sensible at narrow viewports.
+                Bug 2: <SelectValue> uses a render-function child to
+                resolve the stored id to its Hebrew label so the
+                trigger displays e.g. "דיני משפחה" rather than
+                "family_law". */}
             <FormField
               control={form.control}
               name="academic_institution"
@@ -338,10 +353,16 @@ export default function CompleteProfileForm({
                       value={field.value ?? ""}
                       onValueChange={field.onChange}
                     >
-                      <SelectTrigger>
-                        <SelectValue placeholder="בחר/י מוסד" />
+                      <SelectTrigger className="w-full">
+                        <SelectValue placeholder="בחר/י מוסד">
+                          {(value: unknown) =>
+                            typeof value === "string" && value
+                              ? (getAcademicInstitutionLabel(value) ?? value)
+                              : null
+                          }
+                        </SelectValue>
                       </SelectTrigger>
-                      <SelectContent>
+                      <SelectContent className="w-auto min-w-(--anchor-width) max-w-[min(440px,calc(100vw-2rem))]">
                         {ACADEMIC_INSTITUTIONS.map((inst) => (
                           <SelectItem key={inst.id} value={inst.id}>
                             {inst.label}
@@ -366,10 +387,16 @@ export default function CompleteProfileForm({
                       value={field.value ?? ""}
                       onValueChange={field.onChange}
                     >
-                      <SelectTrigger>
-                        <SelectValue placeholder="בחר/י תחום" />
+                      <SelectTrigger className="w-full">
+                        <SelectValue placeholder="בחר/י תחום">
+                          {(value: unknown) =>
+                            typeof value === "string" && value
+                              ? (getLegalSpecializationLabel(value) ?? value)
+                              : null
+                          }
+                        </SelectValue>
                       </SelectTrigger>
-                      <SelectContent>
+                      <SelectContent className="w-auto min-w-(--anchor-width) max-w-[min(440px,calc(100vw-2rem))]">
                         {LEGAL_SPECIALIZATIONS.map((spec) => (
                           <SelectItem key={spec.id} value={spec.id}>
                             {spec.label}

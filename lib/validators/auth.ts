@@ -175,15 +175,15 @@ export const signupStep2Schema = z.object({
   phone: phoneSchema,
   gender: genderSchema,
   birth_date: birthDateSchema,
-  // Slice 13 — onboarding requires both fields. Kept on step 2
-  // with the rest of the demographics so the wizard stays balanced
-  // (step 1 = credentials, step 2 = who you are, step 3 = consent).
-  academic_institution: academicInstitutionSchema,
-  legal_specialization: legalSpecializationSchema,
 });
 
 export const signupStep3Schema = z.object({
   exam_date_planned: examDatePlannedSchema,
+  // Slice 13 follow-up — academic_institution + legal_specialization
+  // moved here (from step 2) per PM. They sit between the exam-date
+  // selects and the terms checkbox in the visual order.
+  academic_institution: academicInstitutionSchema,
+  legal_specialization: legalSpecializationSchema,
   terms_accepted: z.literal(true, {
     message: "יש לאשר את התקנון ומדיניות הפרטיות",
   }),

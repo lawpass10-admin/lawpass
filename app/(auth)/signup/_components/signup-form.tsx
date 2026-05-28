@@ -40,8 +40,14 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
-import { ACADEMIC_INSTITUTIONS } from "@/lib/profile/institutions";
-import { LEGAL_SPECIALIZATIONS } from "@/lib/profile/specializations";
+import {
+  ACADEMIC_INSTITUTIONS,
+  getAcademicInstitutionLabel,
+} from "@/lib/profile/institutions";
+import {
+  LEGAL_SPECIALIZATIONS,
+  getLegalSpecializationLabel,
+} from "@/lib/profile/specializations";
 import { cn } from "@/lib/utils";
 import {
   signupSchema,
@@ -69,17 +75,16 @@ const HEBREW_MONTHS = [
 
 const STEP_FIELDS = {
   1: ["email", "password", "confirmPassword"] as const,
-  // Slice 13 — academic_institution + legal_specialization added to
-  // step 2 so the wizard's demographics group stays cohesive.
-  2: [
-    "full_name",
-    "phone",
-    "gender",
-    "birth_date",
+  2: ["full_name", "phone", "gender", "birth_date"] as const,
+  // Slice 13 follow-up — academic_institution + legal_specialization
+  // moved from step 2 to step 3 per PM. They sit between the exam-date
+  // dual-Select and the terms checkbox in the visual order.
+  3: [
+    "exam_date_planned",
     "academic_institution",
     "legal_specialization",
+    "terms_accepted",
   ] as const,
-  3: ["exam_date_planned", "terms_accepted"] as const,
 };
 
 // Birth-year range for the year dropdown. Lower bound 1940 mirrors the
@@ -257,9 +262,6 @@ export default function SignupForm() {
         phone: form.getValues("phone"),
         gender: form.getValues("gender"),
         birth_date: form.getValues("birth_date"),
-        // Slice 13 — required at step 2 before advancing to step 3.
-        academic_institution: form.getValues("academic_institution"),
-        legal_specialization: form.getValues("legal_specialization"),
       });
       form.clearErrors([...STEP_FIELDS[2]]);
       if (!result.success) {
@@ -269,9 +271,7 @@ export default function SignupForm() {
             path === "full_name" ||
             path === "phone" ||
             path === "gender" ||
-            path === "birth_date" ||
-            path === "academic_institution" ||
-            path === "legal_specialization"
+            path === "birth_date"
           ) {
             form.setError(path, { message: issue.message });
           }
@@ -576,70 +576,12 @@ function Step2({
         )}
       />
 
-      {/* Slice 13 — academic institution + legal specialization. Both
-          REQUIRED at step 2. Same <Select> primitive the other
-          dropdowns use; options sourced from lib/profile/* constants. */}
-      <FormField
-        control={form.control}
-        name="academic_institution"
-        render={({ field }) => (
-          <FormItem>
-            <FormLabel>מוסד אקדמי</FormLabel>
-            <FormControl>
-              <Select
-                value={field.value ?? ""}
-                onValueChange={field.onChange}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="בחר/י מוסד" />
-                </SelectTrigger>
-                <SelectContent>
-                  {ACADEMIC_INSTITUTIONS.map((inst) => (
-                    <SelectItem key={inst.id} value={inst.id}>
-                      {inst.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </FormControl>
-            <FormMessage />
-          </FormItem>
-        )}
-      />
-
-      <FormField
-        control={form.control}
-        name="legal_specialization"
-        render={({ field }) => (
-          <FormItem>
-            <FormLabel>תחום התמחות</FormLabel>
-            <FormControl>
-              <Select
-                value={field.value ?? ""}
-                onValueChange={field.onChange}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="בחר/י תחום" />
-                </SelectTrigger>
-                <SelectContent>
-                  {LEGAL_SPECIALIZATIONS.map((spec) => (
-                    <SelectItem key={spec.id} value={spec.id}>
-                      {spec.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </FormControl>
-            <FormMessage />
-          </FormItem>
-        )}
-      />
     </>
   );
 }
 
 // =============================================================================
-// Step 3 — exam date + terms
+// Step 3 — exam date + institution + specialization + terms
 // =============================================================================
 
 function Step3({
@@ -713,6 +655,89 @@ function Step3({
           </FormItem>
         )}
       />
+
+      {/* Slice 13 follow-up — academic institution + legal specialization
+          live on STEP 3, between exam_date_planned and terms_accepted.
+          Both REQUIRED (no "אופציונלי" in the label).
+
+          Bug 1 fix — <SelectContent> widens to fit the longest label
+          (`w-auto`) with a minimum that matches the trigger
+          (`min-w-(--anchor-width)`) and a cap to keep the panel
+          sensible at narrow viewports.
+
+          Bug 2 fix — <SelectValue> is given a render-function child
+          that resolves the stored id to its Hebrew label so the
+          trigger displays e.g. "דיני משפחה" instead of "family_law".
+          Falls back to the raw value if the id isn't in the list
+          (defensive — shouldn't happen given the closed enum). */}
+      <FormField
+        control={form.control}
+        name="academic_institution"
+        render={({ field }) => (
+          <FormItem>
+            <FormLabel>מוסד אקדמי</FormLabel>
+            <FormControl>
+              <Select
+                value={field.value ?? ""}
+                onValueChange={field.onChange}
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="בחר/י מוסד">
+                    {(value: unknown) =>
+                      typeof value === "string" && value
+                        ? (getAcademicInstitutionLabel(value) ?? value)
+                        : null
+                    }
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectContent className="w-auto min-w-(--anchor-width) max-w-[min(440px,calc(100vw-2rem))]">
+                  {ACADEMIC_INSTITUTIONS.map((inst) => (
+                    <SelectItem key={inst.id} value={inst.id}>
+                      {inst.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </FormControl>
+            <FormMessage />
+          </FormItem>
+        )}
+      />
+
+      <FormField
+        control={form.control}
+        name="legal_specialization"
+        render={({ field }) => (
+          <FormItem>
+            <FormLabel>תחום התמחות</FormLabel>
+            <FormControl>
+              <Select
+                value={field.value ?? ""}
+                onValueChange={field.onChange}
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="בחר/י תחום">
+                    {(value: unknown) =>
+                      typeof value === "string" && value
+                        ? (getLegalSpecializationLabel(value) ?? value)
+                        : null
+                    }
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectContent className="w-auto min-w-(--anchor-width) max-w-[min(440px,calc(100vw-2rem))]">
+                  {LEGAL_SPECIALIZATIONS.map((spec) => (
+                    <SelectItem key={spec.id} value={spec.id}>
+                      {spec.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </FormControl>
+            <FormMessage />
+          </FormItem>
+        )}
+      />
+
       <FormField
         control={form.control}
         name="terms_accepted"
