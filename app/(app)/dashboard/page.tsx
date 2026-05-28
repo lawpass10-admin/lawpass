@@ -3,6 +3,7 @@ import { Suspense } from "react";
 
 import { HeaderStripAsync } from "@/app/(app)/dashboard/_components/header-strip-async";
 import { HeroRowAsync } from "@/app/(app)/dashboard/_components/hero-row-async";
+import { JourneyCard } from "@/app/(app)/dashboard/_components/journey-card";
 import { KpiRowAsync } from "@/app/(app)/dashboard/_components/kpi-row-async";
 import { MasteryCardAsync } from "@/app/(app)/dashboard/_components/mastery-card-async";
 import { HeaderStripSkeleton } from "@/app/(app)/dashboard/_components/skeletons/header-strip-skeleton";
@@ -114,6 +115,14 @@ export default async function DashboardPage() {
           <TrendCardAsync userId={user.id} />
         </Suspense>
       </div>
+
+      {/* 5. Journey timeline — Slice 11: relocated FROM the hero
+          (formerly side-by-side with the CTA card) to BELOW the
+          chapters list. The card depends only on `currentPlanDay`,
+          which is computed once at page-render time from
+          `profile.created_at` — so the move is a pure JSX change
+          with no extra fetch and no Suspense boundary. */}
+      <JourneyCard currentDay={currentPlanDay} />
     </div>
   );
 }

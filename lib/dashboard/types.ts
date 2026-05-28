@@ -48,6 +48,14 @@ export type MasteryRow = {
   chapterId: string;
   chapterCode: string;
   chapterTitle: string;
+  /**
+   * Slice 11 — chapter track ('procedural' | 'substantive'). Added so
+   * the dashboard MasteryCard can offer a tester-facing filter between
+   * the two pools. `chapters.track` is NOT NULL in the DB, so this is
+   * always populated (no nullable shape change). Pre-existing consumers
+   * that don't care can ignore the field.
+   */
+  track: "procedural" | "substantive";
   correct: number;
   total: number;
   skipped: number;

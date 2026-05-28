@@ -360,7 +360,11 @@ export async function getMasteryByChapter(
   const [chaptersRes, attemptsRes] = await Promise.all([
     supabase
       .from("chapters")
-      .select("id, code, title, display_order")
+      // Slice 11 — `track` added so the dashboard MasteryCard can
+      // surface a procedural / substantive filter without a second
+      // query. chapters.track is NOT NULL (6 procedural + 10
+      // substantive at the time of writing).
+      .select("id, code, title, display_order, track")
       .order("display_order", { ascending: true }),
     supabase
       .from("attempts")
@@ -375,6 +379,7 @@ export async function getMasteryByChapter(
     code: string;
     title: string;
     display_order: number;
+    track: "procedural" | "substantive";
   }>;
   const rawAttempts = (attemptsRes.data ?? []) as Array<{
     question_type: string;
@@ -472,6 +477,7 @@ export async function getMasteryByChapter(
       chapterId: c.id,
       chapterCode: c.code,
       chapterTitle: c.title,
+      track: c.track,
       total: tally.total,
       skipped: tally.skipped,
       correct: tally.correct,

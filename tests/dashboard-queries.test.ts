@@ -37,6 +37,10 @@ type ChapterRow = {
   code: string;
   title: string;
   display_order: number;
+  // Slice 11 — getMasteryByChapter now SELECTs `track` so the mastery
+  // card can filter procedural vs substantive client-side. NOT NULL in
+  // the DB; mirror that in the fixture.
+  track: "procedural" | "substantive";
 };
 
 type SourceQuestionRow = { id: string; chapter_id: string };
@@ -362,9 +366,27 @@ describe("getKpiData", () => {
 
 describe("getMasteryByChapter", () => {
   const chapters: ChapterRow[] = [
-    { id: "ch-civil", code: "civil_proc", title: "סדר דין אזרחי", display_order: 1 },
-    { id: "ch-crim", code: "criminal_proc", title: "סדר דין פלילי", display_order: 2 },
-    { id: "ch-evid", code: "evidence", title: "דיני ראיות", display_order: 3 },
+    {
+      id: "ch-civil",
+      code: "civil_proc",
+      title: "סדר דין אזרחי",
+      display_order: 1,
+      track: "procedural",
+    },
+    {
+      id: "ch-crim",
+      code: "criminal_proc",
+      title: "סדר דין פלילי",
+      display_order: 2,
+      track: "procedural",
+    },
+    {
+      id: "ch-evid",
+      code: "evidence",
+      title: "דיני ראיות",
+      display_order: 3,
+      track: "procedural",
+    },
   ];
 
   it("returns one row per chapter in display_order, including chapters with zero attempts", async () => {
@@ -434,6 +456,7 @@ describe("getMasteryByChapter", () => {
 
     expect(rows[0]).toMatchObject({
       chapterCode: "civil_proc",
+      track: "procedural",
       total: 4,
       skipped: 1,
       correct: 2,
@@ -441,6 +464,7 @@ describe("getMasteryByChapter", () => {
     });
     expect(rows[1]).toMatchObject({
       chapterCode: "criminal_proc",
+      track: "procedural",
       total: 2,
       skipped: 0,
       correct: 1,
@@ -448,6 +472,7 @@ describe("getMasteryByChapter", () => {
     });
     expect(rows[2]).toMatchObject({
       chapterCode: "evidence",
+      track: "procedural",
       total: 0,
       skipped: 0,
       correct: 0,
@@ -540,13 +565,18 @@ describe("getStatusContext", () => {
     title: string,
     correct: number,
     total: number,
-    skipped = 0
+    skipped = 0,
+    // Slice 11 — every MasteryRow carries a track now. The status
+    // context logic doesn't read it; this default keeps existing test
+    // payloads valid without inflating the signature.
+    track: "procedural" | "substantive" = "procedural"
   ): MasteryRow {
     const nonSkipped = total - skipped;
     return {
       chapterId: `id-${code}`,
       chapterCode: code,
       chapterTitle: title,
+      track,
       correct,
       total,
       skipped,
