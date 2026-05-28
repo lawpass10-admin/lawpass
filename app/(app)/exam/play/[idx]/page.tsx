@@ -14,6 +14,7 @@ import {
 import { createClient } from "@/lib/supabase/server";
 import { examPlayUrl, examResultsUrl } from "@/lib/urls";
 
+import { QaContextProvider } from "../../../_components/qa-context";
 import { ExamQuestion } from "../_components/exam-question";
 
 const UUID_RE =
@@ -95,21 +96,32 @@ export default async function ExamPlayPage({
   );
 
   return (
-    <ExamQuestion
-      session={{
-        id: session.id,
-        active_window_token: session.active_window_token,
-        total_duration_seconds: session.total_duration_seconds,
-        time_used_seconds: session.time_used_seconds,
-        status: session.status,
-        question_list: session.question_list,
+    // Slice 10 — wrap the interactive subtree so the QA widget can read
+    // the current question identity. Provider sits ABOVE the question
+    // component so opening the widget popup does not remount the play
+    // tree (and therefore can't disturb the timer / window-token guard).
+    <QaContextProvider
+      value={{
+        questionId: item.question_id,
+        questionType: item.question_type,
       }}
-      position={position}
-      questionText={stripped.question_text}
-      choices={stripped.choices}
-      existingSelectedLetter={existingAttempt?.selected_letter ?? null}
-      isBookmarked={bookmarked}
-      positionStatuses={positionStatuses.map((p) => p.status)}
-    />
+    >
+      <ExamQuestion
+        session={{
+          id: session.id,
+          active_window_token: session.active_window_token,
+          total_duration_seconds: session.total_duration_seconds,
+          time_used_seconds: session.time_used_seconds,
+          status: session.status,
+          question_list: session.question_list,
+        }}
+        position={position}
+        questionText={stripped.question_text}
+        choices={stripped.choices}
+        existingSelectedLetter={existingAttempt?.selected_letter ?? null}
+        isBookmarked={bookmarked}
+        positionStatuses={positionStatuses.map((p) => p.status)}
+      />
+    </QaContextProvider>
   );
 }

@@ -13,6 +13,7 @@ import {
 import { createClient } from "@/lib/supabase/server";
 import { practicePlayUrl, practiceSummaryUrl } from "@/lib/urls";
 
+import { QaContextProvider } from "../../../_components/qa-context";
 import { ArchivedAutoAdvance } from "../_components/archived-auto-advance";
 import { PracticeQuestion } from "../_components/practice-question";
 
@@ -124,13 +125,24 @@ export default async function PracticePlayPage({
         };
 
   return (
-    <PracticeQuestion
-      session={session}
-      view={view}
-      position={idx}
-      totalQuestions={totalQuestions}
-      existingAttempt={existingAttempt}
-      bookmarked={bookmarked}
-    />
+    // Slice 10 — same wrap as the exam play page; provider sits ABOVE
+    // PracticeQuestion so the QA widget popup never causes a remount of
+    // the interactive subtree. view.question.id is the resolved
+    // source/angle row; view.kind discriminates the union.
+    <QaContextProvider
+      value={{
+        questionId: view.question.id,
+        questionType: view.kind,
+      }}
+    >
+      <PracticeQuestion
+        session={session}
+        view={view}
+        position={idx}
+        totalQuestions={totalQuestions}
+        existingAttempt={existingAttempt}
+        bookmarked={bookmarked}
+      />
+    </QaContextProvider>
   );
 }

@@ -8,6 +8,8 @@ import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { getActiveBookmarkAndMistakeCounts } from "@/lib/db/practice";
 import { createClient } from "@/lib/supabase/server";
 
+import { QaFloatingWidget } from "./_components/qa-floating-widget";
+
 // Routes inside (app) that don't require an active subscription. The user
 // must be able to reach /pricing to choose a plan, /checkout to enter
 // payment details (Phase 6 placeholder; Tranzila iframe in Slice 4),
@@ -58,7 +60,7 @@ export default async function AppLayout({
   const [profileResult, subscriptionResult] = await Promise.all([
     supabase
       .from("profiles")
-      .select("id, full_name, exam_date_planned, is_admin")
+      .select("id, full_name, exam_date_planned, is_admin, is_qa_tester")
       .eq("id", user.id)
       .maybeSingle(),
     supabase
@@ -112,9 +114,19 @@ export default async function AppLayout({
   // We skip the sidebar mount AND the bookmark/mistake count queries,
   // since neither sidebar nor badges render on /exam/*.
   const isExamRoute = pathname === "/exam" || pathname.startsWith("/exam/");
+  // Slice 10 — surface the QA widget for testers across BOTH branches
+  // of the layout (exam-focused branch + sidebar branch). The widget
+  // is fixed-position and renders into a Portal when open, so JSX
+  // placement is layout-irrelevant; we keep it as a sibling of <main>
+  // to mirror the sidebar's placement-as-sibling convention.
+  const isQaTester = profile.is_qa_tester === true;
+
   if (isExamRoute) {
     return (
-      <main className="page-fade-in flex-1 p-6">{children}</main>
+      <>
+        <main className="page-fade-in flex-1 p-6">{children}</main>
+        <QaFloatingWidget isQaTester={isQaTester} />
+      </>
     );
   }
 
@@ -145,6 +157,7 @@ export default async function AppLayout({
         <MobileTopBar />
         <main className="page-fade-in flex-1 p-4 md:p-6">{children}</main>
       </SidebarInset>
+      <QaFloatingWidget isQaTester={isQaTester} />
     </SidebarProvider>
   );
 }
