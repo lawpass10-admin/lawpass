@@ -40,3 +40,12 @@ CREATE POLICY "qa_screenshots_testers_select_own" ON storage.objects FOR SELECT 
   USING (bucket_id='qa-screenshots' AND (storage.foldername(name))[1] = (SELECT auth.uid())::text);
 CREATE POLICY "qa_screenshots_admins_select_all" ON storage.objects FOR SELECT TO authenticated
   USING (bucket_id='qa-screenshots' AND public.is_admin());
+
+-- Slice 10.1 — explicit grants. A table created outside the normal
+-- tooling pipeline didn't auto-grant the authenticated role, which
+-- caused "permission denied for table qa_reports" at runtime. The
+-- live DB already received this grant via execute_sql; this line is
+-- here so fresh environments (CI, local resets) reproduce the
+-- correct privileges. RLS continues to do the row-level filtering on
+-- top of these table-level grants.
+GRANT SELECT, INSERT, UPDATE ON public.qa_reports TO authenticated;
