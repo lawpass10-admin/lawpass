@@ -727,16 +727,20 @@ export type ExamByPosition = {
   selectedLetter: ExamLetter | null;
 };
 
-export type ExamByCluster = {
-  /** Identifier for the bucket. For procedural/combined this is the
-   *  cluster code (א / ב / ג / מ). For substantive results, where the
-   *  byCluster array is dynamic-per-chapter, this is the chapter code
-   *  (contracts, torts, …). */
-  code: import("@/lib/exam/clusters").ExamClusterCode;
-  /** Slice 9 — display label. Optional: procedural/combined cards render
-   *  from the cluster code in the UI; substantive cards need a label
-   *  (the chapter title) since the code itself is not user-facing. */
-  label?: string;
+/**
+ * Slice 9 follow-up — per-chapter result row. Replaces the prior
+ * `ExamByCluster` shape for all three modes. The bar exam doesn't
+ * expose cluster labels to candidates, so the results page now renders
+ * a per-chapter breakdown for procedural, substantive, AND combined.
+ *
+ * One row per chapter that had ≥1 question in the session. Ordering is
+ * stable: procedural chapters first (in `chapters.display_order`), then
+ * substantive chapters (same field). The aggregator computes this once
+ * — the UI renders without re-sorting.
+ */
+export type ExamByChapter = {
+  chapterCode: string;
+  chapterTitle: string;
   correct: number;
   total: number;
 };
@@ -768,7 +772,7 @@ export type ExamReviewRow = ExamByPosition & {
 export type ExamResultsAggregate = {
   session: ExamSessionRow;
   byPosition: ExamReviewRow[];
-  byCluster: ExamByCluster[];
+  byChapter: ExamByChapter[];
 };
 
 /** First N chars of a question's text, ellipsis if truncated. */
@@ -881,16 +885,23 @@ export async function getExamPositionStatuses(
 }
 
 /**
- * Resolve the chapter code (and title — Slice 9) for each item in
- * `questionList`. Returns a Map keyed by
+ * Resolve chapter metadata (code, title, track, display_order) for each
+ * item in `questionList`. Returns a Map keyed by
  * `${question_type}:${question_id}`. JOINs at read time per PM decision
  * #3 (no denormalisation onto the attempts row).
  *
- * The title is needed by the substantive-mode results page, which
- * renders one card per chapter (vs the static 3-cluster card layout of
- * procedural mode).
+ * Slice 9 follow-up — the title + track + display_order are needed by
+ * the per-chapter results breakdown, which is rendered for all three
+ * modes (procedural / substantive / combined). The aggregator sorts
+ * track-then-display_order so the cards land in the same order users
+ * encounter chapters elsewhere in the app.
  */
-type ChapterInfo = { code: string; title: string };
+type ChapterInfo = {
+  code: string;
+  title: string;
+  track: string | null;
+  displayOrder: number | null;
+};
 async function resolveChapterCodesForList(
   supabase: SupabaseSsrClient,
   questionList: ExamQuestionListItem[]
@@ -904,27 +915,35 @@ async function resolveChapterCodesForList(
 
   const map = new Map<string, ChapterInfo>();
 
+  type RawChapter = {
+    code: string;
+    title: string | null;
+    track: string | null;
+    display_order: number | null;
+  };
+  const pickChapter = (
+    v: RawChapter | RawChapter[] | null | undefined
+  ): RawChapter | null => (Array.isArray(v) ? (v[0] ?? null) : (v ?? null));
+  const toInfo = (c: RawChapter): ChapterInfo => ({
+    code: c.code,
+    title: c.title ?? c.code,
+    track: c.track ?? null,
+    displayOrder: c.display_order ?? null,
+  });
+
   if (sourceIds.length > 0) {
     const { data } = await supabase
       .from("source_questions")
       .select(
-        "id, chapter:chapters!source_questions_chapter_id_fkey(code, title)"
+        "id, chapter:chapters!source_questions_chapter_id_fkey(code, title, track, display_order)"
       )
       .in("id", sourceIds);
     for (const row of (data ?? []) as Array<{
       id: string;
-      chapter:
-        | { code: string; title: string | null }
-        | { code: string; title: string | null }[]
-        | null;
+      chapter: RawChapter | RawChapter[] | null;
     }>) {
-      const chapter = Array.isArray(row.chapter) ? row.chapter[0] : row.chapter;
-      if (chapter?.code) {
-        map.set(`source:${row.id}`, {
-          code: chapter.code,
-          title: chapter.title ?? chapter.code,
-        });
-      }
+      const chapter = pickChapter(row.chapter);
+      if (chapter?.code) map.set(`source:${row.id}`, toInfo(chapter));
     }
   }
 
@@ -932,40 +951,21 @@ async function resolveChapterCodesForList(
     const { data } = await supabase
       .from("angle_questions")
       .select(
-        "id, source_question:source_questions!angle_questions_source_question_id_fkey(chapter:chapters!source_questions_chapter_id_fkey(code, title))"
+        "id, source_question:source_questions!angle_questions_source_question_id_fkey(chapter:chapters!source_questions_chapter_id_fkey(code, title, track, display_order))"
       )
       .in("id", angleIds);
     for (const row of (data ?? []) as Array<{
       id: string;
       source_question:
-        | {
-            chapter:
-              | { code: string; title: string | null }
-              | { code: string; title: string | null }[]
-              | null;
-          }
-        | {
-            chapter:
-              | { code: string; title: string | null }
-              | { code: string; title: string | null }[]
-              | null;
-          }[]
+        | { chapter: RawChapter | RawChapter[] | null }
+        | { chapter: RawChapter | RawChapter[] | null }[]
         | null;
     }>) {
       const parent = Array.isArray(row.source_question)
         ? row.source_question[0]
         : row.source_question;
-      const chapter = parent
-        ? Array.isArray(parent.chapter)
-          ? parent.chapter[0]
-          : parent.chapter
-        : null;
-      if (chapter?.code) {
-        map.set(`angle:${row.id}`, {
-          code: chapter.code,
-          title: chapter.title ?? chapter.code,
-        });
-      }
+      const chapter = parent ? pickChapter(parent.chapter) : null;
+      if (chapter?.code) map.set(`angle:${row.id}`, toInfo(chapter));
     }
   }
 
@@ -1124,24 +1124,25 @@ async function resolveChoicesForList(
 
 /**
  * Full aggregate for the results page: session + per-position status
- * (with question-text excerpt) + mode-aware `byCluster` breakdown.
+ * (with question-text excerpt) + per-chapter performance breakdown.
  *
- * Slice 9 — `byCluster` is mode-aware:
- *   - procedural: 3 cluster cards (א/ב/ג) from PROCEDURAL_CLUSTERS.
- *   - combined: 4 cluster cards (א/ב/ג/מ) from COMBINED_CLUSTERS.
- *   - substantive: dynamic — one card per chapter present in this
- *     session's question_list. Codes are chapter codes, labels are
- *     chapter titles. Chapters with zero questions in the session
- *     (impossible with the current single-cluster config, but
- *     defensive) are omitted.
+ * Slice 9 follow-up — `byChapter` replaces the prior `byCluster`. Real
+ * bar exams don't expose cluster labels to candidates, so all three
+ * modes (procedural, substantive, combined) now render a uniform
+ * per-chapter breakdown — one row per chapter that had ≥1 question in
+ * the session. Sorting:
+ *   1. Procedural chapters first, then substantive.
+ *   2. Within each track, `chapters.display_order` ascending; rows
+ *      without a track or display_order land at the end (defensive).
+ * This keeps card order stable across reloads + matches the chapter
+ * ordering used elsewhere in the app.
  *
- * Any question whose chapter doesn't fall under any cluster
- * (defensive) is excluded from the cluster cards but stays in the
- * byPosition list.
+ * Any question whose chapter info can't be resolved (defensive) is
+ * excluded from the breakdown but stays in the byPosition list.
  *
- * Slice 7.6 — each byPosition row now also carries the question's
- * full text + its 4 choices with distractor analyses, so the results
- * page can render an inline per-question expansion without a drill-in.
+ * Slice 7.6 — each byPosition row also carries the question's full
+ * text + its 4 choices with distractor analyses, so the results page
+ * can render an inline per-question expansion without a drill-in.
  *
  * Returns null if the session isn't loadable (page redirects).
  */
@@ -1176,54 +1177,65 @@ export async function getExamResultsAggregate(
     };
   });
 
-  let byCluster: ExamByCluster[];
-  if (session.mode === "substantive") {
-    // Per-chapter dynamic breakdown — group by chapter code, derive
-    // the human label from chapter title. Preserves the order in which
-    // chapters first appear in the session's question_list so the cards
-    // render in a stable, reproducible order across reloads.
-    const bucketByChapter = new Map<
-      string,
-      { code: string; label: string; correct: number; total: number }
-    >();
-    for (let i = 0; i < session.question_list.length; i++) {
-      const item = session.question_list[i];
-      const info = chapterByItem.get(
-        `${item.question_type}:${item.question_id}`
-      );
-      if (!info) continue;
-      let bucket = bucketByChapter.get(info.code);
-      if (!bucket) {
-        bucket = {
-          code: info.code,
-          label: info.title,
-          correct: 0,
-          total: 0,
-        };
-        bucketByChapter.set(info.code, bucket);
-      }
-      bucket.total++;
-      if (byPosition[i]?.status === "correct") bucket.correct++;
+  // Bucket by chapter code. Track + display_order ride along so we can
+  // sort once at the end (vs every render on the client).
+  const bucketByChapter = new Map<
+    string,
+    {
+      chapterCode: string;
+      chapterTitle: string;
+      track: string | null;
+      displayOrder: number | null;
+      correct: number;
+      total: number;
     }
-    byCluster = Array.from(bucketByChapter.values());
-  } else {
-    const clusters = clustersForMode(session.mode);
-    byCluster = clusters.map((cluster) => {
-      let correct = 0;
-      let total = 0;
-      for (let i = 0; i < session.question_list.length; i++) {
-        const item = session.question_list[i];
-        const info = chapterByItem.get(
-          `${item.question_type}:${item.question_id}`
-        );
-        if (!info) continue;
-        if (!cluster.chapter_codes.includes(info.code)) continue;
-        total++;
-        if (byPosition[i]?.status === "correct") correct++;
-      }
-      return { code: cluster.code, correct, total };
-    });
+  >();
+  for (let i = 0; i < session.question_list.length; i++) {
+    const item = session.question_list[i];
+    const info = chapterByItem.get(`${item.question_type}:${item.question_id}`);
+    if (!info) continue;
+    let bucket = bucketByChapter.get(info.code);
+    if (!bucket) {
+      bucket = {
+        chapterCode: info.code,
+        chapterTitle: info.title,
+        track: info.track,
+        displayOrder: info.displayOrder,
+        correct: 0,
+        total: 0,
+      };
+      bucketByChapter.set(info.code, bucket);
+    }
+    bucket.total++;
+    if (byPosition[i]?.status === "correct") bucket.correct++;
   }
 
-  return { session, byPosition, byCluster };
+  // Track rank: procedural first (0), substantive second (1), anything
+  // else last (2). display_order nulls sort to the end.
+  const trackRank = (t: string | null): number => {
+    if (t === "procedural") return 0;
+    if (t === "substantive") return 1;
+    return 2;
+  };
+  const orderRank = (n: number | null): number =>
+    n === null ? Number.POSITIVE_INFINITY : n;
+  const byChapter: ExamByChapter[] = Array.from(bucketByChapter.values())
+    .sort((a, b) => {
+      const t = trackRank(a.track) - trackRank(b.track);
+      if (t !== 0) return t;
+      const d = orderRank(a.displayOrder) - orderRank(b.displayOrder);
+      if (d !== 0) return d;
+      // Stable tiebreak by chapter code so equal-display-order rows
+      // (which shouldn't exist but might in stale taxonomies) still
+      // render in a deterministic order.
+      return a.chapterCode.localeCompare(b.chapterCode);
+    })
+    .map((b) => ({
+      chapterCode: b.chapterCode,
+      chapterTitle: b.chapterTitle,
+      correct: b.correct,
+      total: b.total,
+    }));
+
+  return { session, byPosition, byChapter };
 }

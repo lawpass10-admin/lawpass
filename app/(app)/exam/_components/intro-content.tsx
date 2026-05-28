@@ -4,18 +4,22 @@ import type { ExamMode } from "@/lib/exam/clusters";
 
 /**
  * Presentational shell for the exam intro screen. Renders the hero,
- * stat grid, mode-specific breakdown, and "before you start" info card —
- * everything EXCEPT the action footer (CTAs / dialog) and the mode
- * picker. Shared by <ExamIntro> and the background of <ResumePrompt>
- * so the two flows never diverge visually.
+ * stat grid, and "before you start" info card — everything EXCEPT the
+ * action footer (CTAs / dialog) and the mode picker. Shared by
+ * <ExamIntro> and the background of <ResumePrompt> so the two flows
+ * never diverge visually.
+ *
+ * Slice 9 follow-up — the "חלוקה לפי אשכולות" breakdown card was
+ * removed. Real bar exams don't expose cluster labels to candidates;
+ * the per-cluster question allocation (14/11/13 procedural,
+ * 20-procedural-+-20-substantive combined, etc.) is now an internal
+ * sampling-only construct surfaced nowhere in the UI. The mode picker
+ * itself stays in <ExamIntro> — it's the Slice 9 feature, not a
+ * cluster surface.
  *
  * No client interaction lives here, so the component is server-safe.
  * The matching client components ("use client") import it and append
  * their own footer.
- *
- * Slice 9 — content varies by mode. The picker lives in <ExamIntro> so
- * the in-progress session's <ResumePrompt> can render the static intro
- * for its existing session's mode without exposing the picker.
  *
  * Visual mapping from the PM-supplied prototype:
  *   - `--gold`        → amber-* utilities (matches Slice 2 conventions)
@@ -27,7 +31,6 @@ import type { ExamMode } from "@/lib/exam/clusters";
 export function IntroContent({ mode = "procedural" }: { mode?: ExamMode } = {}) {
   const heroEyebrow = HERO_EYEBROW_BY_MODE[mode];
   const heroSubline = HERO_SUBLINE_BY_MODE[mode];
-  const breakdown = BREAKDOWN_BY_MODE[mode];
 
   return (
     <div className="mx-auto w-full max-w-3xl space-y-8 py-6">
@@ -57,41 +60,6 @@ export function IntroContent({ mode = "procedural" }: { mode?: ExamMode } = {}) 
         <StatCard label="ניקוד שלילי" value="אין" sub="כמו בבחינה" />
       </div>
 
-      {/* Mode-specific breakdown. Procedural + combined render per-cluster
-          rows with quotas; substantive renders a single explanatory
-          card (no per-chapter quotas — the sampler is pool-wide). */}
-      <section className="space-y-3 rounded-xl border border-border bg-card p-5">
-        <h2 className="text-sm font-semibold">{breakdown.heading}</h2>
-        {breakdown.rows ? (
-          <ul className="space-y-3">
-            {breakdown.rows.map((row) => (
-              <li
-                key={row.code}
-                className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-4"
-              >
-                <div className="flex flex-1 items-center justify-between text-sm">
-                  <span className="text-foreground/85">{row.name}</span>
-                  <span className="font-mono tabular-nums text-muted-foreground">
-                    {row.questions} שאלות · {row.percent}%
-                  </span>
-                </div>
-                <div
-                  className="h-2 w-full overflow-hidden rounded-full bg-muted sm:w-44"
-                  aria-hidden
-                >
-                  <div
-                    className="h-full bg-amber-500"
-                    style={{ width: `${row.percent}%` }}
-                  />
-                </div>
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <p className="text-sm text-foreground/85">{breakdown.description}</p>
-        )}
-      </section>
-
       {/* "לפני שמתחילים" warm-tinted card */}
       <section className="rounded-xl border border-amber-300/60 bg-amber-50 p-5 dark:bg-amber-950/20">
         <h3 className="text-sm font-semibold">לפני שמתחילים</h3>
@@ -112,7 +80,7 @@ export function IntroContent({ mode = "procedural" }: { mode?: ExamMode } = {}) 
 }
 
 // ---------------------------------------------------------------------------
-// Mode-keyed copy + breakdown configs
+// Mode-keyed copy
 // ---------------------------------------------------------------------------
 
 const HERO_EYEBROW_BY_MODE: Record<ExamMode, string> = {
@@ -128,87 +96,6 @@ const HERO_SUBLINE_BY_MODE: Record<ExamMode, string> = {
     "סימולציה בדיני מהות (חוזים, קניין, חברות ועוד). ללא הסברים במהלך הבחינה. ניקוד מעבר: 24/40 (60%).",
   combined:
     "סימולציה משולבת: 20 שאלות דין דיוני ועוד 20 שאלות דין מהותי. ללא הסברים במהלך הבחינה. ניקוד מעבר: 24/40 (60%).",
-};
-
-type BreakdownRow = {
-  code: string;
-  name: string;
-  questions: number;
-  percent: number;
-};
-
-type BreakdownConfig =
-  | { heading: string; rows: readonly BreakdownRow[]; description?: undefined }
-  | { heading: string; description: string; rows?: undefined };
-
-// Cluster labels — corrected in Slice 9 (Slice 3's "אשכול א׳ —
-// סדר דין אזרחי, אתיקה, עבודה" and "אשכול ג׳ — דין מהותי" were
-// wrong; אתיקה/עבודה are substantive-track chapters, and cluster ג
-// is execution + insolvency, not the umbrella "דין מהותי" category).
-const PROCEDURAL_BREAKDOWN: readonly BreakdownRow[] = [
-  {
-    code: "א",
-    name: "אשכול א׳ — סדר דין אזרחי",
-    questions: 14,
-    percent: 35,
-  },
-  {
-    code: "ב",
-    name: "אשכול ב׳ — סדר דין פלילי, ראיות, חוקתי",
-    questions: 11,
-    percent: 27.5,
-  },
-  {
-    code: "ג",
-    name: "אשכול ג׳ — הוצאה לפועל וחדלות פירעון",
-    questions: 13,
-    percent: 32.5,
-  },
-] as const;
-
-const COMBINED_BREAKDOWN: readonly BreakdownRow[] = [
-  {
-    code: "א",
-    name: "אשכול א׳ — סדר דין אזרחי",
-    questions: 7,
-    percent: 17.5,
-  },
-  {
-    code: "ב",
-    name: "אשכול ב׳ — סדר דין פלילי, ראיות, חוקתי",
-    questions: 6,
-    percent: 15,
-  },
-  {
-    code: "ג",
-    name: "אשכול ג׳ — הוצאה לפועל וחדלות פירעון",
-    questions: 7,
-    percent: 17.5,
-  },
-  {
-    code: "מ",
-    name: "דין מהותי — כל הנושאים",
-    questions: 20,
-    percent: 50,
-  },
-] as const;
-
-const SUBSTANTIVE_DESCRIPTION =
-  "המבחן דוגם 40 שאלות מתוך כלל מאגר הדין המהותי — חוזים, קניין, דיני עונשין, חברות, עבודה, משפחה וירושה, מנהלי, מיסים, אתיקה ונזיקין.";
-
-const BREAKDOWN_BY_MODE: Record<ExamMode, BreakdownConfig> = {
-  procedural: {
-    heading: "חלוקה לפי אשכולות",
-    rows: PROCEDURAL_BREAKDOWN,
-  },
-  substantive: {
-    heading: "תחומי הדין המהותי בסימולציה",
-    description: SUBSTANTIVE_DESCRIPTION,
-  },
-  combined: {
-    heading: "חלוקה לפי אשכולות",
-    rows: COMBINED_BREAKDOWN,
-  },
 };
 
 function StatCard({

@@ -53,16 +53,22 @@ const STATUS_COPY: Record<string, { label: string; classes: string }> = {
  *
  * Sections:
  *   A. Hero: pass/fail pill + big score + percent + time + threshold.
- *   B. 3 cluster cards (correct/total + progress bar).
+ *   B. Per-chapter performance list (Slice 9 follow-up — replaces the
+ *      prior cluster cards). One compact row per chapter with ≥1
+ *      question in the session: chapter title on the start side,
+ *      correct/total on the end side, with a slim progress bar below.
+ *      Identical layout across all three modes (procedural / substantive
+ *      / combined). Real bar exams never surface "אשכול" labels to
+ *      candidates, so we don't either.
  *   C. Review list — each row [position #][excerpt][status pill]
  *      with an inline expansion panel below (Slice 7.6) showing the
  *      full question + all 4 choices with their distractor analyses.
  *      Multiple rows can be expanded simultaneously.
  *   D. Footer CTAs: dashboard + new exam.
  *
- * History: the layout was locked in Phase 4 with no drill-in / no
- * collapse. Slice 7.6 extended it with the per-question inline
- * expansion (still on this same page — no new route, no modal).
+ * History: the layout was locked in Phase 4 with cluster cards + no
+ * drill-in. Slice 7.6 added per-question inline expansion. Slice 9
+ * follow-up swapped the cluster cards for the per-chapter list.
  */
 const HERO_EYEBROW_BY_MODE: Record<ExamMode, string> = {
   procedural: "סימולציית בחינה",
@@ -71,25 +77,13 @@ const HERO_EYEBROW_BY_MODE: Record<ExamMode, string> = {
 };
 
 export function ExamResults({ aggregate }: Props) {
-  const { session, byPosition, byCluster } = aggregate;
+  const { session, byPosition, byChapter } = aggregate;
   const score = session.final_score ?? 0;
   const total = EXAM_TOTAL_QUESTIONS;
   const passed = session.passed === true;
   const pct = total > 0 ? Math.round((score / total) * 100) : 0;
   const minutesUsed = Math.max(0, Math.round(session.time_used_seconds / 60));
   const heroEyebrow = HERO_EYEBROW_BY_MODE[session.mode] ?? HERO_EYEBROW_BY_MODE.procedural;
-  // Substantive results render one card per chapter (the cluster code IS
-  // a chapter code; the friendly title lives on `cluster.label`).
-  // Procedural + combined render the canonical "אשכול X" labels.
-  const isSubstantive = session.mode === "substantive";
-  // 3 columns on desktop fits א/ב/ג cleanly; combined has 4 cards so we
-  // bump to grid-cols-4 to keep them on one row, and substantive's
-  // dynamic per-chapter list flows on its own breakpoint.
-  const clusterGridClasses = isSubstantive
-    ? "grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3"
-    : byCluster.length >= 4
-      ? "grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4"
-      : "grid grid-cols-1 gap-3 md:grid-cols-3";
 
   const [creating, setCreating] = useState(false);
   const [showAll, setShowAll] = useState(false);
@@ -181,50 +175,54 @@ export function ExamResults({ aggregate }: Props) {
         </p>
       </header>
 
-      {/* B. Cluster / per-chapter cards.
-          - procedural: 3 cards labelled "אשכול א/ב/ג".
-          - combined: 4 cards (3 procedural + 1 substantive). The
-            substantive card is labelled "דין מהותי" instead of "אשכול מ".
-          - substantive: one card per chapter touched in this session,
-            labelled by chapter title (cluster.label). */}
-      <section className={clusterGridClasses}>
-        {byCluster.map((cluster) => {
-          const clusterPct =
-            cluster.total > 0
-              ? Math.round((cluster.correct / cluster.total) * 100)
-              : 0;
-          const heading = isSubstantive
-            ? (cluster.label ?? cluster.code)
-            : cluster.code === "מ"
-              ? "דין מהותי"
-              : `אשכול ${cluster.code}`;
-          return (
-            <div
-              key={cluster.code}
-              className="rounded-xl border border-border bg-card p-5"
-            >
-              <p className="font-mono text-[11px] uppercase tracking-wider text-muted-foreground">
-                {heading}
-              </p>
-              <p className="mt-2 text-3xl font-bold tabular-nums">
-                {cluster.correct}
-                <span className="text-base font-semibold text-muted-foreground">
-                  /{cluster.total}
-                </span>
-              </p>
-              <div
-                className="mt-3 h-2 w-full overflow-hidden rounded-full bg-muted"
-                aria-label={`${clusterPct}%`}
-              >
-                <div
-                  className="h-full bg-amber-500"
-                  style={{ width: `${clusterPct}%` }}
-                />
-              </div>
-            </div>
-          );
-        })}
-      </section>
+      {/* B. Per-chapter performance — uniform across all three modes.
+          Compact rows (not cards) so combined mode's ~15-chapter list
+          stays readable. Title on the start side, correct/total on the
+          end side, slim progress bar below. */}
+      {byChapter.length > 0 ? (
+        <section className="overflow-hidden rounded-xl border border-border bg-card">
+          <header className="border-b border-border px-5 py-3">
+            <h2 className="text-sm font-semibold">ביצועים לפי נושא</h2>
+          </header>
+          <ul>
+            {byChapter.map((chapter, idx) => {
+              const chapterPct =
+                chapter.total > 0
+                  ? Math.round((chapter.correct / chapter.total) * 100)
+                  : 0;
+              const isLastRow = idx === byChapter.length - 1;
+              return (
+                <li
+                  key={chapter.chapterCode}
+                  className={cn(
+                    "px-5 py-3",
+                    !isLastRow && "border-b border-border/70"
+                  )}
+                >
+                  <div className="flex items-baseline justify-between gap-3 text-sm">
+                    <span dir="auto" className="font-medium text-foreground/90">
+                      {chapter.chapterTitle}
+                    </span>
+                    <span className="shrink-0 font-mono tabular-nums text-muted-foreground">
+                      {chapter.correct}/{chapter.total}
+                      <span className="ms-2 text-xs">({chapterPct}%)</span>
+                    </span>
+                  </div>
+                  <div
+                    className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-muted"
+                    aria-label={`${chapterPct}%`}
+                  >
+                    <div
+                      className="h-full bg-amber-500"
+                      style={{ width: `${chapterPct}%` }}
+                    />
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        </section>
+      ) : null}
 
       {/* C. Question review — Slice 7.6: rows are clickable to reveal
           an inline panel with full question text + 4 choices and

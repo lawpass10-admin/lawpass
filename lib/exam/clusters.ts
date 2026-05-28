@@ -1,6 +1,15 @@
 /**
  * Slice 3 — Exam cluster config.
  * Slice 9 — Multi-mode (procedural / substantive / combined).
+ * Slice 9 follow-up — clusters are INTERNAL-ONLY.
+ *
+ * Real bar exams don't expose "אשכול" labels to candidates, so the
+ * cluster construct here is purely a sampling mechanism: it controls
+ * how `bucketAndShuffleExamPool` allocates the 40-question quota
+ * across chapter groups. Nothing in this file surfaces to the user —
+ * the intro page no longer shows a cluster breakdown, and the results
+ * page renders a per-chapter list (see `getExamResultsAggregate` →
+ * `byChapter`). DO NOT add UI strings here.
  *
  * Maps LawPass chapters (rows in `public.chapters.code`) onto the
  * bar-exam clusters. Three modes ship in Slice 9, each with its own
