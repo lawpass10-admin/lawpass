@@ -116,12 +116,17 @@ const NAV_BUTTON_CLS = cn(
 
 const COUNT_BADGE_CLS = cn(
   // `ms-auto` (margin-inline-start: auto) pushes the badge to the
-  // row's inline-END edge — in RTL that's the visual LEFT. The
-  // active-row gold ActiveBar paints over the leftmost 4px at z-10,
-  // so without `me-2.5` (margin-inline-end → physical margin-LEFT in
-  // RTL) the badge sat under the bar. 10px = 4px bar + 6px breathing
-  // room.  Slice 6 fix 3.
-  "ms-auto me-2.5 inline-flex items-center justify-center",
+  // row's inline-END edge — in RTL that's the visual LEFT.
+  //
+  // Slice 11 B-2 — bumped `me-2.5` (10px) to `me-4` (16px). The
+  // active-row gold <ActiveBar /> is 4px wide at physical-left:0 with
+  // a 12px box-shadow glow, occupying roughly the leftmost 16px of
+  // the row. The Slice 6 clearance of 10px left the badge sitting
+  // INSIDE the bar's glow on the active tab — visible collision in
+  // the "המאגר שלי" group. 16px clears the bar + the full glow
+  // radius with no overlap, and adds no visible cost in the inactive
+  // state (just slightly more whitespace before the row edge).
+  "ms-auto me-4 inline-flex items-center justify-center",
   "min-w-6 h-6 px-1.5 rounded-full text-xs font-semibold tabular-nums",
   // Inactive — translucent white pill
   "bg-white/10 text-white/80",
