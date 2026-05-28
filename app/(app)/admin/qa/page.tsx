@@ -3,7 +3,6 @@ import Link from "next/link";
 import { requireAdmin } from "@/lib/auth/admin-gate";
 import {
   listQaReports,
-  type QaReportListRow,
   type QaReportStatus,
   type QaReportType,
 } from "@/lib/db/qa-reports";
@@ -75,20 +74,13 @@ export default async function AdminQaPage({
     reporterId,
   });
 
-  // Sign URLs for rows that carry a screenshot. The signing call is
-  // batched in parallel; failures fall back to a null thumbnail (no
-  // hard error for the list — admin can still triage).
-  const SIGN_TTL_SECONDS = 300;
-  const signed: Array<QaReportListRow & { thumbUrl: string | null }> =
-    await Promise.all(
-      rows.map(async (r) => {
-        if (!r.screenshotPath) return { ...r, thumbUrl: null };
-        const { data } = await supabase.storage
-          .from("qa-screenshots")
-          .createSignedUrl(r.screenshotPath, SIGN_TTL_SECONDS);
-        return { ...r, thumbUrl: data?.signedUrl ?? null };
-      })
-    );
+  // Slice 15 — dropped the per-row screenshot signed-URL Promise.all.
+  // The list table no longer renders thumbnails (just a small
+  // attachment indicator on the title cell, driven off the
+  // non-null screenshot_path that's already on the row). The detail
+  // page at /admin/qa/[id] signs its own URL independently with a
+  // 30-min TTL, so removing list-side signing has no impact there.
+  // Saves up to N parallel storage round-trips per list render.
 
   return (
     <div className="space-y-4">
@@ -115,7 +107,7 @@ export default async function AdminQaPage({
         currentType={reportType}
         currentReporter={reporterId}
       />
-      <QaListTable rows={signed} />
+      <QaListTable rows={rows} />
     </div>
   );
 }

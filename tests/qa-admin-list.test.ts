@@ -67,6 +67,9 @@ const SAMPLE_ROWS = [
     status: "open",
     created_at: "2026-05-28T10:00:00.000Z",
     screenshot_path: null,
+    // Slice 15 — problem_text now flows through the SELECT and into
+    // the projected QaReportListRow (rendered as the title column).
+    problem_text: "השאלה לא נטענה",
   },
 ];
 
@@ -98,6 +101,7 @@ const TRIAGE_FIXTURE_ROWS = [
     status: "resolved",
     created_at: "2026-05-28T13:00:00.000Z",
     screenshot_path: null,
+    problem_text: "stub a1",
   },
   {
     id: "a2222222-2222-4222-8222-222222222222",
@@ -107,6 +111,7 @@ const TRIAGE_FIXTURE_ROWS = [
     status: "resolved",
     created_at: "2026-05-28T12:00:00.000Z",
     screenshot_path: null,
+    problem_text: "stub a2",
   },
   // open — middle timestamps
   {
@@ -117,6 +122,7 @@ const TRIAGE_FIXTURE_ROWS = [
     status: "open",
     created_at: "2026-05-28T11:00:00.000Z",
     screenshot_path: null,
+    problem_text: "stub b1",
   },
   {
     id: "b2222222-2222-4222-8222-222222222222",
@@ -126,6 +132,7 @@ const TRIAGE_FIXTURE_ROWS = [
     status: "open",
     created_at: "2026-05-28T10:00:00.000Z",
     screenshot_path: null,
+    problem_text: "stub b2",
   },
   // in_progress — oldest timestamps (so we can prove rank beats recency)
   {
@@ -136,6 +143,7 @@ const TRIAGE_FIXTURE_ROWS = [
     status: "in_progress",
     created_at: "2026-05-28T09:00:00.000Z",
     screenshot_path: null,
+    problem_text: "stub c1",
   },
   {
     id: "c2222222-2222-4222-8222-222222222222",
@@ -145,6 +153,7 @@ const TRIAGE_FIXTURE_ROWS = [
     status: "in_progress",
     created_at: "2026-05-28T08:00:00.000Z",
     screenshot_path: null,
+    problem_text: "stub c2",
   },
 ];
 
@@ -248,6 +257,9 @@ describe("listQaReports", () => {
       status: "open",
       reporterUserId: "22222222-2222-4222-8222-222222222222",
       screenshotPath: null,
+      // Slice 15 — problem_text is mapped to problemText and feeds
+      // the title column on /admin/qa.
+      problemText: "השאלה לא נטענה",
     });
   });
 });

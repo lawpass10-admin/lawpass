@@ -201,7 +201,11 @@ const STATUS_RANK: Record<QaReportStatus, number> = {
 };
 
 /** One row in the /admin/qa list table — joined with the reporter's
- *  display name so the list can render without N+1. */
+ *  display name so the list can render without N+1.
+ *
+ *  Slice 15 — `problemText` added. It's the row's primary affordance
+ *  (the title column on the list) and is `NOT NULL` in the DB so the
+ *  field is unconditionally a `string`. */
 export type QaReportListRow = {
   id: string;
   reportType: QaReportType;
@@ -211,6 +215,7 @@ export type QaReportListRow = {
   reporterUserId: string;
   reporterFullName: string | null;
   screenshotPath: string | null;
+  problemText: string;
 };
 
 /** Detail row for /admin/qa/[id]. Reporter join is fetched in a second
@@ -268,7 +273,9 @@ export async function listQaReports(
   let query = supabase
     .from("qa_reports")
     .select(
-      "id, user_id, report_type, page_path, status, created_at, screenshot_path"
+      // Slice 15 — added `problem_text` so the list table can render
+      // the report's title as the row's primary column.
+      "id, user_id, report_type, page_path, status, created_at, screenshot_path, problem_text"
     )
     .order("created_at", { ascending: false });
 
@@ -287,6 +294,7 @@ export async function listQaReports(
     status: QaReportStatus;
     created_at: string;
     screenshot_path: string | null;
+    problem_text: string;
   }>;
 
   // Reporter names — single batched IN() so the list stays one
@@ -315,6 +323,7 @@ export async function listQaReports(
     reporterUserId: r.user_id,
     reporterFullName: nameById.get(r.user_id) ?? null,
     screenshotPath: r.screenshot_path,
+    problemText: r.problem_text,
   }));
 
   // Slice 14 — triage sort. Stable sort by status rank only; within
