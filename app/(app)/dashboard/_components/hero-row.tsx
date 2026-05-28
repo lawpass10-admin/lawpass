@@ -1,235 +1,253 @@
-import { Clock, ListChecks, Play } from "lucide-react";
+import { Play } from "lucide-react";
 import Link from "next/link";
 
-import { formatRelativeHebrew } from "@/app/(app)/dashboard/_lib/hero-helpers";
+import {
+  RING_CENTER,
+  RING_CIRCUMFERENCE,
+  RING_RADIUS,
+  RING_VIEWBOX,
+  computeRingDash,
+} from "@/app/(app)/dashboard/_lib/hero-helpers";
 import type { HeroLastSession } from "@/lib/dashboard/types";
 import { cn } from "@/lib/utils";
 
 type Props = {
-  /**
-   * Days until the planned exam date. Slice 11 still accepts this for
-   * API stability, but the hero card no longer renders the ring or the
-   * big number — the title-area countdown in `<HeaderStrip>` is the
-   * single source of truth.
-   */
+  /** Days until the planned exam date. Drives the ring's center
+   *  number and the gold headline. Null when the user hasn't set an
+   *  exam date — the headline falls back to a prompt. */
   daysToExam: number | null;
-  /** Total days in the user's *subscription* window. Slice 11: kept on
-   *  the interface for back-compat with `<HeroRowAsync>`, but unused
-   *  now that the ring is gone. */
-  subscriptionTotalDays: number;
-  /** Days remaining on the active subscription. Same back-compat
-   *  rationale as `subscriptionTotalDays`. */
-  subscriptionDaysRemaining: number;
   /**
-   * 1-based day count since profile.created_at. Slice 11 still accepts
-   * this so `<HeroRowAsync>` doesn't need to change; the value flows
-   * past the hero now (the page renders <JourneyCard /> directly
-   * below the chapters list using this same value).
+   * Total days in the user's *subscription* window (90 for 3_months,
+   * 180 for 6_months). Denominator for the ring's gold-arc fill.
    */
+  subscriptionTotalDays: number;
+  /**
+   * Days remaining on the active subscription. Drives the ring's fill
+   * via `elapsed = total − remaining`.
+   */
+  subscriptionDaysRemaining: number;
+  /** 1-based day count since profile.created_at. Drives the muted
+   *  sub-line ("יום N ברצף תרגול …"). */
   currentPlanDay: number;
   /** Last in-flight practice session, or null when none is resumable. */
   lastSession: HeroLastSession;
 };
 
 /**
- * Slice 11 — Hero row.
+ * Slice 11.1 — Hero row.
  *
- * The Slice 4 hero rendered two large navy cards side-by-side:
- *   1. <RingCard> with a 130–170px SVG ring + the days-to-exam
- *      number AND the resume/start-practice CTA.
- *   2. <JourneyCard> with the 5-milestone progress timeline.
+ * Slice 4 had two large navy cards (a 130–170px ring card + a
+ * journey timeline). Slice 11 Phase B-1 removed the ring entirely
+ * and left a tall single-column CTA card with a lot of dead
+ * vertical space.
  *
- * QA flagged this as visually heavy:
- *   - The big SVG ring duplicates the countdown that already lives in
- *     the title-area sentence "נשארו N ימים..." (HeaderStrip is the
- *     single source of truth).
- *   - The two-card grid is the most prominent block on the page; the
- *     primary CTA ("התחל תרגול") got buried in chrome.
+ * Slice 11 Phase B-1.1 is a different shape: ONE full-width
+ * navy-gradient bar, SHORT (content-height + modest padding), with
+ * two horizontal regions:
  *
- * Slice 11 result:
- *   - The ring is removed from <RingCard>; the card becomes a single
- *     wide CTA-forward card.
- *   - <JourneyCard> is no longer rendered here. It's been extracted
- *     to its own file and the dashboard page now mounts it BELOW the
- *     chapters list.
+ *   - INLINE-START (visually right in RTL): small ring (~64–72px) +
+ *     gold "המבחן בעוד {N} ימים" headline + muted "יום {planDay}
+ *     ברצף תרגול · המשיכו במסע" sub-line.
+ *   - INLINE-END (visually left in RTL): the resume mini-card — a
+ *     small bordered pill with the "המשך מאיפה שעצרת" eyebrow + a
+ *     gold CTA button labelled with the chapter + question number.
+ *     When `lastSession` is null, this region collapses to the
+ *     generic "התחל תרגול" CTA.
  *
- * The unused `daysToExam` / `subscriptionTotalDays` /
- * `subscriptionDaysRemaining` / `currentPlanDay` props stay on the
- * interface so `<HeroRowAsync>` doesn't need a signature change.
+ * The journey timeline ("המסע שלך") is NOT brought back into this
+ * bar — Slice 11 B-1 moved it BELOW the chapters list and that
+ * placement stays.
+ *
+ * Removed (vs Slice 11 B-1):
+ *   - Decorative gold-glow + white-glow radial blobs (no more big
+ *     dead vertical area).
+ *   - The thin grey progress bar that lived inside the resume
+ *     branch (it read like an empty bar after the ring was gone).
  */
-export function HeroRow({ lastSession }: Props) {
+export function HeroRow({
+  daysToExam,
+  subscriptionTotalDays,
+  subscriptionDaysRemaining,
+  currentPlanDay,
+  lastSession,
+}: Props) {
+  const { dasharray } = computeRingDash(
+    subscriptionDaysRemaining,
+    subscriptionTotalDays
+  );
+
   return (
     <section className="mb-5" aria-label="התחל תרגול">
-      <RingCard lastSession={lastSession} />
+      <div
+        className="relative overflow-hidden rounded-[18px] px-5 py-4 md:px-6 md:py-5 text-white"
+        style={{
+          background:
+            "linear-gradient(135deg, #15296B 0%, #1E3A8A 55%, #1A327B 100%)",
+          boxShadow: "0 10px 28px -10px rgba(15, 31, 79, 0.40)",
+        }}
+      >
+        {/* Horizontal flex layout. On mobile (< sm) the two regions
+            stack so each gets full width; from sm up they share the
+            row, vertically centered, with space-between. */}
+        <div className="relative flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <CountdownRegion
+            daysToExam={daysToExam}
+            currentPlanDay={currentPlanDay}
+            dasharray={dasharray}
+          />
+          <ResumeRegion lastSession={lastSession} />
+        </div>
+      </div>
     </section>
   );
 }
 
 // =============================================================================
-// CTA card (formerly the "ring card" — Slice 11 dropped the ring)
+// Inline-start region — small ring + countdown headline + sub-line
 // =============================================================================
 
-function RingCard({ lastSession }: { lastSession: HeroLastSession }) {
-  const progressPct =
-    lastSession && lastSession.totalQuestions > 0
-      ? Math.round(
-          ((lastSession.nextQuestionPosition - 1) / lastSession.totalQuestions) *
-            100
-        )
-      : 0;
-
+function CountdownRegion({
+  daysToExam,
+  currentPlanDay,
+  dasharray,
+}: {
+  daysToExam: number | null;
+  currentPlanDay: number;
+  dasharray: string;
+}) {
   return (
-    <div
-      className="relative overflow-hidden rounded-[22px] px-6 py-6 md:px-9 md:py-8 text-white"
-      style={{
-        background:
-          "linear-gradient(135deg, #15296B 0%, #1E3A8A 55%, #1A327B 100%)",
-        boxShadow: "0 18px 40px -12px rgba(15, 31, 79, 0.40)",
-      }}
-    >
-      {/* Decorative gold glow + soft corner highlight — purely visual,
-          mirrors the prototype's ::before/::after pseudo-elements. */}
-      <div
-        aria-hidden
-        className="pointer-events-none absolute -top-32 -end-32 size-[360px] rounded-full"
-        style={{
-          background:
-            "radial-gradient(closest-side, rgba(201, 161, 73, 0.22), transparent 70%)",
-        }}
-      />
-      <div
-        aria-hidden
-        className="pointer-events-none absolute -bottom-16 -start-16 size-[220px] rounded-full"
-        style={{
-          background:
-            "radial-gradient(closest-side, rgba(255, 255, 255, 0.05), transparent 70%)",
-        }}
-      />
-
-      {/* Slice 11 — single-column flex layout (was a 2-column grid with
-          the ring beside the info block). The ring is gone; the info
-          column owns the card's full width. */}
-      <div className="relative flex min-w-0 flex-col gap-2.5">
-        <Eyebrow>
-          {lastSession ? "המשך מאיפה שעצרת" : "מוכן להתחיל?"}
-        </Eyebrow>
-        <h2
-          className="font-heebo font-bold text-white"
-          style={{ fontSize: 26, lineHeight: 1.15, margin: "2px 0 0" }}
+    <div className="flex items-center gap-4 min-w-0">
+      {/* Small ring — 64–72px vs the Slice 4 130–170px. Same SVG
+          geometry constants (RING_VIEWBOX/RADIUS/CENTER/CIRCUMFERENCE)
+          so the gold-arc fill stays correct. */}
+      <div className="relative shrink-0 size-[64px] md:size-[72px]">
+        <svg
+          viewBox={`0 0 ${RING_VIEWBOX} ${RING_VIEWBOX}`}
+          className="size-full"
+          style={{ transform: "rotate(-90deg)" }}
+          aria-hidden
         >
-          {lastSession
-            ? (lastSession.chapterTitle ?? "התרגול הפעיל שלך")
-            : "התחל תרגול חדש"}
-          {lastSession && lastSession.chapterTitle && (
-            <span
-              className="block font-medium"
-              style={{
-                fontSize: 16,
-                color: "var(--color-gold)",
-                marginTop: 4,
-              }}
-            >
-              שאלות בתרגול
-            </span>
-          )}
-        </h2>
-
-        {lastSession ? (
-          <>
-            <div
-              className="flex flex-wrap gap-4"
-              style={{
-                color: "rgba(255, 255, 255, 0.7)",
-                fontSize: 13.5,
-                marginTop: 2,
-              }}
-            >
-              <span className="inline-flex items-center gap-1.5">
-                <Clock
-                  className="size-3.5"
-                  style={{ color: "rgba(255, 255, 255, 0.55)" }}
-                  aria-hidden
-                />
-                {formatRelativeHebrew(lastSession.lastActivityISO)}
-              </span>
-              <span className="inline-flex items-center gap-1.5">
-                <ListChecks
-                  className="size-3.5"
-                  style={{ color: "rgba(255, 255, 255, 0.55)" }}
-                  aria-hidden
-                />
-                {lastSession.nextQuestionPosition - 1}/
-                {lastSession.totalQuestions} שאלות
-              </span>
-            </div>
-
-            <div className="mt-2 mb-1.5">
-              <div
-                className="h-1.5 overflow-hidden rounded-[3px]"
-                style={{ background: "rgba(255, 255, 255, 0.12)" }}
-              >
-                <div
-                  className="h-full rounded-[3px]"
-                  style={{
-                    width: `${progressPct}%`,
-                    background:
-                      "linear-gradient(90deg, var(--color-gold), var(--color-gold-deep))",
-                  }}
-                />
-              </div>
-            </div>
-
-            <Link
-              href={`/practice/play/${lastSession.nextQuestionPosition - 1}`}
-              className={cn(
-                "btn-gold mt-1 inline-flex items-center gap-2 self-start rounded-full px-4 py-2 font-heebo font-semibold",
-                "text-[13px] focus-visible:outline-none"
-              )}
-            >
-              המשך מהשאלה ה-{lastSession.nextQuestionPosition} →
-            </Link>
-          </>
-        ) : (
-          <Link
-            href="/practice"
-            className={cn(
-              "btn-gold mt-3 inline-flex items-center gap-2 self-start rounded-full px-5 py-2.5 font-heebo font-semibold",
-              "text-sm focus-visible:outline-none"
-            )}
+          <circle
+            cx={RING_CENTER}
+            cy={RING_CENTER}
+            r={RING_RADIUS}
+            fill="none"
+            stroke="rgba(255, 255, 255, 0.12)"
+            strokeWidth={14}
+          />
+          <circle
+            cx={RING_CENTER}
+            cy={RING_CENTER}
+            r={RING_RADIUS}
+            fill="none"
+            stroke="var(--color-gold)"
+            strokeWidth={14}
+            strokeLinecap="round"
+            strokeDasharray={dasharray}
+            strokeDashoffset={0}
+            pathLength={RING_CIRCUMFERENCE}
+          />
+        </svg>
+        <div className="absolute inset-0 flex items-center justify-center">
+          <span
+            className="font-heebo font-extrabold tabular-nums"
+            style={{
+              fontSize: 18,
+              lineHeight: 1,
+              letterSpacing: "-0.02em",
+            }}
+            aria-hidden
           >
-            <Play className="size-4 fill-current" aria-hidden />
-            התחל תרגול
-          </Link>
-        )}
+            {daysToExam ?? "—"}
+          </span>
+        </div>
+      </div>
+
+      {/* Headline + sub-line. min-w-0 + truncate so long Hebrew
+          strings don't blow the bar's horizontal layout at narrow
+          widths. */}
+      <div className="min-w-0">
+        <h2
+          className="font-heebo font-bold leading-tight truncate"
+          style={{
+            fontSize: 18,
+            color: "var(--color-gold)",
+          }}
+        >
+          {daysToExam !== null
+            ? `המבחן בעוד ${daysToExam} ימים`
+            : "הוסף תאריך בחינה"}
+        </h2>
+        <p
+          className="mt-0.5 truncate"
+          style={{
+            color: "rgba(255, 255, 255, 0.7)",
+            fontSize: 12.5,
+          }}
+        >
+          יום{" "}
+          <span
+            className="tabular-nums"
+            style={{ color: "var(--color-gold)", fontWeight: 700 }}
+          >
+            {currentPlanDay}
+          </span>{" "}
+          ברצף תרגול · המשיכו במסע
+        </p>
       </div>
     </div>
   );
 }
 
 // =============================================================================
-// Small bits
+// Inline-end region — resume mini-card or generic CTA
 // =============================================================================
 
-function Eyebrow({ children }: { children: React.ReactNode }) {
+function ResumeRegion({ lastSession }: { lastSession: HeroLastSession }) {
+  if (lastSession) {
+    return (
+      <div
+        className={cn(
+          "flex shrink-0 items-center gap-3 rounded-[14px] border border-white/10 px-3 py-2",
+          "bg-white/5"
+        )}
+      >
+        <span
+          className="font-heebo font-medium shrink-0"
+          style={{
+            fontSize: 11,
+            color: "var(--color-gold)",
+            letterSpacing: "0.04em",
+            textTransform: "uppercase",
+          }}
+        >
+          המשך מאיפה שעצרת
+        </span>
+        <Link
+          href={`/practice/play/${lastSession.nextQuestionPosition - 1}`}
+          className={cn(
+            "btn-gold inline-flex shrink-0 items-center gap-1.5 rounded-full px-3.5 py-1.5 font-heebo font-semibold whitespace-nowrap",
+            "text-[12.5px] focus-visible:outline-none"
+          )}
+        >
+          {lastSession.chapterTitle
+            ? `${lastSession.chapterTitle} · שאלה ${lastSession.nextQuestionPosition}`
+            : `שאלה ${lastSession.nextQuestionPosition}`}{" "}
+          →
+        </Link>
+      </div>
+    );
+  }
   return (
-    <div
-      className="inline-flex items-center gap-2.5 font-heebo font-medium"
-      style={{
-        fontSize: 13,
-        color: "var(--color-gold)",
-        letterSpacing: "0.02em",
-      }}
+    <Link
+      href="/practice"
+      className={cn(
+        "btn-gold inline-flex shrink-0 items-center gap-2 self-start rounded-full px-5 py-2 font-heebo font-semibold whitespace-nowrap",
+        "text-sm focus-visible:outline-none sm:self-auto"
+      )}
     >
-      <span
-        aria-hidden
-        style={{
-          display: "inline-block",
-          width: 22,
-          height: 1.5,
-          background: "var(--color-gold)",
-        }}
-      />
-      {children}
-    </div>
+      <Play className="size-4 fill-current" aria-hidden />
+      התחל תרגול
+    </Link>
   );
 }
