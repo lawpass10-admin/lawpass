@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { Fragment } from "react";
 
 import { cn } from "@/lib/utils";
 import type {
@@ -57,6 +58,19 @@ export default function QaListTable({
     );
   }
 
+  // Slice 14 — per-status counts for the group headers. Computed
+  // ONCE before the row loop to avoid N² scans. The rows arrive
+  // already triage-sorted (in_progress → open → resolved) from
+  // listQaReports, so a single linear walk is enough to detect
+  // status transitions and inject a header row above each new bucket.
+  const counts = rows.reduce(
+    (m, r) => {
+      m[r.status] = (m[r.status] ?? 0) + 1;
+      return m;
+    },
+    {} as Record<QaReportStatus, number>
+  );
+
   return (
     <div className="overflow-x-auto rounded-md border border-[var(--color-line)] bg-card">
       <table className="w-full text-sm">
@@ -73,14 +87,33 @@ export default function QaListTable({
         <tbody>
           {rows.map((row, idx) => {
             const isLast = idx === rows.length - 1;
+            // Emit a group header above the row when its status
+            // differs from the previous row's (including before the
+            // first row). When a single status is filtered the header
+            // still renders once — self-consistent.
+            const prevStatus = idx === 0 ? null : rows[idx - 1].status;
+            const showGroupHeader = row.status !== prevStatus;
             return (
-              <tr
-                key={row.id}
-                className={cn(
-                  "transition-colors hover:bg-muted/30",
-                  !isLast && "border-b border-[var(--color-line)]"
-                )}
-              >
+              <Fragment key={row.id}>
+                {showGroupHeader ? (
+                  <tr
+                    aria-hidden
+                    className="border-b border-[var(--color-line)]"
+                  >
+                    <td
+                      colSpan={6}
+                      className="bg-muted/40 text-[11px] font-semibold uppercase tracking-wider text-foreground/80 px-3 py-2"
+                    >
+                      {STATUS_LABELS[row.status]} · {counts[row.status]}
+                    </td>
+                  </tr>
+                ) : null}
+                <tr
+                  className={cn(
+                    "transition-colors hover:bg-muted/30",
+                    !isLast && "border-b border-[var(--color-line)]"
+                  )}
+                >
                 <td className="px-3 py-2">
                   <Link
                     href={`/admin/qa/${row.id}`}
@@ -131,7 +164,8 @@ export default function QaListTable({
                     <span className="text-xs text-muted-foreground">—</span>
                   )}
                 </td>
-              </tr>
+                </tr>
+              </Fragment>
             );
           })}
         </tbody>

@@ -182,6 +182,24 @@ export type ListQaReportsFilters = {
   reporterId?: string | null;
 };
 
+/**
+ * Slice 14 — triage priority for the /admin/qa list. Sort order is
+ * in_progress → open → resolved so the admin sees actively-worked
+ * items first, then the queue, then the history. The actual sort
+ * is applied JS-side after the SQL fetch (see listQaReports below) —
+ * Supabase JS doesn't support a CASE-expression ORDER BY, and the
+ * list size is small (~hundreds during the testing period). The
+ * SQL `.order("created_at", { ascending: false })` survives as the
+ * stable secondary key — Array.prototype.sort is stable in V8 so
+ * each status bucket retains its newest-first order without an
+ * explicit per-bucket re-sort.
+ */
+const STATUS_RANK: Record<QaReportStatus, number> = {
+  in_progress: 1,
+  open: 2,
+  resolved: 3,
+};
+
 /** One row in the /admin/qa list table — joined with the reporter's
  *  display name so the list can render without N+1. */
 export type QaReportListRow = {
@@ -288,7 +306,7 @@ export async function listQaReports(
     }
   }
 
-  return rows.map((r) => ({
+  const projected: QaReportListRow[] = rows.map((r) => ({
     id: r.id,
     reportType: r.report_type,
     pagePath: r.page_path,
@@ -298,6 +316,17 @@ export async function listQaReports(
     reporterFullName: nameById.get(r.user_id) ?? null,
     screenshotPath: r.screenshot_path,
   }));
+
+  // Slice 14 — triage sort. Stable sort by status rank only; within
+  // each rank the SQL `.order("created_at", { ascending: false })`
+  // above gave us newest-first, and Array.prototype.sort is stable in
+  // V8 so that secondary order is preserved without an explicit
+  // tiebreaker. When `filters.status` is set the comparator becomes a
+  // no-op (single status in the result set) and the rows stay in
+  // created_at-DESC order — the degenerate case is correct.
+  return projected.sort(
+    (a, b) => STATUS_RANK[a.status] - STATUS_RANK[b.status]
+  );
 }
 
 /**
