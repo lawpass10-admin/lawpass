@@ -1,0 +1,67 @@
+{
+  "_about": "Per-question classification for the 2022 summer substantive (קיץ 2022, חלק ג', דין מהותי) batch. Each entry maps the source question to a (chapter_code, subtopic_code) in the substantive-track taxonomy. needs_review=true flags taxonomy edges or cross-cutting questions.",
+  "_taxonomy_source": "chapters.track='substantive' after Phase 4 — 10 chapters, 80 substantive subtopics including torts + youth_law + consumer_protection + trusts + constitutional_rights.",
+  "_batch": {
+    "exam_year": 2022,
+    "exam_season": "summer",
+    "exam_part": 2,
+    "track": "substantive",
+    "external_id_prefix": "2022-S-S"
+  },
+  "_drops": [
+    {
+      "external_id": "2022-S-S-Q06",
+      "reason": "exact-content duplicate of Q05 (same question_text + identical 4 source_choices hash). Keep Q05, drop Q06."
+    },
+    {
+      "external_id": "2022-S-S-Q13",
+      "reason": "Not present in the source docx at all — file 1-20 jumps Q12 → Q14. Source needs Sharon's clarification."
+    },
+    {
+      "external_id": "2022-S-S-Q30",
+      "reason": "JSON block structurally malformed beyond automatic repair (Expecting ',' delimiter at line 99 col 23). Source needs Sharon's re-export."
+    },
+    {
+      "external_id": "2022-S-S-Q32",
+      "reason": "Not present in the source docx at all — file 21-40 jumps Q31 → Q33. Source needs Sharon's clarification."
+    }
+  ],
+  "classifications": {
+    "2022-S-S-Q01": { "chapter": "corporate",            "subtopic": "fiduciary_duties",       "needs_review": false, "note": "Public-company CFO who is also controlling shareholder; exemption from breach-of-care liability — officer duties + exemption regime" },
+    "2022-S-S-Q02": { "chapter": "contracts",            "subtopic": "standard_contracts",     "needs_review": false, "note": "Builder's apartment sale, contractual delay clause ('65 days excluded') — unfair-term review under standard-form contracts law" },
+    "2022-S-S-Q03": { "chapter": "torts",                "subtopic": "negligence",             "needs_review": false, "note": "The three auxiliary tests for legal causation in negligence — core תורת הסיבתיות" },
+    "2022-S-S-Q04": { "chapter": "contracts",            "subtopic": "general_part",           "needs_review": false, "note": "Letter outlining sale, two-week deadline to decide — offer + acceptance rules" },
+    "2022-S-S-Q05": { "chapter": "family_inheritance",   "subtopic": "inheritance_will",       "needs_review": false, "note": "Moshe asks lawyer to write down his oral will (immoral & charitable provisions) — will formation + content limits" },
+    "2022-S-S-Q07": { "chapter": "property",             "subtopic": "chattels_lost_found",    "needs_review": true,  "note": "Noam refuses to leave Haviv's car — owner's right to remove a trespasser from chattel. Closest subtopic is chattels; could also fit torts/nuisance_trespass" },
+    "2022-S-S-Q08": { "chapter": "contracts",            "subtopic": "lease_bailment",         "needs_review": false, "note": "Oral two-month lease over real estate (Eilat) — formal requirements for leases" },
+    "2022-S-S-Q09": { "chapter": "contracts",            "subtopic": "agency",                 "needs_review": false, "note": "Sub-agency: Gili wants Sharit to handle while on vacation — delegation rules under חוק השליחות" },
+    "2022-S-S-Q10": { "chapter": "contracts",            "subtopic": "insurance_contract",     "needs_review": false, "note": "Life-insurance beneficiary designation 'spouse + descendants' after divorce + new partner" },
+    "2022-S-S-Q11": { "chapter": "ethics",               "subtopic": "disciplinary_law",       "needs_review": false, "note": "Lawyer suing another lawyer for malpractice without prior notification — duty to notify" },
+    "2022-S-S-Q12": { "chapter": "administrative",       "subtopic": "constitutional_rights",  "needs_review": false, "note": "Knesset amending Basic Law: State Economy via temporary provision — abuse-of-constituent-power doctrine" },
+    "2022-S-S-Q14": { "chapter": "criminal_substantive", "subtopic": "sentencing",             "needs_review": false, "note": "Criminal compensation order for ₪300,000 to victim under פקודת העונשין" },
+    "2022-S-S-Q15": { "chapter": "criminal_substantive", "subtopic": "general_part_elements",  "needs_review": true,  "note": "Criminal statute of limitations on prosecution (Almoni at 33 alleging assault at 15) — no dedicated 'criminal limitation' subtopic; general_part is the closest" },
+    "2022-S-S-Q16": { "chapter": "ethics",               "subtopic": "fiduciary_privilege_conflict","needs_review": true,  "note": "Lawyer witnessed bank robbery, robber spoke to her personally — privilege scope vs duty to testify" },
+    "2022-S-S-Q17": { "chapter": "torts",                "subtopic": "defamation",             "needs_review": false, "note": "Defamation counter-claim — TV interview about police officer + lawsuit + counter-claim" },
+    "2022-S-S-Q18": { "chapter": "torts",                "subtopic": "negligence",             "needs_review": true,  "note": "Minor liability + joint tortfeasors (7 kids throwing stones). 'Joint tortfeasor' isn't a dedicated subtopic; negligence is the closest" },
+    "2022-S-S-Q19": { "chapter": "torts",                "subtopic": "strict_liability_torts", "needs_review": false, "note": "Horse owner's liability for bite — strict-liability animal torts under פקודת הנזיקין" },
+    "2022-S-S-Q20": { "chapter": "torts",                "subtopic": "negligence",             "needs_review": true,  "note": "Inducement of breach of contract (matchmaker convincing Leah to break lease). Inducement-of-breach isn't a dedicated subtopic; closest substantive home is torts/negligence" },
+    "2022-S-S-Q21": { "chapter": "ethics",               "subtopic": "fees_client_funds_advertising","needs_review": false, "note": "Lawyer cold-calling companies + special-offer pricing — advertising and soliciting rules" },
+    "2022-S-S-Q22": { "chapter": "contracts",            "subtopic": "general_part",           "needs_review": false, "note": "Email employment contract, response deadline — offer-acceptance via electronic means" },
+    "2022-S-S-Q23": { "chapter": "family_inheritance",   "subtopic": "marriage_divorce",       "needs_review": false, "note": "Marriage by misrepresentation (man posed as religious) — marriage invalidity/error grounds" },
+    "2022-S-S-Q24": { "chapter": "corporate",            "subtopic": "piercing_veil",          "needs_review": false, "note": "Rami's tile company, 80% cash deal — piercing the corporate veil for personal liability per source review_note" },
+    "2022-S-S-Q25": { "chapter": "corporate",            "subtopic": "companies_formation",    "needs_review": false, "note": "Shareholder Roni absent abroad, notice timing for general meeting — meeting procedure rules" },
+    "2022-S-S-Q26": { "chapter": "corporate",            "subtopic": "fiduciary_duties",       "needs_review": true,  "note": "Auditor (רו\"ח מבקרת) immediate termination by shareholders — closest subtopic is fiduciary_duties; auditor-removal procedure isn't dedicated" },
+    "2022-S-S-Q27": { "chapter": "corporate",            "subtopic": "fiduciary_duties",       "needs_review": false, "note": "Profit test + solvency test for distributions — directors' duties under חוק החברות" },
+    "2022-S-S-Q28": { "chapter": "corporate",            "subtopic": "companies_formation",    "needs_review": false, "note": "Powers normally vested in board vs general meeting — corporate governance structure" },
+    "2022-S-S-Q29": { "chapter": "criminal_substantive", "subtopic": "general_part_elements",  "needs_review": false, "note": "Transitional law in criminal offenses, lighter-law rule, status change — תחולת דין בזמן" },
+    "2022-S-S-Q31": { "chapter": "criminal_substantive", "subtopic": "general_part_elements",  "needs_review": false, "note": "Co-conspirators in robbery, Reuven's bodily harm beyond Leah & Shimon's agreement — accomplice liability for additional offense" },
+    "2022-S-S-Q33": { "chapter": "criminal_substantive", "subtopic": "general_part_elements",  "needs_review": false, "note": "Water-pollution fine increase mid-act — application of lighter law (סעיף 3(ב) חוק העונשין)" },
+    "2022-S-S-Q34": { "chapter": "ethics",               "subtopic": "fiduciary_privilege_conflict","needs_review": false, "note": "Joint-defense / second debtor approaching the lawyer of debtor 1 — conflict of interest" },
+    "2022-S-S-Q35": { "chapter": "ethics",               "subtopic": "fees_client_funds_advertising","needs_review": false, "note": "Lawyer identifying as such for non-legal volunteer fundraising — advertising/identification rules" },
+    "2022-S-S-Q36": { "chapter": "contracts",            "subtopic": "limitation",             "needs_review": true,  "note": "Miriam claiming title in 2022 against 1990 judgment — statute of limitations on judgment enforcement; property dimension noted" },
+    "2022-S-S-Q37": { "chapter": "tax",                  "subtopic": "real_estate_tax",        "needs_review": false, "note": "Tziyona (75) in pinui-binui deal — tax treatment of evacuation-reconstruction transactions" },
+    "2022-S-S-Q38": { "chapter": "administrative",       "subtopic": "constitutional_rights",  "needs_review": false, "note": "CEC disqualifying a candidate list (denial of Israel as Jewish & democratic) — election disqualification grounds, constitutional democratic principle" },
+    "2022-S-S-Q39": { "chapter": "property",             "subtopic": "pledge",                 "needs_review": true,  "note": "Car pledge + garage's possessory lien (זכות עיכבון) — priority between secured creditor and possessory lien. Pledge chapter; no dedicated lien subtopic" },
+    "2022-S-S-Q40": { "chapter": "contracts",            "subtopic": "lease_bailment",         "needs_review": true,  "note": "Innkeeper liability for stolen items under חוק השומרים — bailment/safekeeping law. Closest substantive home is lease_bailment" }
+  }
+}
