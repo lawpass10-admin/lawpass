@@ -96,6 +96,12 @@ export type AdminUserDetail = {
     /** Slice 10 — surfaces the per-user QA tester permission so the
      *  /admin/users/[userId] page can render the toggle. */
     isQaTester: boolean;
+    /** Slice 13 — onboarding-time required ids (closed lists in
+     *  lib/profile/*). Null for users created before Slice 13
+     *  shipped; the admin page renders the Hebrew label by
+     *  looking the id up via getAcademicInstitutionLabel etc. */
+    academicInstitution: string | null;
+    legalSpecialization: string | null;
   };
   auth: {
     email: string | null;
@@ -1168,7 +1174,8 @@ export async function getUserDetail(
       supabase
         .from("profiles")
         .select(
-          "full_name, phone, gender, birth_date, exam_date_planned, signup_source, created_at, is_qa_tester"
+          // Slice 13 — added academic_institution + legal_specialization.
+          "full_name, phone, gender, birth_date, exam_date_planned, signup_source, created_at, is_qa_tester, academic_institution, legal_specialization"
         )
         .eq("id", userId)
         .maybeSingle(),
@@ -1215,6 +1222,8 @@ export async function getUserDetail(
         signup_source: string;
         created_at: string;
         is_qa_tester: boolean | null;
+        academic_institution: string | null;
+        legal_specialization: string | null;
       }
     | null;
 
@@ -1279,6 +1288,8 @@ export async function getUserDetail(
       signupSource: profile?.signup_source ?? "—",
       createdAt: profile?.created_at ?? authUser?.created_at ?? "",
       isQaTester: profile?.is_qa_tester === true,
+      academicInstitution: profile?.academic_institution ?? null,
+      legalSpecialization: profile?.legal_specialization ?? null,
     },
     auth: {
       email: authUser?.email ?? null,

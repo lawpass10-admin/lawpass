@@ -7,13 +7,17 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 
 import { createClient } from "@/lib/supabase/server";
+import type { AcademicInstitution } from "@/lib/profile/institutions";
+import type { LegalSpecialization } from "@/lib/profile/specializations";
 import {
+  academicInstitutionSchema,
   birthDateSchema,
   emailSchema,
   examDatePlannedSchema,
   forgotPasswordSchema,
   fullNameSchema,
   genderSchema,
+  legalSpecializationSchema,
   loginSchema,
   oauthCompletionSchema,
   otpSchema,
@@ -130,6 +134,11 @@ const userMetadataSchema = z.object({
   gender: genderSchema,
   birth_date: birthDateSchema,
   exam_date_planned: examDatePlannedSchema,
+  // Slice 13 — academic_institution + legal_specialization are stashed
+  // into auth.user_metadata by signUpAction so verifyOtpAction can read
+  // them back and pass to the complete_user_profile RPC. Both required.
+  academic_institution: academicInstitutionSchema,
+  legal_specialization: legalSpecializationSchema,
   // ISO timestamp captured server-side at signUpAction time.
   terms_accepted_at: z.string().min(1),
 });
@@ -157,6 +166,11 @@ async function createProfile(input: {
   exam_date_planned: string | null; // YYYY-MM-01 or null
   terms_accepted_at: string; // ISO timestamp from signUpAction
   signup_source: "email" | "google";
+  // Slice 13 — required at onboarding for new users. The RPC signature
+  // was widened to 9 args (DROP+CREATE OR REPLACE in migration
+  // 20260530000001) so both ids ride along to the profiles INSERT.
+  academic_institution: AcademicInstitution;
+  legal_specialization: LegalSpecialization;
 }): Promise<ActionResult> {
   const supabase = await createClient();
 
@@ -168,6 +182,8 @@ async function createProfile(input: {
     p_exam_date_planned: input.exam_date_planned,
     p_terms_accepted_at: input.terms_accepted_at,
     p_signup_source: input.signup_source,
+    p_academic_institution: input.academic_institution,
+    p_legal_specialization: input.legal_specialization,
   });
 
   if (error) {
@@ -232,6 +248,11 @@ export async function signUpAction(input: SignupInput): Promise<ActionResult> {
         gender: data.gender,
         birth_date: data.birth_date,
         exam_date_planned: data.exam_date_planned,
+        // Slice 13 — both required at onboarding; stashed in
+        // user_metadata so verifyOtpAction can recover them and pass
+        // to complete_user_profile alongside the other fields.
+        academic_institution: data.academic_institution,
+        legal_specialization: data.legal_specialization,
         // Captured server-side at signup time, persisted to
         // profiles.terms_accepted_at on OTP verification.
         terms_accepted_at: new Date().toISOString(),
@@ -330,6 +351,11 @@ export async function verifyOtpAction(input: {
     exam_date_planned: metaParsed.data.exam_date_planned ?? null,
     terms_accepted_at: metaParsed.data.terms_accepted_at,
     signup_source: "email",
+    // Slice 13 — recovered from user_metadata after the user verifies
+    // the OTP. Required at signup so by this point both fields are
+    // guaranteed present.
+    academic_institution: metaParsed.data.academic_institution,
+    legal_specialization: metaParsed.data.legal_specialization,
   });
   if (!profileResult.ok) {
     // Fail-recovery: don't leave the user in a half-authenticated state with
@@ -529,6 +555,10 @@ export async function completeGoogleOAuthSignup(
     exam_date_planned: data.exam_date_planned ?? null,
     terms_accepted_at: new Date().toISOString(),
     signup_source: "google",
+    // Slice 13 — required by oauthCompletionSchema; guaranteed
+    // present at this point.
+    academic_institution: data.academic_institution,
+    legal_specialization: data.legal_specialization,
   });
 
   if (!profileResult.ok) {

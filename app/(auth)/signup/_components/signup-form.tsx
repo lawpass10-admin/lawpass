@@ -40,6 +40,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
+import { ACADEMIC_INSTITUTIONS } from "@/lib/profile/institutions";
+import { LEGAL_SPECIALIZATIONS } from "@/lib/profile/specializations";
 import { cn } from "@/lib/utils";
 import {
   signupSchema,
@@ -67,7 +69,16 @@ const HEBREW_MONTHS = [
 
 const STEP_FIELDS = {
   1: ["email", "password", "confirmPassword"] as const,
-  2: ["full_name", "phone", "gender", "birth_date"] as const,
+  // Slice 13 — academic_institution + legal_specialization added to
+  // step 2 so the wizard's demographics group stays cohesive.
+  2: [
+    "full_name",
+    "phone",
+    "gender",
+    "birth_date",
+    "academic_institution",
+    "legal_specialization",
+  ] as const,
   3: ["exam_date_planned", "terms_accepted"] as const,
 };
 
@@ -184,6 +195,11 @@ export default function SignupForm() {
     phone: "",
     gender: "",
     birth_date: "",
+    // Slice 13 — initialized to "" (not undefined) so the controlled
+    // <Select> binds cleanly from first render. Zod's enum still
+    // rejects "" on submit; the user must pick one of the listed ids.
+    academic_institution: "",
+    legal_specialization: "",
     exam_date_planned: null,
   } as unknown as DefaultValues<SignupInput>;
 
@@ -241,6 +257,9 @@ export default function SignupForm() {
         phone: form.getValues("phone"),
         gender: form.getValues("gender"),
         birth_date: form.getValues("birth_date"),
+        // Slice 13 — required at step 2 before advancing to step 3.
+        academic_institution: form.getValues("academic_institution"),
+        legal_specialization: form.getValues("legal_specialization"),
       });
       form.clearErrors([...STEP_FIELDS[2]]);
       if (!result.success) {
@@ -250,7 +269,9 @@ export default function SignupForm() {
             path === "full_name" ||
             path === "phone" ||
             path === "gender" ||
-            path === "birth_date"
+            path === "birth_date" ||
+            path === "academic_institution" ||
+            path === "legal_specialization"
           ) {
             form.setError(path, { message: issue.message });
           }
@@ -550,6 +571,65 @@ function Step2({
               value={field.value ?? ""}
               onChange={field.onChange}
             />
+            <FormMessage />
+          </FormItem>
+        )}
+      />
+
+      {/* Slice 13 — academic institution + legal specialization. Both
+          REQUIRED at step 2. Same <Select> primitive the other
+          dropdowns use; options sourced from lib/profile/* constants. */}
+      <FormField
+        control={form.control}
+        name="academic_institution"
+        render={({ field }) => (
+          <FormItem>
+            <FormLabel>מוסד אקדמי</FormLabel>
+            <FormControl>
+              <Select
+                value={field.value ?? ""}
+                onValueChange={field.onChange}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="בחר/י מוסד" />
+                </SelectTrigger>
+                <SelectContent>
+                  {ACADEMIC_INSTITUTIONS.map((inst) => (
+                    <SelectItem key={inst.id} value={inst.id}>
+                      {inst.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </FormControl>
+            <FormMessage />
+          </FormItem>
+        )}
+      />
+
+      <FormField
+        control={form.control}
+        name="legal_specialization"
+        render={({ field }) => (
+          <FormItem>
+            <FormLabel>תחום התמחות</FormLabel>
+            <FormControl>
+              <Select
+                value={field.value ?? ""}
+                onValueChange={field.onChange}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="בחר/י תחום" />
+                </SelectTrigger>
+                <SelectContent>
+                  {LEGAL_SPECIALIZATIONS.map((spec) => (
+                    <SelectItem key={spec.id} value={spec.id}>
+                      {spec.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </FormControl>
             <FormMessage />
           </FormItem>
         )}

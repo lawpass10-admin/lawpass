@@ -1,5 +1,8 @@
 import { z } from "zod";
 
+import { ACADEMIC_INSTITUTION_IDS } from "@/lib/profile/institutions";
+import { LEGAL_SPECIALIZATION_IDS } from "@/lib/profile/specializations";
+
 // =============================================================================
 // Field-level schemas
 // =============================================================================
@@ -104,6 +107,22 @@ export const fullNameSchema = z
   .min(2, { message: "יש להזין שם מלא" })
   .max(100, { message: "שם ארוך מדי" });
 
+/**
+ * Slice 13 — academic institution + legal specialization. Both are
+ * REQUIRED at onboarding (no .optional()). The enum is fed the
+ * canonical id list from lib/profile/* so the source of truth lives
+ * with the constants. The Hebrew error messages mirror genderSchema's
+ * "יש לבחור …" style — users see a friendly prompt instead of zod's
+ * default enum-mismatch text.
+ */
+export const academicInstitutionSchema = z.enum(ACADEMIC_INSTITUTION_IDS, {
+  message: "יש לבחור מוסד אקדמי",
+});
+
+export const legalSpecializationSchema = z.enum(LEGAL_SPECIALIZATION_IDS, {
+  message: "יש לבחור תחום התמחות",
+});
+
 // =============================================================================
 // Composite schemas
 // =============================================================================
@@ -121,6 +140,9 @@ export const signupSchema = z
     phone: phoneSchema,
     gender: genderSchema,
     birth_date: birthDateSchema,
+    // Slice 13 — required at step 2 of the wizard.
+    academic_institution: academicInstitutionSchema,
+    legal_specialization: legalSpecializationSchema,
     exam_date_planned: examDatePlannedSchema,
     terms_accepted: z.literal(true, {
       message: "יש לאשר את התקנון ומדיניות הפרטיות",
@@ -153,6 +175,11 @@ export const signupStep2Schema = z.object({
   phone: phoneSchema,
   gender: genderSchema,
   birth_date: birthDateSchema,
+  // Slice 13 — onboarding requires both fields. Kept on step 2
+  // with the rest of the demographics so the wizard stays balanced
+  // (step 1 = credentials, step 2 = who you are, step 3 = consent).
+  academic_institution: academicInstitutionSchema,
+  legal_specialization: legalSpecializationSchema,
 });
 
 export const signupStep3Schema = z.object({
@@ -214,6 +241,10 @@ export const oauthCompletionSchema = z.object({
   gender: genderSchema,
   birth_date: birthDateSchema,
   exam_date_planned: examDatePlannedSchema,
+  // Slice 13 — placed after exam_date_planned, before terms_accepted,
+  // matching the form's visual order.
+  academic_institution: academicInstitutionSchema,
+  legal_specialization: legalSpecializationSchema,
   terms_accepted: z.literal(true, {
     message: "יש לאשר את התקנון ומדיניות הפרטיות",
   }),

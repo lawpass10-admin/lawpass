@@ -6,6 +6,8 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import type { AdminUserDetail } from "@/lib/db/admin";
+import { getAcademicInstitutionLabel } from "@/lib/profile/institutions";
+import { getLegalSpecializationLabel } from "@/lib/profile/specializations";
 
 const GENDER_LABELS: Record<string, string> = {
   male: "זכר",
@@ -91,6 +93,24 @@ export default function UserProfileCard({
             label="מקור הרשמה"
             value={
               SIGNUP_SOURCE_LABELS[detail.profile.signupSource] ?? "—"
+            }
+          />
+          {/* Slice 13 — onboarding-time fields. Pre-Slice-13 users have
+              null on both; admin sees "—". The stored value is a
+              lowercase-ascii id; we look up the Hebrew label via the
+              constants in lib/profile/*. */}
+          <Field
+            label="מוסד אקדמי"
+            value={
+              getAcademicInstitutionLabel(detail.profile.academicInstitution) ??
+              "—"
+            }
+          />
+          <Field
+            label="תחום התמחות"
+            value={
+              getLegalSpecializationLabel(detail.profile.legalSpecialization) ??
+              "—"
             }
           />
           <Field

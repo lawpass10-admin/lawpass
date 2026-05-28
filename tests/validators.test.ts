@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  academicInstitutionSchema,
   birthDateSchema,
   emailSchema,
   examDatePlannedSchema,
+  legalSpecializationSchema,
   passwordSchema,
   phoneSchema,
 } from "@/lib/validators/auth";
@@ -86,5 +88,73 @@ describe("examDatePlannedSchema (.nullish())", () => {
 
   it("rejects a date that is not the first of the month", () => {
     expect(examDatePlannedSchema.safeParse("2026-08-15").success).toBe(false);
+  });
+});
+
+// =============================================================================
+// Slice 13 — academic_institution + legal_specialization enum schemas
+// =============================================================================
+
+describe("academicInstitutionSchema", () => {
+  it("accepts a listed id", () => {
+    const result = academicInstitutionSchema.safeParse("hebrew_university");
+    expect(result.success).toBe(true);
+  });
+
+  it("accepts the 'other' fallback id", () => {
+    expect(academicInstitutionSchema.safeParse("other").success).toBe(true);
+  });
+
+  it("rejects empty string", () => {
+    const result = academicInstitutionSchema.safeParse("");
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.issues[0]?.message).toMatch(/מוסד אקדמי/);
+    }
+  });
+
+  it("rejects an off-list id", () => {
+    expect(
+      academicInstitutionSchema.safeParse("not_a_real_institution").success
+    ).toBe(false);
+  });
+
+  it("rejects non-string inputs", () => {
+    expect(academicInstitutionSchema.safeParse(42).success).toBe(false);
+    expect(academicInstitutionSchema.safeParse(null).success).toBe(false);
+    expect(academicInstitutionSchema.safeParse(undefined).success).toBe(false);
+  });
+});
+
+describe("legalSpecializationSchema", () => {
+  it("accepts a listed id", () => {
+    const result = legalSpecializationSchema.safeParse("criminal_law");
+    expect(result.success).toBe(true);
+  });
+
+  it("accepts the 'other_undecided' fallback id", () => {
+    expect(
+      legalSpecializationSchema.safeParse("other_undecided").success
+    ).toBe(true);
+  });
+
+  it("rejects empty string", () => {
+    const result = legalSpecializationSchema.safeParse("");
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.issues[0]?.message).toMatch(/תחום התמחות/);
+    }
+  });
+
+  it("rejects an off-list id", () => {
+    expect(
+      legalSpecializationSchema.safeParse("not_a_real_specialization").success
+    ).toBe(false);
+  });
+
+  it("rejects non-string inputs", () => {
+    expect(legalSpecializationSchema.safeParse(42).success).toBe(false);
+    expect(legalSpecializationSchema.safeParse(null).success).toBe(false);
+    expect(legalSpecializationSchema.safeParse(undefined).success).toBe(false);
   });
 });

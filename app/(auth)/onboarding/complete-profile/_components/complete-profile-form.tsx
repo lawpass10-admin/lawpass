@@ -37,6 +37,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { ACADEMIC_INSTITUTIONS } from "@/lib/profile/institutions";
+import { LEGAL_SPECIALIZATIONS } from "@/lib/profile/specializations";
 import {
   oauthCompletionSchema,
   type OAuthCompletionInput,
@@ -108,6 +110,11 @@ export default function CompleteProfileForm({
     gender: "",
     birth_date: "",
     exam_date_planned: null,
+    // Slice 13 — initialized to "" (not undefined) so the controlled
+    // <Select> binds cleanly from first render. Zod's enum rejects ""
+    // on submit; the user must pick a listed id.
+    academic_institution: "",
+    legal_specialization: "",
   } as unknown as DefaultValues<OAuthCompletionInput>;
 
   const form = useForm<OAuthCompletionInput>({
@@ -312,6 +319,65 @@ export default function CompleteProfileForm({
                       </SelectContent>
                     </Select>
                   </div>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            {/* Slice 13 — academic institution + legal specialization.
+                Placed AFTER exam_date_planned and BEFORE terms_accepted.
+                Both REQUIRED — same closed lists the signup wizard uses. */}
+            <FormField
+              control={form.control}
+              name="academic_institution"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>מוסד אקדמי</FormLabel>
+                  <FormControl>
+                    <Select
+                      value={field.value ?? ""}
+                      onValueChange={field.onChange}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="בחר/י מוסד" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {ACADEMIC_INSTITUTIONS.map((inst) => (
+                          <SelectItem key={inst.id} value={inst.id}>
+                            {inst.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
+              name="legal_specialization"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>תחום התמחות</FormLabel>
+                  <FormControl>
+                    <Select
+                      value={field.value ?? ""}
+                      onValueChange={field.onChange}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="בחר/י תחום" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {LEGAL_SPECIALIZATIONS.map((spec) => (
+                          <SelectItem key={spec.id} value={spec.id}>
+                            {spec.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </FormControl>
                   <FormMessage />
                 </FormItem>
               )}
