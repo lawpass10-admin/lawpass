@@ -1,7 +1,6 @@
 "use client";
 
 import {
-  BarChart3,
   Bookmark,
   Gauge,
   LogOut,
@@ -293,28 +292,11 @@ export function AppSidebar({
           </SidebarMenu>
         </SidebarGroup>
 
-        {/* Standalone — סטטיסטיקה */}
-        <SidebarGroup>
-          <SidebarMenu className="gap-1.5">
-            {(() => {
-              const active = isPathActive(pathname, "/statistics");
-              return (
-                <SidebarMenuItem className="relative">
-                  <SidebarMenuButton
-                    render={<Link href="/statistics" />}
-                    isActive={active}
-                    className={NAV_BUTTON_CLS}
-                  >
-                    <BarChart3 strokeWidth={1.5} />
-                    <span>סטטיסטיקה</span>
-                  </SidebarMenuButton>
-                  {active ? <ActiveDot /> : null}
-                  {active ? <ActiveBar /> : null}
-                </SidebarMenuItem>
-              );
-            })()}
-          </SidebarMenu>
-        </SidebarGroup>
+        {/* Slice 12 — the standalone "סטטיסטיקה" nav block (linking to
+            /statistics with the BarChart3 icon) lived here between the
+            "המאגר שלי" group and the admin group. PM-removed; the
+            page itself stays reachable by direct URL but no longer
+            surfaces in the sidebar. */}
 
         {/* Slice 6 — admin nav. Renders only when the layout fetched
             profile.is_admin === true. */}

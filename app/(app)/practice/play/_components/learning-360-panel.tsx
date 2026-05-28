@@ -42,7 +42,7 @@ type SectionProps = {
  * stronger visual cue:
  *   - default → primary tint
  *   - danger  → destructive (for "מלכודת נפוצה")
- *   - gold    → amber (for "חשיבה מהירה 360°")
+ *   - gold    → amber (for "חשיבה 360°")
  */
 function Section({ icon, title, accent = "default", children }: SectionProps) {
   return (
@@ -73,16 +73,20 @@ function Section({ icon, title, accent = "default", children }: SectionProps) {
  * prototype. No collapse/expand state; the parent decides whether to
  * mount this component. Drawer layout was rejected by PM (plan §2).
  *
- * Field-to-section mapping (DB column → section):
+ * Field-to-section mapping (DB column → section). Slice 12 reordered
+ * concepts_and_skills to sit immediately above references_list, and
+ * renamed the quick_thinking_360 heading from "חשיבה מהירה 360°" to
+ * "חשיבה 360°":
  *   1. correctChoice (passed in) → green correct-answer banner
  *   2. legal_topic_analysis      → "ניתוח הנושא המשפטי"
  *   3. full_explanation          → "הסבר משפטי מלא"
  *   4. choices × distractor_analysis → "ניתוח מסיחים" (table)
- *   5. common_pitfall            → "מלכודת נפוצה" (danger accent)
- *   6. concepts_and_skills jsonb → "מושגים ומיומנויות" (tag chips)
- *   7. quick_thinking_360        → "חשיבה מהירה 360°" (gold accent,
- *                                   whitespace-pre-wrap container)
- *   8. summary_for_memory        → "מבט מסכם לזכירה"
+ *   5. common_pitfall            → "מלכודת נפוצה" (danger accent
+ *                                   + red alert content card, Slice 12)
+ *   6. quick_thinking_360        → "חשיבה 360°" (gold accent,
+ *                                   per-variation card stack)
+ *   7. summary_for_memory        → "מבט מסכם לזכירה"
+ *   8. concepts_and_skills jsonb → "מושגים ומיומנויות" (tag chips)
  *   9. references_list jsonb     → "רפרנסים" (ul/li, dir="auto")
  */
 export function Learning360Panel({
@@ -169,18 +173,47 @@ export function Learning360Panel({
         </div>
       </Section>
 
-      {/* 5. Common pitfall */}
+      {/* 5. Common pitfall — Slice 12 wraps the body in a soft red
+          alert card. The accent="danger" icon tile alone wasn't
+          enough of a signal; the content body now reads visually as
+          a warning (rounded border + destructive-tinted background)
+          while staying readable for long whitespace-pre-wrap copy. */}
       <Section
         icon={<TriangleAlert className="size-3.5" />}
         title="מלכודת נפוצה"
         accent="danger"
       >
+        <div className="rounded-md border border-destructive/30 bg-destructive/5 p-4 dark:bg-destructive/10">
+          <p dir="auto" className="whitespace-pre-wrap">
+            {question.common_pitfall}
+          </p>
+        </div>
+      </Section>
+
+      {/* 6. Quick thinking 360° — gold accent, parsed into per-variation
+          cards (Slice 7.6). Falls back to whitespace-pre-wrap when the
+          text doesn't carry the **וריאציה N — title:** ← answer pattern.
+          Slice 12 dropped the word "מהירה" from the heading. */}
+      <Section
+        icon={<Zap className="size-3.5" />}
+        title="חשיבה 360°"
+        accent="gold"
+      >
+        <QuickThinking360 text={question.quick_thinking_360} />
+      </Section>
+
+      {/* 7. Summary */}
+      <Section icon={<Eye className="size-3.5" />} title="מבט מסכם לזכירה">
         <p dir="auto" className="whitespace-pre-wrap">
-          {question.common_pitfall}
+          {question.summary_for_memory}
         </p>
       </Section>
 
-      {/* 6. Concepts & skills (tag chips) */}
+      {/* 8. Concepts & skills (tag chips). Slice 12 relocated this
+          section to sit immediately above "רפרנסים" so the reader
+          ends with the lookup-style tail (concepts + sources) after
+          the narrative-style body (analysis, explanation, pitfall,
+          variations, summary). */}
       <Section
         icon={<Sparkles className="size-3.5" />}
         title="מושגים ומיומנויות"
@@ -200,24 +233,6 @@ export function Learning360Panel({
         ) : (
           <span className="text-muted-foreground">—</span>
         )}
-      </Section>
-
-      {/* 7. Quick thinking 360° — gold accent, parsed into per-variation
-          cards (Slice 7.6). Falls back to whitespace-pre-wrap when the
-          text doesn't carry the **וריאציה N — title:** ← answer pattern. */}
-      <Section
-        icon={<Zap className="size-3.5" />}
-        title="חשיבה מהירה 360°"
-        accent="gold"
-      >
-        <QuickThinking360 text={question.quick_thinking_360} />
-      </Section>
-
-      {/* 8. Summary */}
-      <Section icon={<Eye className="size-3.5" />} title="מבט מסכם לזכירה">
-        <p dir="auto" className="whitespace-pre-wrap">
-          {question.summary_for_memory}
-        </p>
       </Section>
 
       {/* 9. References */}

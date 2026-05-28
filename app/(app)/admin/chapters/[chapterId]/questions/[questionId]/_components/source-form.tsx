@@ -130,7 +130,7 @@ export default function SourceForm({ source }: { source: QuestionEditorSource })
             name="quick_thinking_360"
             render={({ field }) => (
               <FormItem>
-                <FormLabel>חשיבה מהירה 360°</FormLabel>
+                <FormLabel>חשיבה 360°</FormLabel>
                 {/* Slice 7.6 — render-time parser splits on
                     **וריאציה N — title:** ← and turns each into a
                     reveal card. Admins should keep this pattern when
