@@ -9,6 +9,31 @@ import { FAQ_EYEBROW, FAQ_ITEMS, FAQ_QUOTE } from "./landing-copy";
 import { MarketingSection } from "./marketing-section";
 
 /**
+ * Slice 16 / Phase L6 — schema.org FAQPage JSON-LD.
+ *
+ * Stringified once at module load (FAQ_ITEMS is a `readonly` const)
+ * so we don't pay JSON.stringify on every accordion click. The
+ * markup lives inside the section because crawlers read it from the
+ * SSR HTML; React's Client/Server boundary doesn't matter to Google.
+ *
+ * Listed before the JSX so the structured data sits at the top of
+ * the section's DOM — easier for tools like Rich Results Test to
+ * pick up.
+ */
+const FAQ_JSON_LD = JSON.stringify({
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  mainEntity: FAQ_ITEMS.map((item) => ({
+    "@type": "Question",
+    name: item.q,
+    acceptedAnswer: {
+      "@type": "Answer",
+      text: item.a,
+    },
+  })),
+});
+
+/**
  * FAQ section — left column with the character portrait + quote
  * bubble, right column with a single-open accordion.
  *
@@ -21,6 +46,9 @@ import { MarketingSection } from "./marketing-section";
  * compressed during the L3 build (sips -Z 600). Surrounded by a
  * dashed gold ring that rotates infinitely (`.faq-ring-rotate`,
  * see app/globals.css; disabled under prefers-reduced-motion).
+ *
+ * Slice 16 / Phase L6 — emits a schema.org FAQPage JSON-LD block
+ * alongside the accordion for Google rich-results eligibility.
  */
 export function LandingFaq() {
   // -1 = nothing open. The "single-open" rule is enforced by setting
@@ -29,6 +57,16 @@ export function LandingFaq() {
 
   return (
     <section id="faq" className="bg-white py-28">
+      {/*
+        FAQPage structured data — emitted server-side via SSR so
+        crawlers find it on first render. dangerouslySetInnerHTML
+        is required because React would otherwise HTML-escape the
+        JSON braces, breaking the schema validator.
+      */}
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: FAQ_JSON_LD }}
+      />
       <MarketingSection
         as="div"
         innerClassName="px-8 grid grid-cols-1 items-start gap-x-20 gap-y-12 lg:grid-cols-[1fr_1.2fr]"
