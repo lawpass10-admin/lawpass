@@ -333,6 +333,18 @@
     animation: none;
   }
 }
+/* Mobile (<1024px = matches the Tailwind `lg` breakpoint where the
+   plans grid stays single-column): featured card now stacks with the
+   others, so the floating translateY would read as a random offset
+   instead of visual emphasis. Disable the animation + lock the
+   resting transform on narrow widths; gold border + glow + badge
+   stay intact and carry the "המומלץ" signal on their own. */
+@media (max-width: 1023px) {
+  .plan-float {
+    animation: none;
+    transform: none;
+  }
+}
 
 /* ============================================
    Slice 16 — landing-hero typewriter cursor blink.

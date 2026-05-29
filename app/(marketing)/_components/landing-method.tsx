@@ -56,7 +56,10 @@ export function LandingMethod() {
       as="section"
       id="method"
       className="relative overflow-hidden bg-[var(--color-navy-ink)] text-white"
-      innerClassName="px-8 pt-20 pb-28"
+      // Mobile trims horizontal padding to px-4 (16px) so the pillars
+      // can use more of the narrow viewport. md+ restores px-8 and the
+      // deeper vertical breathing room the prototype calls for.
+      innerClassName="px-4 pt-16 pb-20 md:px-8 md:pt-20 md:pb-28"
     >
       {/* Subtle ambient wash — prototype .method-section::before. */}
       <div

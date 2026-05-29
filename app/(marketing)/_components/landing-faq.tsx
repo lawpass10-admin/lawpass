@@ -61,7 +61,7 @@ export function LandingFaq() {
   const [open, setOpen] = useState<number>(0);
 
   return (
-    <section id="faq" className="bg-white py-28">
+    <section id="faq" className="bg-white py-20 md:py-28">
       {/*
         FAQPage structured data — emitted server-side via SSR so
         crawlers find it on first render. dangerouslySetInnerHTML
@@ -74,7 +74,7 @@ export function LandingFaq() {
       />
       <MarketingSection
         as="div"
-        innerClassName="px-8 grid grid-cols-1 items-start gap-x-20 gap-y-12 lg:grid-cols-[1fr_1.2fr]"
+        innerClassName="px-4 grid grid-cols-1 items-start gap-x-20 gap-y-12 md:px-8 lg:grid-cols-[1fr_1.2fr]"
       >
         {/* Left column — heading + character */}
         <div className="relative">
@@ -94,7 +94,12 @@ export function LandingFaq() {
             </h2>
           </div>
 
-          <div className="relative mt-10 aspect-square max-w-[420px]">
+          {/* Character block: square aspect, max-w-[420px] caps it
+              on large screens; mx-auto centers it on mobile so the
+              quote bubble (positioned at inset-inline-end: -40 on
+              desktop, but clamped to 0 on mobile via the Tailwind
+              breakpoint below) doesn't overflow the viewport. */}
+          <div className="relative mx-auto mt-10 aspect-square w-full max-w-[420px]">
             {/* Rotating dashed ring (24s loop) */}
             <div
               aria-hidden="true"
@@ -134,10 +139,13 @@ export function LandingFaq() {
               />
             </div>
 
-            {/* Quote bubble */}
+            {/* Quote bubble.
+                Mobile (<768px): bubble sits at inset-inline-end: 0 so
+                it stays inside the character square — preventing a
+                horizontal-scroll trigger on 375/390px viewports.
+                md+: restores the prototype's -40 outward overhang. */}
             <div
-              className="absolute bottom-6 max-w-[280px] rounded-[var(--radius-card)] border border-[var(--color-line)] bg-white px-[22px] pb-4 pt-[18px] shadow-[var(--shadow-md)]"
-              style={{ insetInlineEnd: -40 }}
+              className="absolute bottom-6 max-w-[280px] rounded-[var(--radius-card)] border border-[var(--color-line)] bg-white px-[22px] pb-4 pt-[18px] shadow-[var(--shadow-md)] end-0 md:end-[-40px]"
             >
               <div
                 aria-hidden="true"

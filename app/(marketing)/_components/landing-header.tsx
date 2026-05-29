@@ -26,11 +26,17 @@ export function LandingHeader() {
     <MarketingSection
       as="header"
       className="sticky top-0 z-50 border-b border-white/10 bg-[var(--color-navy-ink)]"
-      innerClassName="grid grid-cols-[1fr_auto_1fr] items-center gap-6 py-2.5"
+      // Mobile (<768px): drop the nav cell entirely and run 2 columns
+      // so the logo sits at the start and the gold CTA at the end.
+      // md+ (≥768px): restore the 1fr|auto|1fr grid with nav visible.
+      innerClassName="grid grid-cols-[auto_1fr] items-center gap-3 py-2.5 md:grid-cols-[1fr_auto_1fr] md:gap-6"
     >
       <nav
         aria-label="ראשי"
-        className="flex items-center gap-6 justify-self-start"
+        // Hide nav under 768px per Sharon's mobile spec — logo + gold
+        // CTA are the only chrome on phones; the in-page sections are
+        // still reachable by scrolling once you land.
+        className="hidden items-center gap-6 justify-self-start md:flex"
       >
         <Link
           href="#method"
@@ -84,7 +90,9 @@ export function LandingHeader() {
         href="/login"
         className={cn(
           buttonVariants({ variant: "gold", size: "lg" }),
-          "justify-self-end px-[22px] py-[11px] text-sm font-semibold"
+          // Slightly tighter on mobile so the CTA + logo fit on a
+          // 375px viewport. md+ uses the prototype padding.
+          "justify-self-end px-3 py-2 text-[13px] font-semibold md:px-[22px] md:py-[11px] md:text-sm"
         )}
       >
         כניסה לאזור אישי

@@ -51,7 +51,12 @@ export function LandingHero() {
 
       <div
         className={cn(
-          "relative mx-auto grid w-full max-w-[1320px] items-start gap-10 px-8 pt-6 pb-[280px]",
+          "relative mx-auto grid w-full max-w-[1320px] items-start gap-8 px-4 pt-6 pb-[200px]",
+          // Mobile keeps the bottom padding shorter (200px) so the
+          // wave isn't a giant blank navy band under a stacked
+          // figure. md+ restores the prototype's 280px to give the
+          // wave room to overlap the character's feet.
+          "md:gap-10 md:px-8 md:pb-[280px]",
           // RTL grid: column 1 (right) holds copy, column 2 (left) holds figure.
           // 1.25fr / 0.75fr ratio matches prototype hero-grid (L258).
           "grid-cols-1 md:grid-cols-[1.25fr_0.75fr]"
@@ -63,8 +68,11 @@ export function LandingHero() {
           {/* Eyebrow ("שיטת ה-360° של ד״ר שרון נאור") was removed per
               Sharon, 2026-05-29 — the headline now opens the column. */}
 
-          {/* Headline. Two lines — second line gets a gold dot. */}
-          <h1 className="mb-[18px] text-[var(--color-navy-ink)] font-extrabold leading-[1.04] text-[clamp(42px,4.6vw,70px)]">
+          {/* Headline. Two lines — second line gets a gold dot.
+              Clamp goes lower (32px) on narrow viewports so the headline
+              never overflows; `whitespace-nowrap` keeps each line on
+              one row at the chosen size. */}
+          <h1 className="mb-[18px] text-[var(--color-navy-ink)] font-extrabold leading-[1.04] text-[clamp(32px,7vw,70px)]">
             <span className="block whitespace-nowrap">{HERO_HEADLINE_A}</span>
             <span className="relative block whitespace-nowrap">
               <span>{HERO_HEADLINE_B}</span>
@@ -79,9 +87,11 @@ export function LandingHero() {
 
           {/* Sub line — Typewriter cycles through HERO_TYPEWRITER_LINES.
               The min-height matches the prototype's reserved 3.2em so the
-              CTA row never shifts as lines of different lengths cycle. */}
+              CTA row never shifts as lines of different lengths cycle.
+              Mobile min size 17px keeps the subtitle readable without
+              eating the whole viewport. */}
           <p
-            className="mb-9 max-w-[620px] text-[var(--ink-3)] font-normal leading-[1.5] text-[clamp(24px,1.95vw,30px)]"
+            className="mb-9 max-w-[620px] text-[var(--ink-3)] font-normal leading-[1.5] text-[clamp(17px,3.6vw,30px)]"
             style={{ minHeight: "3.2em" }}
           >
             <Typewriter
@@ -119,9 +129,10 @@ export function LandingHero() {
           </div>
         </div>
 
-        {/* Figure column */}
+        {/* Figure column. Mobile cuts figure height in half so the
+            stacked layout doesn't stretch to 1200px tall on phones. */}
         <div
-          className="relative flex h-[600px] items-end justify-center"
+          className="relative flex h-[400px] items-end justify-center md:h-[600px]"
           style={{ zIndex: 1 }}
         >
           <div
@@ -166,10 +177,12 @@ export function LandingHero() {
         </div>
       </div>
 
-      {/* Navy wave — absolute bottom band, between figure (z1) and copy (z3). */}
+      {/* Navy wave — absolute bottom band, between figure (z1) and copy (z3).
+          Mobile shrinks the wave height so it doesn't gulp the lower
+          third of a 667px viewport; md+ restores the prototype's 320px. */}
       <div
         aria-hidden="true"
-        className="pointer-events-none absolute inset-x-0 bottom-0 h-[320px]"
+        className="pointer-events-none absolute inset-x-0 bottom-0 h-[180px] md:h-[320px]"
         style={{ zIndex: 2 }}
       >
         <svg

@@ -46,7 +46,7 @@ export function LandingFooter() {
     <footer className="bg-[var(--color-navy-ink)] text-white/[0.78]">
       <MarketingSection
         as="div"
-        innerClassName="grid grid-cols-1 gap-x-15 gap-y-10 px-8 pt-18 pb-12 md:grid-cols-[1.2fr_2fr]"
+        innerClassName="grid grid-cols-1 gap-x-15 gap-y-10 px-4 pt-12 pb-10 md:grid-cols-[1.2fr_2fr] md:px-8 md:pt-18 md:pb-12"
       >
         <div>
           <Image
@@ -62,7 +62,9 @@ export function LandingFooter() {
           </p>
         </div>
 
-        <div className="grid grid-cols-1 gap-8 sm:grid-cols-3">
+        {/* 3-column links: stacks to 1-col on phones, splits to a
+            2-col arrangement at small width, full 3-col at sm+. */}
+        <div className="grid grid-cols-2 gap-6 gap-y-8 sm:grid-cols-3 sm:gap-8">
           <FooterColumn
             heading="המוצר"
             links={[
@@ -95,7 +97,7 @@ export function LandingFooter() {
       <div className="border-t border-white/10">
         <MarketingSection
           as="div"
-          innerClassName="flex flex-wrap items-center justify-between gap-2.5 py-[22px] text-[13px] text-white/55"
+          innerClassName="flex flex-col items-center gap-2 px-4 py-5 text-center text-[13px] text-white/55 md:flex-row md:flex-wrap md:justify-between md:gap-2.5 md:px-8 md:py-[22px] md:text-start"
         >
           <span>© 2026 LawPass. כל הזכויות שמורות.</span>
           <span>נבנה בקפידה עבור סטאז&apos;רים בישראל.</span>

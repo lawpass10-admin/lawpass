@@ -105,6 +105,14 @@ export default function LoginForm() {
     }
   }
 
+  // Mobile-responsive sizing: inputs + buttons land at ≥44px tall on
+  // narrow widths (WCAG 2.5.5 touch-target spec) and shrink to the
+  // app-wide compact h-8 on md+. The `min-h-[44px]` on the password
+  // toggle / Google CTA isn't strictly needed (h-11 already = 44px)
+  // but it keeps the breakpoint transition predictable.
+  const fieldClass = "h-11 md:h-9 text-base md:text-sm";
+  const ctaClass = "h-11 md:h-9 w-full text-base md:text-sm";
+
   return (
     <Card>
       <CardHeader>
@@ -129,6 +137,7 @@ export default function LoginForm() {
                       inputMode="email"
                       autoComplete="email"
                       dir="ltr"
+                      className={fieldClass}
                       {...field}
                     />
                   </FormControl>
@@ -147,6 +156,7 @@ export default function LoginForm() {
                       type="password"
                       autoComplete="current-password"
                       dir="ltr"
+                      className={fieldClass}
                       {...field}
                     />
                   </FormControl>
@@ -157,12 +167,12 @@ export default function LoginForm() {
             <div className="flex justify-end">
               <Link
                 href="/forgot-password"
-                className="text-sm text-primary hover:underline"
+                className="inline-flex min-h-[44px] items-center text-sm text-primary hover:underline md:min-h-0"
               >
                 שכחתי סיסמה
               </Link>
             </div>
-            <Button type="submit" disabled={submitting} className="w-full">
+            <Button type="submit" disabled={submitting} className={ctaClass}>
               {submitting ? "מתחבר..." : "התחבר"}
             </Button>
           </form>
@@ -172,7 +182,7 @@ export default function LoginForm() {
         <Button
           type="button"
           variant="outline"
-          className="w-full"
+          className={ctaClass}
           disabled={oauthSubmitting}
           onClick={() => {
             // Navigate to the /auth/google Route Handler, which calls
@@ -189,7 +199,10 @@ export default function LoginForm() {
 
         <p className="mt-4 text-center text-sm text-muted-foreground">
           אין לך חשבון?{" "}
-          <Link href="/signup" className="text-primary hover:underline">
+          <Link
+            href="/signup"
+            className="inline-flex min-h-[44px] items-center text-primary hover:underline md:min-h-0"
+          >
             הרשם
           </Link>
         </p>

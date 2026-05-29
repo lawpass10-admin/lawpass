@@ -61,7 +61,12 @@ export function CookieBar() {
     <div
       role="region"
       aria-label="הודעת עוגיות"
-      className="relative border-b border-[var(--color-line)] bg-[#F4F1E8] px-14 py-[14px] text-center text-base font-normal text-[var(--ink)]"
+      // Mobile (<768px): asymmetric padding (12px start, 48px end) so
+      // the text doesn't crash into the absolute-positioned close
+      // button and so we don't waste 56px of space on the start side
+      // for centring. md+: restore px-14 (56px each side) so the
+      // centered text reads as a clean banner on desktop.
+      className="relative border-b border-[var(--color-line)] bg-[#F4F1E8] ps-3 pe-12 py-3 text-start text-[14px] font-normal text-[var(--ink)] md:px-14 md:py-[14px] md:text-center md:text-base"
     >
       <span>
         אתר זה משתמש בעוגיות (Cookies) לשיפור חוויית הגלישה והתאמת תכנים.

@@ -61,5 +61,10 @@ export default function MarketingLayout({
 }: {
   children: React.ReactNode;
 }) {
-  return <>{children}</>;
+  // Safety net for the mobile pass: each section is anchored inside the
+  // 1320px MarketingSection wrapper, but anything that bleeds past the
+  // viewport (radial washes, the character figure with -6% inset,
+  // future overhanging decorations) gets clipped here rather than
+  // triggering horizontal scroll on phones.
+  return <div className="overflow-x-hidden">{children}</div>;
 }

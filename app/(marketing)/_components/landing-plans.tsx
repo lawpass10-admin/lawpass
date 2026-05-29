@@ -29,8 +29,8 @@ import { MarketingSection } from "./marketing-section";
  */
 export function LandingPlans() {
   return (
-    <section id="plans" className="relative bg-[var(--color-paper)] py-28">
-      <MarketingSection as="div" innerClassName="px-8">
+    <section id="plans" className="relative bg-[var(--color-paper)] py-20 md:py-28">
+      <MarketingSection as="div" innerClassName="px-4 md:px-8">
         <div className="mx-auto mb-14 max-w-[720px] text-center">
           <div className="mb-[22px] inline-flex items-center justify-center gap-3 text-sm font-medium tracking-[0.01em] text-[var(--color-gold-deep)]">
             <span
@@ -49,6 +49,10 @@ export function LandingPlans() {
           </p>
         </div>
 
+        {/* Mobile (<1024px): cards stack vertically with a 24px gap.
+            md (≥768px) stays 1-col because the cards are tall and
+            wider stacking reads better than 2-up at tablet width.
+            lg+ uses the 3-up layout the prototype was designed for. */}
         <div className="grid grid-cols-1 items-stretch gap-6 lg:grid-cols-3">
           {PLANS.map((plan) => (
             <PlanCard key={plan.id} plan={plan} />
@@ -68,7 +72,7 @@ function PlanCard({ plan }: { plan: Plan }) {
   return (
     <article
       className={cn(
-        "relative flex flex-col rounded-[var(--radius-card-lg)] border bg-white p-9 pb-8 shadow-[var(--shadow-sm)] transition-[transform,box-shadow] duration-300",
+        "relative flex flex-col rounded-[var(--radius-card-lg)] border bg-white p-6 pb-7 shadow-[var(--shadow-sm)] transition-[transform,box-shadow] duration-300 md:p-9 md:pb-8",
         featured
           ? // Featured: navy-ink bg, gold border, soft glow, float.
             // The `plan-float` utility (app/globals.css) drives the
@@ -196,7 +200,7 @@ function PlanCard({ plan }: { plan: Plan }) {
 
 function ComingSoonCard() {
   return (
-    <article className="relative flex flex-col rounded-[var(--radius-card-lg)] border border-dashed border-[var(--color-line-strong)] bg-[#F4F2EC] p-9 pb-8">
+    <article className="relative flex flex-col rounded-[var(--radius-card-lg)] border border-dashed border-[var(--color-line-strong)] bg-[#F4F2EC] p-6 pb-7 md:p-9 md:pb-8">
       <div
         aria-hidden="true"
         className="absolute left-1/2 top-[-14px] z-[5] inline-flex min-w-[90px] -translate-x-1/2 items-center justify-center gap-1.5 whitespace-nowrap rounded-full bg-[#B8BCC8] px-[18px] py-[6px] text-xs font-bold uppercase tracking-[0.06em] leading-none text-white"
