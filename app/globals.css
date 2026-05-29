@@ -299,3 +299,22 @@
     animation: none;
   }
 }
+
+/* ============================================
+   Slice 16 — landing-hero typewriter cursor blink.
+   The cursor character (|) toggles opacity every 0.5s so it
+   blinks twice per second. Disabled under prefers-reduced-motion;
+   the cursor stays solid in that case. Mirrors the prototype's
+   `.tw-cursor` rule from reference/index.html (@keyframes blink).
+   ============================================ */
+@keyframes typewriterBlink {
+  50% { opacity: 0; }
+}
+.typewriter-cursor {
+  animation: typewriterBlink 1s steps(2) infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .typewriter-cursor {
+    animation: none;
+  }
+}

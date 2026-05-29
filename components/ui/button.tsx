@@ -22,7 +22,13 @@ const buttonVariants = cva(
         // Wraps the existing `.btn-gold` utility (app/globals.css)
         // so the gradient + shadow stack stays in one place. Use
         // for high-emphasis actions on the public landing page.
-        gold: "btn-gold border-transparent",
+        //
+        // rounded-full overrides the base rounded-lg — the prototype's
+        // .btn-primary is a full pill (border-radius: --radius-pill =
+        // 999px). Both landing CTAs ("כניסה לאזור אישי" in the header
+        // and "התחילו לתרגל" in the hero) use this variant and must
+        // share the pill shape.
+        gold: "btn-gold border-transparent rounded-full",
       },
       size: {
         default:

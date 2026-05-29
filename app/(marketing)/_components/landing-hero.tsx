@@ -4,6 +4,16 @@ import Link from "next/link";
 import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
+import {
+  HERO_CTA_LABEL,
+  HERO_EYEBROW,
+  HERO_HEADLINE_A,
+  HERO_HEADLINE_B,
+  HERO_TYPEWRITER_LINES,
+  HERO_TYPEWRITER_SPEED_MS,
+} from "./landing-copy";
+import { Typewriter } from "./typewriter";
+
 /**
  * Landing hero.
  *
@@ -12,9 +22,10 @@ import { cn } from "@/lib/utils";
  * Behind the bottom of the figure sits the navy wave SVG, which
  * meets the navy-ink Method section below in L3.
  *
- * Phase L2 intentionally ships the headline + sub line as STATIC
- * strings; the typewriter machine arrives in Phase L4 and replaces
- * the `.tw-text` slot only — the rest of the markup stays.
+ * Headline stays static; the sub line cycles through four
+ * sentences via the `<Typewriter>` client component (originally
+ * scoped to Phase L4 but pulled forward in the L2-polish commit
+ * since the hero is otherwise complete).
  *
  * NOTE on z-index stacking (prototype index.html L264–276):
  *   hero-figure  → z 1
@@ -55,16 +66,14 @@ export function LandingHero() {
               aria-hidden="true"
               className="block h-[1.5px] w-7 shrink-0 bg-[var(--color-gold)]"
             />
-            <span>שיטת ה-360° של ד״ר שרון נאור</span>
+            <span>{HERO_EYEBROW}</span>
           </div>
 
           {/* Headline. Two lines — second line gets a gold dot. */}
           <h1 className="mb-[18px] text-[var(--color-navy-ink)] font-extrabold leading-[1.04] text-[clamp(42px,4.6vw,70px)]">
-            <span className="block whitespace-nowrap">
-              עוברים את מבחן הלשכה
-            </span>
+            <span className="block whitespace-nowrap">{HERO_HEADLINE_A}</span>
             <span className="relative block whitespace-nowrap">
-              <span>בפעם ראשונה</span>
+              <span>{HERO_HEADLINE_B}</span>
               <span
                 aria-hidden="true"
                 className="ms-1 text-[var(--color-gold)]"
@@ -74,16 +83,17 @@ export function LandingHero() {
             </span>
           </h1>
 
-          {/* Sub line — static for L2; replaced by Typewriter machine in L4.
+          {/* Sub line — Typewriter cycles through HERO_TYPEWRITER_LINES.
               The min-height matches the prototype's reserved 3.2em so the
-              CTA row doesn't shift when the typewriter cycles in L4. */}
+              CTA row never shifts as lines of different lengths cycle. */}
           <p
             className="mb-9 max-w-[620px] text-[var(--ink-3)] font-normal leading-[1.5] text-[clamp(24px,1.95vw,30px)]"
             style={{ minHeight: "3.2em" }}
           >
-            <span className="text-[var(--color-navy-ink)]">
-              עם שיטת ה-360° של LawPass.
-            </span>
+            <Typewriter
+              lines={HERO_TYPEWRITER_LINES}
+              speed={HERO_TYPEWRITER_SPEED_MS}
+            />
           </p>
 
           <div className="mb-14 flex flex-wrap items-center gap-3.5">
@@ -95,7 +105,7 @@ export function LandingHero() {
                 "px-7 py-3 text-base font-semibold"
               )}
             >
-              התחילו לתרגל
+              {HERO_CTA_LABEL}
             </Link>
             <Link
               href="#method"
