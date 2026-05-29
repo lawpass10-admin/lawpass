@@ -1,25 +1,36 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 
 import { SiteFooter } from "@/components/shared/site-footer";
 import { buttonVariants } from "@/components/ui/button";
+import { createClient } from "@/lib/supabase/server";
 import { cn } from "@/lib/utils";
 
 /**
  * / — public landing page (Server Component, static).
  *
- * Static placeholder until the Slice 6 marketing site lands. Renders the
- * app name, a one-sentence Hebrew tagline, and two CTA buttons (signup +
- * login). NO database access, NO admin client, NO server-side data
- * fetching — everything here is content-only.
+ * Slice 16 (Phase L1) — added the authenticated-visitor redirect.
+ * Anonymous visitors see the public landing; authenticated users are
+ * bounced to /dashboard. The redirect lives here at the page level
+ * rather than in a Next middleware because the project has no
+ * `middleware.ts` — auth gating across the app is per-route via
+ * `requireActiveSubscription` / `requireAdmin` (see lib/auth/*).
  *
- * Replaced an earlier dev-only Supabase connectivity smoketest that used
- * `createAdminClient()` (the service-role key) on the public homepage.
- * That probe leaked connection-state information to anonymous visitors
- * and violated Hardening Rule #2 ("SSR client only — never the admin
- * client"). For a future health probe, use an admin-gated /api/health
- * route instead.
+ * The full hi-fi landing (hero / method / pricing / FAQ / footer)
+ * lands in Phase L2 onward; this file currently still renders the
+ * pre-Slice-16 placeholder content below the redirect guard.
+ *
+ * NO database access, NO admin client. The single auth.getUser() call
+ * uses the SSR client and reads from cookies — Hardening Rule #2
+ * compliant (never the service-role client on a public page).
  */
-export default function Home() {
+export default async function Home() {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (user) redirect("/dashboard");
+
   return (
     <div className="flex min-h-full flex-1 flex-col">
       <main className="flex flex-1 items-center justify-center px-4 py-12">
