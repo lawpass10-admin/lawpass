@@ -5,7 +5,12 @@ import { useState } from "react";
 
 import { cn } from "@/lib/utils";
 
-import { FAQ_EYEBROW, FAQ_ITEMS, FAQ_QUOTE } from "./landing-copy";
+import {
+  FAQ_EYEBROW,
+  FAQ_ITEMS,
+  FAQ_QUOTE_SUBTITLE,
+  FAQ_QUOTE_TITLE,
+} from "./landing-copy";
 import { MarketingSection } from "./marketing-section";
 
 /**
@@ -141,8 +146,11 @@ export function LandingFaq() {
               >
                 ״
               </div>
-              <div className="whitespace-pre-line text-[15px] font-medium leading-[1.4] text-[var(--color-navy-ink)]">
-                {FAQ_QUOTE}
+              <div className="text-[16px] font-bold leading-[1.3] text-[var(--color-navy-ink)]">
+                {FAQ_QUOTE_TITLE}
+              </div>
+              <div className="mt-1.5 text-[13.5px] font-normal leading-[1.45] text-[var(--ink-3)]">
+                {FAQ_QUOTE_SUBTITLE}
               </div>
             </div>
           </div>

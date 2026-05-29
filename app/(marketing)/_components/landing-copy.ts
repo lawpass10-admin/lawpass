@@ -163,7 +163,18 @@ export type FaqItem = {
   readonly a: string;
 };
 
-export const FAQ_QUOTE = "כל השאלות שכבר נשאלו —\nמסודרות לפי נושא, מחכות לך כאן.";
+/**
+ * Quote bubble next to the FAQ character — title + subtitle. Sharon
+ * 2026-05-29 (post-deploy): the prior copy was too soft; new framing
+ * leads with "הכל עניין של תרגול." as the headline and lets the
+ * subtitle spell out the value (per-distractor analysis, traps,
+ * references). Stored as two separate strings rather than a
+ * `\n`-joined block so the JSX can apply distinct typography
+ * (bigger/bolder title, smaller subtitle).
+ */
+export const FAQ_QUOTE_TITLE = "הכל עניין של תרגול.";
+export const FAQ_QUOTE_SUBTITLE =
+  "כל שאלה שכבר נשאלה, לפי נושא — עם הסבר לכל מסיח, מלכודת ורפרנס.";
 
 export const FAQ_ITEMS: ReadonlyArray<FaqItem> = [
   {
