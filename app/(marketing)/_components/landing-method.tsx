@@ -121,17 +121,28 @@ function Pillar({ index, title, desc, video, loadVideo }: PillarProps) {
   // an `AbortError: play() interrupted by pause()` rejection (which
   // is otherwise harmless but spams the console).
   const playPromiseRef = useRef<Promise<void> | null>(null);
+  // Latch: true once we've successfully parked the video on its
+  // last frame. Without this gate the duplicate `loadeddata` /
+  // `canplay` events that some browsers fire *after* a seek would
+  // re-park the video mid-hover and kill the playback. Reset to
+  // false on mouseenter and again on mouseleave so subsequent
+  // settles can run at the right moment.
+  const hasIdledRef = useRef(false);
 
   // Park the clip on its last frame so the still icon has the
-  // "fully-formed" pose rather than the empty first frame.
+  // "fully-formed" pose rather than the empty first frame. Gated
+  // by `hasIdledRef` — once parked, subsequent media-ready events
+  // are no-ops (the bug we're fixing here is that `onCanPlay` was
+  // firing mid-hover and stomping playback).
   const settleOnLastFrame = () => {
     const v = videoRef.current;
-    if (!v) return;
+    if (!v || hasIdledRef.current) return;
     try {
       if (Number.isFinite(v.duration) && v.duration > 0) {
         v.currentTime = Math.max(0, v.duration - 0.05);
+        v.pause();
+        hasIdledRef.current = true;
       }
-      v.pause();
     } catch {
       // Ignore — best-effort idle frame.
     }
@@ -140,6 +151,10 @@ function Pillar({ index, title, desc, video, loadVideo }: PillarProps) {
   // Awaits any pending play() before settling, so we never call
   // pause() while play() is still resolving.
   const settleSafe = () => {
+    // Re-arm the latch so this mouseleave can actually park the
+    // video again (mouseenter set it back to false anyway, but be
+    // explicit so the intent is clear at the leave site too).
+    hasIdledRef.current = false;
     const pending = playPromiseRef.current;
     if (pending) {
       pending.then(settleOnLastFrame, settleOnLastFrame);
@@ -158,6 +173,13 @@ function Pillar({ index, title, desc, video, loadVideo }: PillarProps) {
       onMouseEnter={() => {
         const v = videoRef.current;
         if (!v) return;
+        // Re-arm the idle latch so the eventual mouseleave can park
+        // the video. The settle gate itself stays closed for the
+        // duration of hover playback because (a) the video is now
+        // actively playing and (b) the only events that would fire
+        // settle (loadeddata/loadedmetadata) only happen at src load,
+        // not during normal playback.
+        hasIdledRef.current = false;
         try {
           v.currentTime = 0;
           const p = v.play();
@@ -183,13 +205,20 @@ function Pillar({ index, title, desc, video, loadVideo }: PillarProps) {
           // type and fall back to the NotSupportedError seen in
           // QA when going through certain proxies / CDNs.
           //
-          // settleOnLastFrame is wired into THREE load events because
-          // the order they fire in varies by browser:
+          // settleOnLastFrame is wired into TWO load events:
           //   loadedmetadata → duration known (might be Infinity briefly)
           //   loadeddata     → first frame decoded
-          //   canplay        → first usable frame ready to render
           // First one to land where duration is finite wins; later
-          // calls are no-ops thanks to the Number.isFinite guard.
+          // calls are no-ops thanks to the `hasIdledRef` gate.
+          //
+          // Slice 16 L3-QA-2 (2026-05-29): `onCanPlay` was removed —
+          // it kept refiring mid-hover (whenever the video buffered
+          // more frames) and re-running settleOnLastFrame, which
+          // froze the clip at its last frame and killed hover
+          // playback. `loadedmetadata` + `loadeddata` only fire at
+          // initial src load, so the idle parking happens exactly
+          // once. The hasIdledRef latch is belt-and-suspenders in
+          // case any browser duplicates loadeddata after a seek.
           <video
             ref={videoRef}
             muted
@@ -199,7 +228,6 @@ function Pillar({ index, title, desc, video, loadVideo }: PillarProps) {
             aria-hidden="true"
             onLoadedMetadata={settleOnLastFrame}
             onLoadedData={settleOnLastFrame}
-            onCanPlay={settleOnLastFrame}
             className="block h-full w-full bg-white object-contain"
           >
             <source src={video} type="video/mp4" />
