@@ -115,6 +115,12 @@ type PillarProps = {
 
 function Pillar({ index, title, desc, video, loadVideo }: PillarProps) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
+  // Tracks the most recent play() promise so a quick mouseleave can
+  // wait for it to resolve before calling pause(). Without this,
+  // pause() interrupts the in-flight play() and the browser fires
+  // an `AbortError: play() interrupted by pause()` rejection (which
+  // is otherwise harmless but spams the console).
+  const playPromiseRef = useRef<Promise<void> | null>(null);
 
   // Park the clip on its last frame so the still icon has the
   // "fully-formed" pose rather than the empty first frame.
@@ -131,6 +137,17 @@ function Pillar({ index, title, desc, video, loadVideo }: PillarProps) {
     }
   };
 
+  // Awaits any pending play() before settling, so we never call
+  // pause() while play() is still resolving.
+  const settleSafe = () => {
+    const pending = playPromiseRef.current;
+    if (pending) {
+      pending.then(settleOnLastFrame, settleOnLastFrame);
+    } else {
+      settleOnLastFrame();
+    }
+  };
+
   return (
     <div
       className={cn(
@@ -143,20 +160,38 @@ function Pillar({ index, title, desc, video, loadVideo }: PillarProps) {
         if (!v) return;
         try {
           v.currentTime = 0;
-          // play() returns a promise — fire-and-forget; if it rejects
-          // (autoplay policy etc.) the still last-frame is acceptable.
-          void v.play();
+          const p = v.play();
+          if (p && typeof p.then === "function") {
+            // Stash + swallow AbortError. The `catch` returns void so
+            // the stashed promise stays a Promise<void> the leave
+            // handler can `.then()`.
+            playPromiseRef.current = p.catch(() => {});
+          }
         } catch {
-          // Ignore.
+          // Synchronous throw (e.g. detached element) — fall back to
+          // last-frame so the slot isn't blank.
+          settleOnLastFrame();
         }
       }}
-      onMouseLeave={settleOnLastFrame}
+      onMouseLeave={settleSafe}
     >
       <div className="mx-auto mb-[22px] flex h-18 w-18 items-center justify-center overflow-hidden rounded-2xl border border-[var(--color-line)] bg-white transition-[border-color,box-shadow,transform] duration-300 group-hover/pillar:border-[rgba(201,161,73,0.7)] group-hover/pillar:shadow-[0_6px_18px_-6px_rgba(201,161,73,0.35)] group-hover/pillar:scale-[1.03]">
         {loadVideo ? (
+          // Using a <source> child (rather than src on <video>) lets
+          // us declare the MIME type explicitly — some browsers will
+          // refuse to load a source without a confirmed video/mp4
+          // type and fall back to the NotSupportedError seen in
+          // QA when going through certain proxies / CDNs.
+          //
+          // settleOnLastFrame is wired into THREE load events because
+          // the order they fire in varies by browser:
+          //   loadedmetadata → duration known (might be Infinity briefly)
+          //   loadeddata     → first frame decoded
+          //   canplay        → first usable frame ready to render
+          // First one to land where duration is finite wins; later
+          // calls are no-ops thanks to the Number.isFinite guard.
           <video
             ref={videoRef}
-            src={video}
             muted
             loop
             playsInline
@@ -164,8 +199,11 @@ function Pillar({ index, title, desc, video, loadVideo }: PillarProps) {
             aria-hidden="true"
             onLoadedMetadata={settleOnLastFrame}
             onLoadedData={settleOnLastFrame}
+            onCanPlay={settleOnLastFrame}
             className="block h-full w-full bg-white object-contain"
-          />
+          >
+            <source src={video} type="video/mp4" />
+          </video>
         ) : (
           // Placeholder before the section is on-screen — keeps the
           // 72×72 slot reserved so the pillars don't shift when MP4s

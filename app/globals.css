@@ -314,6 +314,13 @@
 .plan-float {
   animation: planFloat 4s ease-in-out infinite;
 }
+/* Pause the float on hover — handled in CSS (not Tailwind brackets)
+   so this rule is guaranteed to land regardless of how the utility
+   set merges class names. The lifted `translateY(-10px)` on hover
+   then takes over via Tailwind's hover:-translate-y-[10px]. */
+.plan-float:hover {
+  animation-play-state: paused;
+}
 @keyframes faqRingRotate {
   from { transform: rotate(0deg); }
   to   { transform: rotate(360deg); }

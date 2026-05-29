@@ -71,7 +71,11 @@ function PlanCard({ plan }: { plan: Plan }) {
         "relative flex flex-col rounded-[var(--radius-card-lg)] border bg-white p-9 pb-8 shadow-[var(--shadow-sm)] transition-[transform,box-shadow] duration-300",
         featured
           ? // Featured: navy-ink bg, gold border, soft glow, float.
-            "plan-float border-2 border-[var(--color-gold)] bg-[var(--color-navy-ink)] text-white shadow-[var(--shadow-lg),0_0_0_4px_rgba(201,161,73,0.10)] hover:-translate-y-[10px] [animation-play-state:running] hover:[animation-play-state:paused]"
+            // The `plan-float` utility (app/globals.css) drives the
+            // 4-second translateY loop; its `:hover` rule pauses the
+            // animation and Tailwind's `hover:-translate-y-[10px]`
+            // overrides the resting transform.
+            "plan-float border-2 border-[var(--color-gold)] bg-[var(--color-navy-ink)] text-white shadow-[var(--shadow-lg),0_0_0_4px_rgba(201,161,73,0.10)] hover:-translate-y-[10px]"
           : "border-[var(--color-line)] hover:-translate-y-0.5 hover:shadow-[var(--shadow-md)]"
       )}
     >
