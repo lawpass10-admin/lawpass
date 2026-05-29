@@ -51,13 +51,15 @@ export function LandingHero() {
 
       <div
         className={cn(
-          "relative mx-auto grid w-full max-w-[1320px] items-start gap-8 px-4 pt-6 pb-[240px]",
-          // Mobile keeps the bottom padding asymmetric vs. desktop:
-          // pb-[240px] gives the (taller) mobile wave (220px) the
-          // room it needs while leaving a clean 20px gap to the
-          // trust cards above it. md+ restores the prototype's
-          // 280px so the desktop wave can overlap the character's
-          // feet via the figure's -60 bleed.
+          "relative mx-auto grid w-full max-w-[1320px] items-start gap-8 px-4 pt-6 pb-[140px]",
+          // Mobile pb-[140px] keeps the wave climbing up close to
+          // the character so its blue curve laps the character's
+          // lower legs (~30 px of overlap at the curve's peak),
+          // matching Sharon's "קצת מהרליים שלה" feedback. With the
+          // trust-cards now dropped on mobile, there's no extra
+          // band to insert between figure and wave. md+ restores
+          // the prototype's 280px so the desktop wave can overlap
+          // the feet via the figure's -60 bleed (existing intent).
           "md:gap-10 md:px-8 md:pb-[280px]",
           // RTL grid: column 1 (right) holds copy, column 2 (left) holds figure.
           // 1.25fr / 0.75fr ratio matches prototype hero-grid (L258).
@@ -123,12 +125,13 @@ export function LandingHero() {
             </Link>
           </div>
 
-          {/* Trust signals — 3 stat cards.
-              Desktop-only render site (md+). On mobile the cards
-              are rendered as a separate grid row BELOW the character
-              figure so the visual rhythm is
-              copy → character → trust cards → wave → Method,
-              per Sharon's mobile pass. */}
+          {/* Trust signals — 3 stat cards. Desktop only.
+              Sharon, 2026-05-29 (second mobile pass): the cards
+              were rendered twice (once here for md+, once below the
+              character with `md:hidden` for phones), but the mobile
+              render felt heavy and broke the visual flow into the
+              Method section. The mobile site is dropped; the cards
+              live only on md+ inside the copy column. */}
           <div className="hidden max-w-[720px] grid-cols-3 gap-4 md:grid">
             <TrustCard num="+1,200" label="שאלות מקור וזווית" />
             <TrustCard num="360°" label="ניתוח עומק לכל שאלה" />
@@ -164,16 +167,16 @@ export function LandingHero() {
               L2 build (sips -Z 768, native PNG at half resolution).
               loading="eager" + explicit dimensions prevent CLS.
 
-              margin-bottom: -60px deliberately bleeds the figure into
-              the navy wave below so the wave overlaps the feet — see
-              the stacking note at the top of this file.
-            */}
-            {/*
-              Character image. Mobile fits inside the figure column
-              with no bleed so the navy wave below can't crop the
-              character mid-torso (Sharon, 2026-05-29). md+ restores
-              the -60 bleed so the wave naturally washes over the
-              feet on desktop the way the prototype intended.
+              Bleed pattern:
+                Mobile (<md): h-[calc(100%+40px)] + mb-[-40px] —
+                  figure extends 40 px below its column so the wave's
+                  blue peak laps the character's lower legs without
+                  cutting into her torso. Tuned with pb-[140px] on the
+                  grid (see the wrapper above): wave peak at
+                  section_bottom-134, character bottom at -100 → ~34 px
+                  of overlap at the curve's crest, fading at the edges.
+                md+: h-[calc(100%+60px)] + mb-[-60px] — full prototype
+                  bleed; the desktop wave (320 px) overlaps the feet.
             */}
             <Image
               src="/landing/hero-character.png"
@@ -181,7 +184,7 @@ export function LandingHero() {
               width={768}
               height={1152}
               priority
-              className="block h-full w-full object-contain object-top mb-0 md:h-[calc(100%+60px)] md:mb-[-60px]"
+              className="block h-[calc(100%+40px)] w-full object-contain object-top mb-[-40px] md:h-[calc(100%+60px)] md:mb-[-60px]"
               style={{
                 filter: "drop-shadow(0 30px 40px rgba(15,31,79,0.18))",
               }}
@@ -189,16 +192,6 @@ export function LandingHero() {
           </div>
         </div>
 
-        {/* Mobile-only trust signals — same 3 cards, rendered as the
-            third grid item so they sit BELOW the character and
-            immediately above the navy wave / Method handoff. Hidden
-            on md+ where the desktop copy column's render site above
-            already covers this. */}
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3 md:hidden">
-          <TrustCard num="+1,200" label="שאלות מקור וזווית" />
-          <TrustCard num="360°" label="ניתוח עומק לכל שאלה" />
-          <TrustCard num="6 שבועות" label="מהרישום לבחינה" />
-        </div>
       </div>
 
       {/* Navy wave — absolute bottom band, between figure (z1) and copy (z3).
