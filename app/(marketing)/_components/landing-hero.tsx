@@ -51,11 +51,13 @@ export function LandingHero() {
 
       <div
         className={cn(
-          "relative mx-auto grid w-full max-w-[1320px] items-start gap-8 px-4 pt-6 pb-[200px]",
-          // Mobile keeps the bottom padding shorter (200px) so the
-          // wave isn't a giant blank navy band under a stacked
-          // figure. md+ restores the prototype's 280px to give the
-          // wave room to overlap the character's feet.
+          "relative mx-auto grid w-full max-w-[1320px] items-start gap-8 px-4 pt-6 pb-[240px]",
+          // Mobile keeps the bottom padding asymmetric vs. desktop:
+          // pb-[240px] gives the (taller) mobile wave (220px) the
+          // room it needs while leaving a clean 20px gap to the
+          // trust cards above it. md+ restores the prototype's
+          // 280px so the desktop wave can overlap the character's
+          // feet via the figure's -60 bleed.
           "md:gap-10 md:px-8 md:pb-[280px]",
           // RTL grid: column 1 (right) holds copy, column 2 (left) holds figure.
           // 1.25fr / 0.75fr ratio matches prototype hero-grid (L258).
@@ -121,8 +123,13 @@ export function LandingHero() {
             </Link>
           </div>
 
-          {/* Trust signals — 3 stat cards. */}
-          <div className="grid max-w-[720px] grid-cols-1 gap-4 sm:grid-cols-3">
+          {/* Trust signals — 3 stat cards.
+              Desktop-only render site (md+). On mobile the cards
+              are rendered as a separate grid row BELOW the character
+              figure so the visual rhythm is
+              copy → character → trust cards → wave → Method,
+              per Sharon's mobile pass. */}
+          <div className="hidden max-w-[720px] grid-cols-3 gap-4 md:grid">
             <TrustCard num="+1,200" label="שאלות מקור וזווית" />
             <TrustCard num="360°" label="ניתוח עומק לכל שאלה" />
             <TrustCard num="6 שבועות" label="מהרישום לבחינה" />
@@ -161,28 +168,49 @@ export function LandingHero() {
               the navy wave below so the wave overlaps the feet — see
               the stacking note at the top of this file.
             */}
+            {/*
+              Character image. Mobile fits inside the figure column
+              with no bleed so the navy wave below can't crop the
+              character mid-torso (Sharon, 2026-05-29). md+ restores
+              the -60 bleed so the wave naturally washes over the
+              feet on desktop the way the prototype intended.
+            */}
             <Image
               src="/landing/hero-character.png"
               alt="ד״ר שרון נאור — שיטת ה-360° של LawPass"
               width={768}
               height={1152}
               priority
-              className="block h-[calc(100%+60px)] w-full object-contain object-top"
+              className="block h-full w-full object-contain object-top mb-0 md:h-[calc(100%+60px)] md:mb-[-60px]"
               style={{
-                marginBottom: -60,
                 filter: "drop-shadow(0 30px 40px rgba(15,31,79,0.18))",
               }}
             />
           </div>
         </div>
+
+        {/* Mobile-only trust signals — same 3 cards, rendered as the
+            third grid item so they sit BELOW the character and
+            immediately above the navy wave / Method handoff. Hidden
+            on md+ where the desktop copy column's render site above
+            already covers this. */}
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3 md:hidden">
+          <TrustCard num="+1,200" label="שאלות מקור וזווית" />
+          <TrustCard num="360°" label="ניתוח עומק לכל שאלה" />
+          <TrustCard num="6 שבועות" label="מהרישום לבחינה" />
+        </div>
       </div>
 
       {/* Navy wave — absolute bottom band, between figure (z1) and copy (z3).
-          Mobile shrinks the wave height so it doesn't gulp the lower
-          third of a 667px viewport; md+ restores the prototype's 320px. */}
+          Mobile: h-[220px] (longer than the previous 180px per Sharon's
+          "תאריך אותו יותר") gives the wave a more pronounced curve as
+          the Method handoff. With pb-[240px] above, the wave's blue
+          peak still sits comfortably below the mobile trust cards.
+          md+ restores the prototype's 320px so the wave can overlap
+          the character's feet via the figure's -60 bleed. */}
       <div
         aria-hidden="true"
-        className="pointer-events-none absolute inset-x-0 bottom-0 h-[180px] md:h-[320px]"
+        className="pointer-events-none absolute inset-x-0 bottom-0 h-[220px] md:h-[320px]"
         style={{ zIndex: 2 }}
       >
         <svg
