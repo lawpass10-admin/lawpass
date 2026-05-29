@@ -74,14 +74,6 @@ export function ComingSoon() {
         </Link>
       </div>
 
-      <div className="mt-8 inline-flex items-center gap-3 text-sm text-white/55">
-        <span
-          aria-hidden="true"
-          className="block h-px w-8"
-          style={{ backgroundColor: "var(--color-gold)" }}
-        />
-        <span>נשמע ממך בקרוב</span>
-      </div>
     </div>
   );
 }
