@@ -59,7 +59,13 @@ export const PLANS: readonly Plan[] = [
   {
     id: "plan_3m",
     durationMonths: 3,
-    totalPrice: 350,
+    // Slice 16 (landing prices) — 350 → 2000 per Sharon, 2026-05-29.
+    totalPrice: 2000,
+    // Field kept on the shape for back-compat with any future consumer,
+    // but it is NO LONGER rendered in the UI (the /pricing screen and
+    // the new landing page both show the total only). Value left as
+    // the prior "117" tagline so historical reads aren't misleading;
+    // it's deliberately unused.
     monthlyPriceDisplay: "117",
     durationLabel: "3 חודשים",
     subtitle: "מתאים למוכנים סופית",
@@ -69,7 +75,8 @@ export const PLANS: readonly Plan[] = [
   {
     id: "plan_6m",
     durationMonths: 6,
-    totalPrice: 1000,
+    // Slice 16 — 1000 → 3500 per Sharon, 2026-05-29.
+    totalPrice: 3500,
     monthlyPriceDisplay: "167",
     durationLabel: "6 חודשים",
     subtitle: "הפופולרי ביותר",
