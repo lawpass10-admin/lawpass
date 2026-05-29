@@ -1,55 +1,53 @@
-import Link from "next/link";
+import { redirect } from "next/navigation";
 
-import { SiteFooter } from "@/components/shared/site-footer";
-import { buttonVariants } from "@/components/ui/button";
-import { cn } from "@/lib/utils";
+import { createClient } from "@/lib/supabase/server";
+
+import { CookieBar } from "./_components/cookie-bar";
+import { LandingFaq } from "./_components/landing-faq";
+import { LandingFooter } from "./_components/landing-footer";
+import { LandingHeader } from "./_components/landing-header";
+import { LandingHero } from "./_components/landing-hero";
+import { LandingMethod } from "./_components/landing-method";
+import { LandingPlans } from "./_components/landing-plans";
 
 /**
- * / — public landing page (Server Component, static).
+ * / — public landing page (Server Component).
  *
- * Static placeholder until the Slice 6 marketing site lands. Renders the
- * app name, a one-sentence Hebrew tagline, and two CTA buttons (signup +
- * login). NO database access, NO admin client, NO server-side data
- * fetching — everything here is content-only.
+ * Slice 16 / Phase L3 — wires header + cookie bar + hero + method
+ * + plans + faq + footer. The hero typewriter machine was pulled
+ * forward into the L2-polish commit. Phase L4 lands the
+ * "wire actions" pass (CTAs → /signup, /login, /checkout) and L5
+ * adds metadata + sitemap + robots.
  *
- * Replaced an earlier dev-only Supabase connectivity smoketest that used
- * `createAdminClient()` (the service-role key) on the public homepage.
- * That probe leaked connection-state information to anonymous visitors
- * and violated Hardening Rule #2 ("SSR client only — never the admin
- * client"). For a future health probe, use an admin-gated /api/health
- * route instead.
+ * Slice 16 / Phase L1 (still in effect) — authenticated visitors
+ * are bounced to /dashboard. Anonymous visitors see this page.
+ * The redirect lives here because the project has no
+ * `middleware.ts`; auth gating across the app is per-route via
+ * `requireActiveSubscription` / `requireAdmin` in lib/auth/*.
+ *
+ * NO database access, NO admin client. The single auth.getUser()
+ * call uses the SSR client and reads from cookies — Hardening
+ * Rule #2 compliant (never the service-role client on a public
+ * page).
  */
-export default function Home() {
+export default async function Home() {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (user) redirect("/dashboard");
+
   return (
     <div className="flex min-h-full flex-1 flex-col">
-      <main className="flex flex-1 items-center justify-center px-4 py-12">
-        <div className="w-full max-w-md text-center">
-          <h1 className="text-4xl font-bold tracking-tight">LawPass</h1>
-          <p className="mt-4 text-base text-muted-foreground">
-            פלטפורמה דיגיטלית להכנה למבחני ההסמכה של לשכת עורכי הדין
-          </p>
-
-          <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:justify-center">
-            <Link
-              href="/signup"
-              className={cn(buttonVariants(), "w-full sm:w-auto")}
-            >
-              הירשם
-            </Link>
-            <Link
-              href="/login"
-              className={cn(
-                buttonVariants({ variant: "outline" }),
-                "w-full sm:w-auto"
-              )}
-            >
-              התחבר
-            </Link>
-          </div>
-        </div>
+      <LandingHeader />
+      <CookieBar />
+      <main className="flex-1">
+        <LandingHero />
+        <LandingMethod />
+        <LandingPlans />
+        <LandingFaq />
       </main>
-
-      <SiteFooter />
+      <LandingFooter />
     </div>
   );
 }

@@ -18,6 +18,17 @@ const buttonVariants = cva(
         destructive:
           "bg-destructive/10 text-destructive hover:bg-destructive/20 focus-visible:border-destructive/40 focus-visible:ring-destructive/20 dark:bg-destructive/20 dark:hover:bg-destructive/30 dark:focus-visible:ring-destructive/40",
         link: "text-primary underline-offset-4 hover:underline",
+        // Slice 16 / Decision 4 — landing-page gold CTA.
+        // Wraps the existing `.btn-gold` utility (app/globals.css)
+        // so the gradient + shadow stack stays in one place. Use
+        // for high-emphasis actions on the public landing page.
+        //
+        // rounded-full overrides the base rounded-lg — the prototype's
+        // .btn-primary is a full pill (border-radius: --radius-pill =
+        // 999px). Both landing CTAs ("כניסה לאזור אישי" in the header
+        // and "התחילו לתרגל" in the hero) use this variant and must
+        // share the pill shape.
+        gold: "btn-gold border-transparent rounded-full",
       },
       size: {
         default:

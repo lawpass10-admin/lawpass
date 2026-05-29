@@ -15,17 +15,20 @@ describe("PLANS constant", () => {
     expect(PLANS).toHaveLength(2);
   });
 
-  it("plan_3m has the SPEC §1.6 price (350 ILS) and duration (3 months)", () => {
+  it("plan_3m has the current price (2,000 ILS) and duration (3 months)", () => {
+    // Slice 16 — prices were updated from the original SPEC §1.6
+    // values (350 / 1000) to the new landing-page prices (2,000 /
+    // 3,500) per Sharon, 2026-05-29.
     const plan = PLANS.find((p) => p.id === "plan_3m");
     expect(plan).toBeDefined();
-    expect(plan?.totalPrice).toBe(350);
+    expect(plan?.totalPrice).toBe(2000);
     expect(plan?.durationMonths).toBe(3);
   });
 
-  it("plan_6m has the SPEC §1.6 price (1000 ILS) and duration (6 months)", () => {
+  it("plan_6m has the current price (3,500 ILS) and duration (6 months)", () => {
     const plan = PLANS.find((p) => p.id === "plan_6m");
     expect(plan).toBeDefined();
-    expect(plan?.totalPrice).toBe(1000);
+    expect(plan?.totalPrice).toBe(3500);
     expect(plan?.durationMonths).toBe(6);
   });
 

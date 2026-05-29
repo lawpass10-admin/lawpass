@@ -56,9 +56,11 @@ function PlanCard({
         <span className="text-3xl font-bold">{plan.totalPrice}</span>
         <span className="text-sm">₪</span>
       </div>
-      <div className="text-xs text-muted-foreground">
-        {plan.monthlyPriceDisplay} ₪ / חודש
-      </div>
+      {/* Slice 16 — the "X ₪ / חודש" monthly tagline was removed per
+          Sharon, 2026-05-29. The whole product (landing + this
+          screen + checkout) now displays the total price only. The
+          `monthlyPriceDisplay` field on Plan stays in the type for
+          back-compat, but it is no longer rendered. */}
       <div className="mt-2 text-sm text-muted-foreground">{plan.subtitle}</div>
 
       <ul className="mt-5 space-y-2">
