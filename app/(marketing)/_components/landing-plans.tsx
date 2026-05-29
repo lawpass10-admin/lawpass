@@ -170,8 +170,16 @@ function PlanCard({ plan }: { plan: Plan }) {
       </ul>
 
       <Link
-        // L5: rewrite to `/signup?plan=${plan.id}`.
-        href="#"
+        // L4: pricing CTA goes to /signup with the chosen plan in the
+        // query so signUpAction stashes it in auth.user_metadata. After
+        // OTP verify, verifyOtpAction redirects the user straight to
+        // /checkout?plan=<id> instead of /pricing. (If they happen to
+        // be authenticated when the proxy sees this request — e.g.
+        // returning visitor — the proxy bounces them to /dashboard
+        // before the landing's own auth redirect ever runs, but for
+        // belt-and-suspenders the /signup page itself also redirects
+        // authed users to /checkout?plan=… via the same query.)
+        href={`/signup?plan=${plan.id}`}
         className={cn(
           "inline-flex w-full items-center justify-center gap-2 rounded-full px-6 py-3 text-sm font-semibold transition-[filter,transform,background] duration-200",
           featured

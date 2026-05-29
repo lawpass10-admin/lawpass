@@ -3,7 +3,8 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Check } from "lucide-react";
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
+import { useEffect, useMemo, useState } from "react";
 import {
   type DefaultValues,
   type UseFormReturn,
@@ -13,6 +14,7 @@ import {
 import { toast } from "sonner";
 
 import { signUpAction } from "@/app/(auth)/_actions";
+import { isValidPlanId } from "@/lib/billing/plans";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -179,6 +181,18 @@ export default function SignupForm() {
   const [submitting, setSubmitting] = useState(false);
   const [oauthSubmitting, setOauthSubmitting] = useState(false);
 
+  // Slice 16 / Phase L4 — landing pricing CTA passes `?plan=plan_3m`
+  // or `?plan=plan_6m`. We forward it to signUpAction as a separate
+  // context arg so verifyOtpAction can route the user to
+  // /checkout?plan=… instead of the generic /pricing fallback once
+  // the OTP clears. Tampered / unknown values are filtered out by
+  // `isValidPlanId`; missing → undefined → no special routing.
+  const searchParams = useSearchParams();
+  const intendedPlan = useMemo(() => {
+    const raw = searchParams.get("plan");
+    return isValidPlanId(raw) ? raw : undefined;
+  }, [searchParams]);
+
   // Local mirrors for the month/year selects on step 3. Combined into a
   // YYYY-MM-01 string and pushed into the form when both are set.
   const [examMonth, setExamMonth] = useState<string>("");
@@ -289,7 +303,7 @@ export default function SignupForm() {
   async function onSubmit(values: SignupInput) {
     setSubmitting(true);
     try {
-      const result = await signUpAction(values);
+      const result = await signUpAction(values, { intendedPlan });
       // Server Action either redirects (success — throws NEXT_REDIRECT) or
       // returns { ok: false, error }. The redirect path doesn't reach here.
       if (result?.ok === false) {

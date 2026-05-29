@@ -92,8 +92,10 @@ export function LandingHero() {
 
           <div className="mb-14 flex flex-wrap items-center gap-3.5">
             <Link
-              // L5: → /signup
-              href="#plans"
+              // L4: hero CTA goes to /signup. The user picks a plan there
+              // (signup form reads ?plan=… if present) or on /pricing
+              // after they verify the OTP and land with no subscription.
+              href="/signup"
               className={cn(
                 buttonVariants({ variant: "gold", size: "lg" }),
                 "px-7 py-3 text-base font-semibold"

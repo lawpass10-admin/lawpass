@@ -77,8 +77,11 @@ export function LandingHeader() {
       </Link>
 
       <Link
-        // L5: rewrite to "/login" once auth routing settles.
-        href="#"
+        // L4: header CTA goes to /login. The proxy at the repo root
+        // bounces already-authed users away from /login → /dashboard,
+        // so this single href works for both anonymous + returning
+        // sessions without a separate "logout / go to app" pivot.
+        href="/login"
         className={cn(
           buttonVariants({ variant: "gold", size: "lg" }),
           "justify-self-end px-[22px] py-[11px] text-sm font-semibold"

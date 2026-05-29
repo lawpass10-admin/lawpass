@@ -6,6 +6,7 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 
+import { isValidPlanId, type PlanId } from "@/lib/billing/plans";
 import { createClient } from "@/lib/supabase/server";
 import type { AcademicInstitution } from "@/lib/profile/institutions";
 import type { LegalSpecialization } from "@/lib/profile/specializations";
@@ -141,6 +142,13 @@ const userMetadataSchema = z.object({
   legal_specialization: legalSpecializationSchema,
   // ISO timestamp captured server-side at signUpAction time.
   terms_accepted_at: z.string().min(1),
+  // Slice 16 / Phase L4 — plan the user picked on the landing page
+  // pricing card before they hit "התחילו עם …". signUpAction stashes
+  // it here; verifyOtpAction reads it back and routes the user to
+  // /checkout?plan=… instead of the generic /pricing fallback.
+  // Optional because users who land on /signup from the hero CTA
+  // (which has no plan picked yet) submit without it.
+  intended_plan: z.enum(["plan_3m", "plan_6m"]).optional(),
 });
 
 /**
@@ -222,7 +230,16 @@ async function createProfile(input: {
  *
  * Redirects to /verify-email?email=... on success.
  */
-export async function signUpAction(input: SignupInput): Promise<ActionResult> {
+export async function signUpAction(
+  input: SignupInput,
+  // Slice 16 / Phase L4 — optional context for the landing pricing
+  // CTAs. `intendedPlan` is the plan_id the user picked before
+  // signup; we stash it in auth.user_metadata so verifyOtpAction
+  // can redirect them to /checkout?plan=… instead of /pricing once
+  // the OTP clears. Not part of `SignupInput` because the user
+  // never types it — it rides along from the URL query.
+  context?: { intendedPlan?: PlanId | null }
+): Promise<ActionResult> {
   const parsed = signupSchema.safeParse(input);
   if (!parsed.success) {
     return {
@@ -231,6 +248,12 @@ export async function signUpAction(input: SignupInput): Promise<ActionResult> {
     };
   }
   const data = parsed.data;
+  // Belt-and-suspenders: re-validate `intendedPlan` here even though
+  // the form already filters on `isValidPlanId`. A client-tampered
+  // value can't slip through to user_metadata.
+  const intendedPlan = isValidPlanId(context?.intendedPlan)
+    ? context!.intendedPlan
+    : undefined;
 
   const supabase = await createClient();
   const { error } = await supabase.auth.signUp({
@@ -256,6 +279,9 @@ export async function signUpAction(input: SignupInput): Promise<ActionResult> {
         // Captured server-side at signup time, persisted to
         // profiles.terms_accepted_at on OTP verification.
         terms_accepted_at: new Date().toISOString(),
+        // Conditionally include — Supabase strips null-valued keys
+        // but spreading nothing keeps the on-disk shape minimal.
+        ...(intendedPlan ? { intended_plan: intendedPlan } : {}),
       },
     },
   });
@@ -381,6 +407,13 @@ export async function verifyOtpAction(input: {
   // (action → /dashboard → layout-redirect → /pricing) and rendering
   // /pricing empty on first paint. Returning the URL + window.location
   // navigation forces a full page load, eliminating the chain.
+  //
+  // Slice 16 / Phase L4 — if the user picked a plan on the landing
+  // pricing card before signup, signUpAction stashed it as
+  // `intended_plan` in auth.user_metadata; we redirect them straight
+  // to /checkout?plan=<id> on the no-sub branch instead of the
+  // generic /pricing fallback. /pricing remains the catch-all for
+  // users who came in via the hero CTA without a pre-selected plan.
   const { data: subscription } = await supabase
     .from("subscriptions")
     .select("id")
@@ -390,7 +423,14 @@ export async function verifyOtpAction(input: {
     .gt("ends_at", new Date().toISOString())
     .maybeSingle();
 
-  return { ok: true, url: subscription ? "/dashboard" : "/pricing" };
+  const intendedPlan = metaParsed.data.intended_plan;
+  const url = subscription
+    ? "/dashboard"
+    : intendedPlan
+      ? `/checkout?plan=${intendedPlan}`
+      : "/pricing";
+
+  return { ok: true, url };
 }
 
 /**
