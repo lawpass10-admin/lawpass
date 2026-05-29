@@ -6,7 +6,6 @@ import { cn } from "@/lib/utils";
 
 import {
   HERO_CTA_LABEL,
-  HERO_EYEBROW,
   HERO_HEADLINE_A,
   HERO_HEADLINE_B,
   HERO_TYPEWRITER_LINES,
@@ -61,13 +60,8 @@ export function LandingHero() {
       >
         {/* Copy column */}
         <div className="relative" style={{ zIndex: 3 }}>
-          <div className="mb-[22px] inline-flex items-center gap-3 text-[15px] font-medium text-[var(--color-navy)]">
-            <span
-              aria-hidden="true"
-              className="block h-[1.5px] w-7 shrink-0 bg-[var(--color-gold)]"
-            />
-            <span>{HERO_EYEBROW}</span>
-          </div>
+          {/* Eyebrow ("שיטת ה-360° של ד״ר שרון נאור") was removed per
+              Sharon, 2026-05-29 — the headline now opens the column. */}
 
           {/* Headline. Two lines — second line gets a gold dot. */}
           <h1 className="mb-[18px] text-[var(--color-navy-ink)] font-extrabold leading-[1.04] text-[clamp(42px,4.6vw,70px)]">

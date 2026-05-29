@@ -3,16 +3,21 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 
 import { CookieBar } from "./_components/cookie-bar";
+import { LandingFaq } from "./_components/landing-faq";
 import { LandingFooter } from "./_components/landing-footer";
 import { LandingHeader } from "./_components/landing-header";
 import { LandingHero } from "./_components/landing-hero";
+import { LandingMethod } from "./_components/landing-method";
+import { LandingPlans } from "./_components/landing-plans";
 
 /**
  * / — public landing page (Server Component).
  *
- * Slice 16 / Phase L2 — the header + cookie bar + hero + footer
- * are wired in this commit. Method / Plans / FAQ sections land in
- * Phase L3. The typewriter machine inside the hero comes in L4.
+ * Slice 16 / Phase L3 — wires header + cookie bar + hero + method
+ * + plans + faq + footer. The hero typewriter machine was pulled
+ * forward into the L2-polish commit. Phase L4 lands the
+ * "wire actions" pass (CTAs → /signup, /login, /checkout) and L5
+ * adds metadata + sitemap + robots.
  *
  * Slice 16 / Phase L1 (still in effect) — authenticated visitors
  * are bounced to /dashboard. Anonymous visitors see this page.
@@ -38,6 +43,9 @@ export default async function Home() {
       <CookieBar />
       <main className="flex-1">
         <LandingHero />
+        <LandingMethod />
+        <LandingPlans />
+        <LandingFaq />
       </main>
       <LandingFooter />
     </div>

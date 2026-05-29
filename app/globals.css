@@ -301,6 +301,33 @@
 }
 
 /* ============================================
+   Slice 16 — landing Phase L3 animations.
+   `.plan-float` lifts the featured plan card up and down in a
+   gentle 4-second loop; `.faq-ring-rotate` spins the dashed gold
+   ring around the FAQ character. Both disabled under
+   prefers-reduced-motion.
+   ============================================ */
+@keyframes planFloat {
+  0%, 100% { transform: translateY(-8px); }
+  50%      { transform: translateY(-14px); }
+}
+.plan-float {
+  animation: planFloat 4s ease-in-out infinite;
+}
+@keyframes faqRingRotate {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+.faq-ring-rotate {
+  animation: faqRingRotate 24s linear infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .plan-float, .faq-ring-rotate {
+    animation: none;
+  }
+}
+
+/* ============================================
    Slice 16 — landing-hero typewriter cursor blink.
    The cursor character (|) toggles opacity every 0.5s so it
    blinks twice per second. Disabled under prefers-reduced-motion;
