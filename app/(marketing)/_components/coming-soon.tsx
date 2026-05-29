@@ -1,4 +1,5 @@
 import Image from "next/image";
+import Link from "next/link";
 
 /**
  * Temporary "האתר בהקמה" screen.
@@ -43,7 +44,37 @@ export function ComingSoon() {
         נשוב בקרוב עם פלטפורמת ההכנה למבחני ההסמכה של לשכת עורכי הדין.
       </p>
 
-      <div className="mt-10 inline-flex items-center gap-3 text-sm text-white/55">
+      {/*
+        Auth CTAs. The landing is paused but /signup + /login stay
+        functional under the proxy (PUBLIC_PATHS), so users who
+        already have an account or want to register early can still
+        reach the auth flow. Both styled to match the landing's
+        primary/ghost pattern — gold pill for the brighter action,
+        white outline for the secondary.
+      */}
+      <div className="mt-10 flex w-full max-w-xs flex-col items-stretch gap-3 sm:max-w-md sm:flex-row sm:justify-center">
+        <Link
+          href="/signup"
+          className="inline-flex h-12 items-center justify-center rounded-full px-7 text-base font-bold transition-[filter,transform] duration-200 hover:brightness-105 hover:-translate-y-0.5 sm:h-11"
+          style={{
+            background:
+              "linear-gradient(135deg, #E8C97A 0%, #D4AC57 55%, #C9A149 100%)",
+            color: "var(--color-navy-ink)",
+            boxShadow:
+              "0 8px 22px -8px rgba(201, 161, 73, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.35)",
+          }}
+        >
+          הרשמה
+        </Link>
+        <Link
+          href="/login"
+          className="inline-flex h-12 items-center justify-center rounded-full border border-white/30 px-7 text-base font-semibold text-white transition-colors duration-200 hover:border-white/60 hover:bg-white/5 sm:h-11"
+        >
+          התחברות
+        </Link>
+      </div>
+
+      <div className="mt-8 inline-flex items-center gap-3 text-sm text-white/55">
         <span
           aria-hidden="true"
           className="block h-px w-8"
