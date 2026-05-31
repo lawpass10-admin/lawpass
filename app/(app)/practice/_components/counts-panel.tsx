@@ -1,45 +1,40 @@
 "use client";
 
 import {
-  ANGLE_CHOICES,
-  SOURCE_COUNT_CHOICES,
-  type AngleCount,
-  type SourceCount,
+  DEFAULT_ANGLES,
+  TOTAL_QUESTION_CHOICES,
+  type TotalQuestionCount,
 } from "@/app/(app)/practice/_lib/use-practice-builder";
 import { cn } from "@/lib/utils";
 
 /**
  * Slice 5 Phase P4 — Counts panel.
- *
- * Stacks two pill-row pickers ("שאלות מקור" and "זוויות לכל מקור")
- * inside one panel-bordered card. Mirrors `PracticeBuilder.html` lines
- * 234-285 — panel-title-num "2" + dynamic sub-line + grid pickers.
+ * Slice 18 — collapsed to a SINGLE "כמות שאלות" picker. The prior two
+ * pill-rows ("שאלות מקור" and "זוויות לכל מקור") are gone; the user
+ * picks one total and the hook derives `sourceCountTarget` for the
+ * engine. `anglesPerSource` is locked to DEFAULT_ANGLES internally.
  *
  * Stateless presentation: the hook owns the values, this panel only
  * dispatches. Same pattern as ChapterPanel from P3.
  *
- * The source picker disables choices that exceed `available` so the
- * "submitDisabled" path can rely on a single source of truth — the
- * effective source count clamps inside `usePracticeBuilder` regardless,
- * so even a stale raw click here doesn't push a too-big number to the
- * server.
+ * The picker disables choices that exceed the producible total
+ * (available × (1 + DEFAULT_ANGLES)) so the "submitDisabled" path
+ * can rely on a single source of truth — the effective total clamps
+ * inside `usePracticeBuilder` regardless, so even a stale raw click
+ * here doesn't push a too-big number to the server.
  */
 
 type Props = {
-  sourceCount: SourceCount;
-  onSetSourceCount: (n: SourceCount) => void;
-  angles: AngleCount;
-  onSetAngles: (n: AngleCount) => void;
+  total: TotalQuestionCount;
+  onSetTotal: (n: TotalQuestionCount) => void;
   available: number | null;
   isCountPending: boolean;
   hasSelection: boolean;
 };
 
 export function CountsPanel({
-  sourceCount,
-  onSetSourceCount,
-  angles,
-  onSetAngles,
+  total,
+  onSetTotal,
   available,
   isCountPending,
   hasSelection,
@@ -105,70 +100,33 @@ export function CountsPanel({
         </div>
       </header>
 
-      <div className="flex flex-col gap-[22px]">
-        {/* Source picker */}
-        <div>
-          <div className="flex justify-between items-center mb-2.5">
-            <span
-              className="font-heebo font-semibold"
-              style={{ fontSize: 14.5, color: "var(--color-navy-ink)" }}
-            >
-              שאלות מקור
-            </span>
-            <span
-              className="font-heebo"
-              style={{ fontSize: 12, color: "var(--color-ink-muted)" }}
-            >
-              שאלות אמיתיות מבחינות עבר
-            </span>
-          </div>
-          <div className="grid grid-cols-3 md:grid-cols-6 gap-1.5">
-            {SOURCE_COUNT_CHOICES.map((n) => {
-              const enabled = available !== null && available >= n;
-              const isSelected = sourceCount === n;
-              return (
-                <PickerButton
-                  key={n}
-                  value={n}
-                  active={isSelected && enabled}
-                  disabled={!enabled}
-                  onClick={() => enabled && onSetSourceCount(n)}
-                />
-              );
-            })}
-          </div>
+      <div>
+        <div className="flex justify-between items-center mb-2.5">
+          <span
+            className="font-heebo font-semibold"
+            style={{ fontSize: 14.5, color: "var(--color-navy-ink)" }}
+          >
+            כמות שאלות
+          </span>
         </div>
-
-        {/* Angles picker */}
-        <div>
-          <div className="flex justify-between items-center mb-2.5">
-            <span
-              className="font-heebo font-semibold"
-              style={{ fontSize: 14.5, color: "var(--color-navy-ink)" }}
-            >
-              זוויות לכל מקור
-            </span>
-            <span
-              className="font-heebo"
-              style={{ fontSize: 12, color: "var(--color-ink-muted)" }}
-            >
-              שאלות נלוות בזוויות פדגוגיות
-            </span>
-          </div>
-          <div className="grid grid-cols-3 md:grid-cols-5 gap-1.5">
-            {ANGLE_CHOICES.map((n) => {
-              const isSelected = angles === n;
-              return (
-                <PickerButton
-                  key={n}
-                  value={n}
-                  active={isSelected}
-                  disabled={false}
-                  onClick={() => onSetAngles(n)}
-                />
-              );
-            })}
-          </div>
+        <div className="grid grid-cols-3 md:grid-cols-6 gap-1.5">
+          {TOTAL_QUESTION_CHOICES.map((n) => {
+            // Available source questions × (1 + DEFAULT_ANGLES) = the
+            // most we can ever produce. Disable choices that exceed it.
+            const maxTotal =
+              available !== null ? available * (1 + DEFAULT_ANGLES) : null;
+            const enabled = maxTotal !== null && maxTotal >= n;
+            const isSelected = total === n;
+            return (
+              <PickerButton
+                key={n}
+                value={n}
+                active={isSelected && enabled}
+                disabled={!enabled}
+                onClick={() => enabled && onSetTotal(n)}
+              />
+            );
+          })}
         </div>
       </div>
     </section>

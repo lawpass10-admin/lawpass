@@ -67,7 +67,9 @@ export function ResumeCard({
   totalQuestions,
   questionsAnswered,
   questionsCorrect,
-  nextQuestionType,
+  // Slice 18 — `nextQuestionType` (source/angle) is still required
+  // on the Props type so callers don't break, but no longer rendered
+  // on the next-question line. Intentionally NOT destructured here.
   nextQuestionLabel,
 }: Props) {
   const [abandoning, setAbandoning] = useState(false);
@@ -194,7 +196,7 @@ export function ResumeCard({
             className="relative font-heebo font-bold text-white mb-2"
             style={{ fontSize: 24, lineHeight: 1.2 }}
           >
-            {chapterTitle} · {sourceCount} מקור + {angleCount} זוויות
+            {chapterTitle} · {sourceCount * (1 + angleCount)} שאלות
           </h2>
 
           <div
@@ -296,7 +298,7 @@ export function ResumeCard({
               style={{ color: "var(--color-navy-ink)", fontSize: 14 }}
             >
               <b style={{ fontWeight: 700 }}>השאלה הבאה:</b>{" "}
-              {nextQuestionType === "angle" ? "זווית" : "מקור"} · {nextQuestionLabel}
+              {nextQuestionLabel}
             </div>
           </div>
 

@@ -19,21 +19,14 @@ function pct(numerator: number, denominator: number): number {
 }
 
 export function PracticeSummary({ summary }: PracticeSummaryProps) {
-  const {
-    session,
-    totalAnswered,
-    totalCorrect,
-    sourceAnswered,
-    sourceCorrect,
-    angleAnswered,
-    angleCorrect,
-    byBucket,
-    archivedSkipped,
-  } = summary;
+  // Slice 18 — only the aggregate totals are surfaced now. The
+  // SummaryAggregate type still carries sourceAnswered / sourceCorrect
+  // / angleAnswered / angleCorrect (lib/db/practice.ts); we just stop
+  // pulling them into the view.
+  const { session, totalAnswered, totalCorrect, byBucket, archivedSkipped } =
+    summary;
 
   const overallPct = pct(totalCorrect, totalAnswered);
-  const sourcePct = pct(sourceCorrect, sourceAnswered);
-  const anglePct = pct(angleCorrect, angleAnswered);
   const mistakeCount = totalAnswered - totalCorrect;
 
   // PM decision: when a session spans multiple chapters, prefix every
@@ -90,13 +83,15 @@ export function PracticeSummary({ summary }: PracticeSummaryProps) {
         </p>
         <h1 className="text-4xl font-bold">סיימת.</h1>
         <p className="text-sm text-muted-foreground">
-          תרגלת {sourceAnswered} שאלות מקור ו־{angleAnswered} שאלות זווית. הנה
-          התמונה.
+          תרגלת {totalAnswered} שאלות. הנה התמונה.
         </p>
       </div>
 
-      {/* 3-card stats row */}
-      <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+      {/* Single overall-success card — Slice 18 dropped the two
+          per-type cards ("שאלות מקור" / "שאלות זווית") that used to
+          sit beside this one. The SummaryAggregate still carries the
+          backing fields; we just stop rendering them. */}
+      <div className="grid grid-cols-1 gap-3">
         <Card className="border-amber-500/40 bg-amber-50 dark:bg-amber-950/20">
           <CardContent className="space-y-1 pt-6">
             <p className="text-sm text-muted-foreground">אחוז הצלחה</p>
@@ -106,28 +101,6 @@ export function PracticeSummary({ summary }: PracticeSummaryProps) {
             </p>
             <p className="text-xs text-muted-foreground">
               {totalCorrect} מתוך {totalAnswered} שאלות
-            </p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="space-y-1 pt-6">
-            <p className="text-sm text-muted-foreground">שאלות מקור</p>
-            <p className="text-3xl font-semibold tabular-nums">
-              {sourceCorrect}/{sourceAnswered}
-            </p>
-            <p className="text-xs text-muted-foreground">
-              הצלחה: {sourcePct}%
-            </p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="space-y-1 pt-6">
-            <p className="text-sm text-muted-foreground">שאלות זווית</p>
-            <p className="text-3xl font-semibold tabular-nums">
-              {angleCorrect}/{angleAnswered}
-            </p>
-            <p className="text-xs text-muted-foreground">
-              הצלחה: {anglePct}%
             </p>
           </CardContent>
         </Card>

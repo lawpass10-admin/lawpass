@@ -123,18 +123,11 @@ export function BookmarkRow({
             {subtopicTitle}
           </span>
         )}
-        {/* Slice 6 fix 4 — white-bg variant of the question-type badge,
-            scoped to this list row. Practice-play and exam pages keep
-            their amber/primary filled badges. */}
-        {bookmark.questionType === "source" ? (
-          <span className="rounded-full border border-amber-300 bg-white px-2 py-0.5 font-medium text-amber-700">
-            מקור
-          </span>
-        ) : (
-          <span className="rounded-full border border-primary/40 bg-white px-2 py-0.5 font-medium text-primary">
-            זווית {bookmark.angleQuestion.angleLetter}
-          </span>
-        )}
+        {/* Slice 18 — the source/angle badge previously rendered here
+            (white-bg "מקור" / "זווית X") is hidden from the user. The
+            preview-text conditional above (~L37-50) still branches on
+            questionType to pick which question's text to show; only
+            the visible badge is removed. */}
       </div>
 
       {/* CENTER: preview */}

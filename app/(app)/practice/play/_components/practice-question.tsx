@@ -348,17 +348,13 @@ export function PracticeQuestion({
 
       {/* Centered content column below the full-width header. */}
       <div className="mx-auto w-full max-w-3xl space-y-4">
-      {/* Type + subtopic chip row — meta-context above the question card */}
+      {/* Subtopic chip row — meta-context above the question card.
+          Slice 18 dropped the preceding source/angle pill ("שאלת מקור"
+          / "זווית X") that used to sit before this chip. The view
+          model still carries `view.kind` and `view.breadcrumbType`
+          (used by ServerComponent + page wiring) — they're now dead
+          render data here, kept so the engine signatures stay intact. */}
       <div className="flex flex-wrap items-center gap-2">
-        {view.kind === "source" ? (
-          <span className="rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-semibold text-amber-700">
-            שאלת מקור
-          </span>
-        ) : (
-          <span className="rounded-full bg-primary/10 px-2.5 py-0.5 text-xs font-semibold text-primary">
-            {view.breadcrumbType}
-          </span>
-        )}
         {view.subtopicTitle && (
           <span
             dir="auto"

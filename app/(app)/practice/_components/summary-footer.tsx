@@ -19,8 +19,9 @@ import { cn } from "@/lib/utils";
  */
 
 type Props = {
-  sourceCount: number;
-  angles: number;
+  /** Slice 18 — single total replaces the prior sourceCount × angles
+   *  axes. Engine still receives sourceCountTarget + anglesPerSource
+   *  via the unchanged action signature inside the builder hook. */
   total: number;
   /** Per-question time in seconds. 0 = "no timer". Drives the "~N דקות" estimate. */
   timeSeconds: number;
@@ -33,8 +34,6 @@ type Props = {
 };
 
 export function SummaryFooter({
-  sourceCount,
-  angles,
   total,
   timeSeconds,
   hasSelection,
@@ -86,72 +85,31 @@ export function SummaryFooter({
               {helperText}
             </span>
           ) : (
-            <>
-              <span>
-                <b style={{ color: "var(--color-navy-ink)", fontWeight: 700 }}>
-                  {sourceCount}
-                </b>{" "}
-                שאלות מקור
-              </span>
-              {angles > 0 && (
-                <>
-                  <span
-                    style={{
-                      color: "var(--color-ink-muted)",
-                      fontWeight: 500,
-                    }}
-                    aria-hidden
-                  >
-                    ×
-                  </span>
-                  <span>
-                    (
-                    <b
-                      style={{
-                        color: "var(--color-navy-ink)",
-                        fontWeight: 700,
-                      }}
-                    >
-                      1
-                    </b>{" "}
-                    +{" "}
-                    <b
-                      style={{
-                        color: "var(--color-navy-ink)",
-                        fontWeight: 700,
-                      }}
-                    >
-                      {angles}
-                    </b>{" "}
-                    זוויות)
-                  </span>
-                </>
-              )}
+            <span className="inline-flex items-baseline gap-1.5">
+              {/* Slice 18 — the prior layout showed the math
+                  "N שאלות מקור × (1 + M זוויות) = T שאלות סה״כ"
+                  which leaked the source/angle split. We now show
+                  only the actual total + estimated time. `total` is
+                  always the truthful generated-question count
+                  (sourceCountTarget × (1 + anglesPerSource)), so
+                  this number matches what the user receives. */}
               <span
-                style={{ color: "var(--color-ink-muted)", fontWeight: 500 }}
-                aria-hidden
+                className="font-heebo font-extrabold tabular-nums"
+                style={{
+                  fontSize: 24,
+                  color: "var(--color-gold-deep)",
+                  lineHeight: 1,
+                }}
               >
-                =
+                {total}
               </span>
-              <span className="inline-flex items-baseline gap-1.5">
-                <span
-                  className="font-heebo font-extrabold tabular-nums"
-                  style={{
-                    fontSize: 24,
-                    color: "var(--color-gold-deep)",
-                    lineHeight: 1,
-                  }}
-                >
-                  {total}
-                </span>
-                <span style={{ fontSize: 13, color: "var(--color-ink-muted)" }}>
-                  שאלות סה״כ
-                  {estimatedMinutes !== null && (
-                    <> · ~{estimatedMinutes} דקות</>
-                  )}
-                </span>
+              <span style={{ fontSize: 13, color: "var(--color-ink-muted)" }}>
+                שאלות
+                {estimatedMinutes !== null && (
+                  <> · ~{estimatedMinutes} דקות</>
+                )}
               </span>
-            </>
+            </span>
           )}
         </div>
 

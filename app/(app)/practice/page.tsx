@@ -137,7 +137,7 @@ function PageHead() {
         className="font-heebo font-normal"
         style={{ fontSize: 15, color: "var(--color-ink-dim)" }}
       >
-        בחר נושאים, כמה שאלות מקור, וכמה זוויות לכל מקור.
+        בחר נושאים וכמות שאלות.
       </p>
     </header>
   );

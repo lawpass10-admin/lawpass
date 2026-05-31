@@ -43,10 +43,12 @@ export function PracticeSetupForm({
     setRawSubtopicId,
     effectiveSubtopicId,
     subtopicsForSelected,
-    setRawSourceCount,
-    effectiveSourceCount,
-    angles,
-    setAngles,
+    // Slice 18 — single "כמות שאלות" total replaces the prior
+    // source + angles pair. `total` is now the truthful generated
+    // question count (engine still receives sourceCountTarget +
+    // anglesPerSource via the unchanged action signature).
+    effectiveTotal,
+    setRawTotal,
     timeSeconds,
     setTimeSeconds,
     available,
@@ -75,10 +77,8 @@ export function PracticeSetupForm({
         {/* Left column (RTL visual left): counts + timer stacked. */}
         <aside className="flex flex-col gap-5">
           <CountsPanel
-            sourceCount={effectiveSourceCount}
-            onSetSourceCount={setRawSourceCount}
-            angles={angles}
-            onSetAngles={setAngles}
+            total={effectiveTotal}
+            onSetTotal={setRawTotal}
             available={available}
             isCountPending={isCountPending}
             hasSelection={hasSelection}
@@ -88,8 +88,6 @@ export function PracticeSetupForm({
       </div>
 
       <SummaryFooter
-        sourceCount={effectiveSourceCount}
-        angles={angles}
         total={total}
         timeSeconds={timeSeconds}
         hasSelection={hasSelection}

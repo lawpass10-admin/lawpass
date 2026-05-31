@@ -38,13 +38,14 @@ export async function KpiRowAsync({ userId }: Props) {
   const examSparkline = kpi.weeklyExamAttempts.slice(-8);
 
   // KPI 1 — שאלות שתורגלו
+  // Slice 18 — the prior sub-line broke this into "מקור N · זווית N";
+  // we now hide that distinction from the user. The underlying
+  // sourceAttempts / angleAttempts fields on `kpi` still flow (queries
+  // unchanged) — we just stop rendering them. Sub-line copy is a
+  // neutral encouragement that needs no new query.
   const kpi1Empty = kpi.totalAttempts === 0;
   const kpi1Value = kpi1Empty ? "—" : kpi.totalAttempts.toLocaleString("he-IL");
-  const kpi1Meta = kpi1Empty
-    ? "התחל לתרגל"
-    : `מקור ${kpi.sourceAttempts.toLocaleString(
-        "he-IL"
-      )} · זווית ${kpi.angleAttempts.toLocaleString("he-IL")}`;
+  const kpi1Meta = kpi1Empty ? "התחל לתרגל" : "תרגול מתמשך";
 
   // KPI 2 — זמן ממוצע לשאלה (practice). Phase 14 polish: tier system
   // replaces the raw "X% מהיעד" pill which could spike to 90%+ on tiny

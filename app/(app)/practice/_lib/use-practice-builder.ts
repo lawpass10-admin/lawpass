@@ -54,6 +54,31 @@ export const AVAILABILITY_DEBOUNCE_MS = 300;
 export const MIN_QUESTIONS_REQUIRED: SourceCount = SOURCE_COUNT_CHOICES[0];
 
 // =============================================================================
+// Slice 18 — single "כמות שאלות" picker.
+// =============================================================================
+// Sharon's decision: the user picks ONE "total questions" number. The
+// engine signature (sourceCountTarget + anglesPerSource) stays
+// unchanged; angles is locked to DEFAULT_ANGLES (2) and is no longer
+// user-editable. The total options are deliberately set to
+// SOURCE_COUNT_CHOICES × (1 + DEFAULT_ANGLES) = [1,2,5,10,20,50] × 3,
+// so the number the user picks IS the number of questions they
+// receive (truth-in-display, no rounding gap). Default total = 15
+// matches the previous default (5 × 3).
+export const TOTAL_QUESTION_CHOICES = [3, 6, 15, 30, 60, 150] as const;
+export type TotalQuestionCount = (typeof TOTAL_QUESTION_CHOICES)[number];
+
+export const DEFAULT_TOTAL_QUESTIONS: TotalQuestionCount = 15;
+export const MIN_TOTAL_QUESTIONS_REQUIRED: TotalQuestionCount =
+  TOTAL_QUESTION_CHOICES[0];
+
+/** Derive sourceCountTarget from a chosen total. Because
+ *  TOTAL_QUESTION_CHOICES values are exact multiples of (1 + angles),
+ *  the division is integer and lossless. */
+export function totalToSourceCount(total: number): number {
+  return Math.max(1, Math.round(total / (1 + DEFAULT_ANGLES)));
+}
+
+// =============================================================================
 // Pure helpers — no React; exported so they can pick up unit tests later
 // without rebuilding the hook plumbing.
 // =============================================================================
@@ -115,12 +140,12 @@ export type UsePracticeBuilderResult = {
   effectiveSubtopicId: string | null;
   subtopicsForSelected: SubtopicRow[];
 
-  // Counts
-  rawSourceCount: SourceCount;
-  setRawSourceCount: (n: SourceCount) => void;
-  effectiveSourceCount: SourceCount;
-  angles: AngleCount;
-  setAngles: (n: AngleCount) => void;
+  // Counts — Slice 18 collapses the prior two-axis (source × angles)
+  // picker into a single "כמות שאלות" total. `angles` stays internal,
+  // locked to DEFAULT_ANGLES, and is passed to the engine unchanged.
+  rawTotal: TotalQuestionCount;
+  setRawTotal: (n: TotalQuestionCount) => void;
+  effectiveTotal: TotalQuestionCount;
 
   // Timer
   timeSeconds: number;
@@ -132,7 +157,10 @@ export type UsePracticeBuilderResult = {
   hasSelection: boolean;
   insufficient: boolean;
 
-  // Equation total ( = effectiveSourceCount × (1 + angles) )
+  // The actual number of questions the engine will produce. Always
+  // equals `effectiveTotal` (because TOTAL_QUESTION_CHOICES are exact
+  // multiples of 1 + DEFAULT_ANGLES), so the summary footer can
+  // display it as truthful "X questions" without rounding gaps.
   total: number;
 
   // Submit
@@ -186,15 +214,39 @@ export function usePracticeBuilder({
     )
       ? initialValues.subtopic
       : null;
-  const initialSourceCount: SourceCount =
+  // Slice 18 — angles is locked to the default and no longer
+  // user-editable, but we still read prefill `angles` to derive an
+  // accurate initial total when a "retry session" URL carries the
+  // original two-axis sizing. Map (prefill.sourceCount, prefill.angles)
+  // → initial total, then snap to the nearest valid TOTAL_QUESTION_CHOICES.
+  const prefillAngles: AngleCount =
+    initialValues?.angles !== undefined && isAngleCount(initialValues.angles)
+      ? initialValues.angles
+      : DEFAULT_ANGLES;
+  const prefillSourceCount: SourceCount =
     initialValues?.sourceCount !== undefined &&
     isSourceCount(initialValues.sourceCount)
       ? initialValues.sourceCount
       : DEFAULT_SOURCE_COUNT;
-  const initialAngles: AngleCount =
-    initialValues?.angles !== undefined && isAngleCount(initialValues.angles)
-      ? initialValues.angles
-      : DEFAULT_ANGLES;
+  const initialTotal: TotalQuestionCount = (() => {
+    const target = prefillSourceCount * (1 + prefillAngles);
+    if (initialValues?.sourceCount === undefined) {
+      return DEFAULT_TOTAL_QUESTIONS;
+    }
+    // Snap to the nearest valid choice (Slice 18's totals are exact
+    // multiples of 1 + DEFAULT_ANGLES, so retries with the default
+    // angles count land exactly on a valid value).
+    let best: TotalQuestionCount = TOTAL_QUESTION_CHOICES[0];
+    let bestDiff = Math.abs(target - best);
+    for (const choice of TOTAL_QUESTION_CHOICES) {
+      const diff = Math.abs(target - choice);
+      if (diff < bestDiff) {
+        best = choice;
+        bestDiff = diff;
+      }
+    }
+    return best;
+  })();
   const initialTime: number =
     initialValues?.timePerQuestion !== undefined
       ? Math.min(TIME_MAX, Math.max(TIME_MIN, initialValues.timePerQuestion))
@@ -206,10 +258,12 @@ export function usePracticeBuilder({
   const [rawSubtopicId, setRawSubtopicId] = useState<string | null>(
     initialSubtopic
   );
-  const [rawSourceCount, setRawSourceCount] =
-    useState<SourceCount>(initialSourceCount);
-  const [angles, setAngles] = useState<AngleCount>(initialAngles);
+  const [rawTotal, setRawTotal] =
+    useState<TotalQuestionCount>(initialTotal);
   const [timeSeconds, setTimeSeconds] = useState<number>(initialTime);
+  // angles is locked — kept in a const, not state. Engine still
+  // receives it via the unchanged createPracticeSession signature.
+  const angles: AngleCount = DEFAULT_ANGLES;
 
   // Availability response carries the fingerprint it was computed for —
   // a stale response can't appear to apply to a newer selection.
@@ -246,18 +300,25 @@ export function usePracticeBuilder({
       ? availabilityResponse.count
       : null;
 
-  // Clamp the source count to the highest enabled choice when the user's
-  // previous pick now exceeds availability. Pure derivation: rawSourceCount
-  // stays in state; effectiveSourceCount is what the UI shows + submits.
-  const effectiveSourceCount: SourceCount = (() => {
-    if (available === null) return rawSourceCount;
-    if (available < MIN_QUESTIONS_REQUIRED) return rawSourceCount;
-    if (rawSourceCount <= available) return rawSourceCount;
-    const highest = [...SOURCE_COUNT_CHOICES]
+  // Clamp the total to the highest enabled choice when the user's
+  // previous pick now exceeds availability. `available` is the count
+  // of distinct source questions in the selection; max producible
+  // total = available × (1 + angles).
+  const maxTotal = available !== null ? available * (1 + angles) : null;
+  const effectiveTotal: TotalQuestionCount = (() => {
+    if (maxTotal === null) return rawTotal;
+    if (maxTotal < MIN_TOTAL_QUESTIONS_REQUIRED) return rawTotal;
+    if (rawTotal <= maxTotal) return rawTotal;
+    const highest = [...TOTAL_QUESTION_CHOICES]
       .reverse()
-      .find((n) => n <= available);
-    return (highest ?? rawSourceCount) as SourceCount;
+      .find((n) => n <= maxTotal);
+    return (highest ?? rawTotal) as TotalQuestionCount;
   })();
+  // Engine still expects sourceCountTarget + anglesPerSource. Derive
+  // it from the chosen total via the totalToSourceCount helper — the
+  // TOTAL_QUESTION_CHOICES values are exact multiples of (1 + angles)
+  // so this division is integer and lossless.
+  const effectiveSourceCount = totalToSourceCount(effectiveTotal);
 
   // ---------- reactive availability lookup (race-guarded) ----------
   const generationRef = useRef(0);
@@ -292,12 +353,18 @@ export function usePracticeBuilder({
     );
   }
 
+  // `total` equals `effectiveTotal` by construction. We compute it
+  // from the engine-bound source count instead of returning
+  // effectiveTotal directly so that any drift between display and
+  // engine output is impossible — they're now the same number.
   const total = effectiveSourceCount * (1 + angles);
 
   // Submit blockers: no chapters, no availability yet, availability
   // below the smallest count button, or a request already in-flight.
+  // `insufficient` is keyed on the producible total so the helper
+  // text matches the picker semantics.
   const insufficient =
-    available !== null && available < MIN_QUESTIONS_REQUIRED;
+    maxTotal !== null && maxTotal < MIN_TOTAL_QUESTIONS_REQUIRED;
   const submitDisabled =
     selectedChapterIds.length === 0 ||
     available === null ||
@@ -332,11 +399,9 @@ export function usePracticeBuilder({
     setRawSubtopicId,
     effectiveSubtopicId,
     subtopicsForSelected,
-    rawSourceCount,
-    setRawSourceCount,
-    effectiveSourceCount,
-    angles,
-    setAngles,
+    rawTotal,
+    setRawTotal,
+    effectiveTotal,
     timeSeconds,
     setTimeSeconds,
     available,
