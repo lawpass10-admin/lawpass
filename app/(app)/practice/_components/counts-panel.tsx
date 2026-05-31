@@ -116,72 +116,51 @@ export function CountsPanel({
       </header>
 
       <div>
-        <div className="flex justify-between items-center mb-2.5">
+        <div className="mb-2.5">
           <span
             className="font-heebo font-semibold"
             style={{ fontSize: 14.5, color: "var(--color-navy-ink)" }}
           >
             כמות שאלות
           </span>
-          <span
-            className="font-heebo"
-            style={{ fontSize: 12, color: "var(--color-ink-muted)" }}
-          >
-            {MIN_TOTAL_QUESTIONS_INPUT}–{MAX_TOTAL_QUESTIONS_INPUT}
-          </span>
         </div>
 
-        {/* Slice 23 — free numeric input. Local string state buffers
-            the in-flight typed text so the user can clear and re-type
-            without the hook snapping back; an int parse on every
-            change fires `onSetTotal`, the hook clamps to
-            [MIN_TOTAL_QUESTIONS_INPUT, MAX_TOTAL_QUESTIONS_INPUT].
-            The resolved engine total is shown next to the input only
-            when it differs from the typed number (truth-in-display). */}
-        <div className="mb-3 flex items-center gap-3">
+        {/* Slice 23.1 — input + preset chips share a single flex row.
+            The input lives at the RTL-start (right) edge with a gold
+            accent border so it reads as editable; the presets fill
+            the rest of the row as the same-height quick shortcuts.
+            No inline hint sentence — the summary footer carries the
+            truthful resolved total, and the input snaps to that
+            resolved value on blur. */}
+        <div className="flex items-stretch gap-1.5">
           <TotalNumberInput
             rawTotal={rawTotal}
+            total={total}
             onSetTotal={onSetTotal}
             disabled={!hasSelection}
           />
-          {rawTotal !== total ? (
-            <span
-              className="font-heebo"
-              style={{ fontSize: 12, color: "var(--color-ink-muted)" }}
-              dir="rtl"
-            >
-              בפועל{" "}
-              <b
-                style={{ color: "var(--color-navy-ink)", fontWeight: 700 }}
-              >
-                {total}
-              </b>{" "}
-              שאלות (עוגל מהמספר שהוקלד)
-            </span>
-          ) : null}
-        </div>
-
-        {/* Preset chips — keep as quick shortcuts. The `active` state
-            keys off the resolved `total` so picking a preset
-            highlights as expected even after a numeric edit. */}
-        <div className="grid grid-cols-3 md:grid-cols-6 gap-1.5">
-          {TOTAL_QUESTION_CHOICES.map((n) => {
-            // Available source questions × (1 + DEFAULT_ANGLES) = the
-            // most we can ever produce. Disable presets that exceed it.
-            const maxTotal =
-              available !== null ? available * (1 + DEFAULT_ANGLES) : null;
-            const enabled = maxTotal !== null && maxTotal >= n;
-            const isSelected = total === n;
-            return (
-              <PickerButton
-                key={n}
-                value={n}
-                active={isSelected && enabled}
-                disabled={!enabled}
-                onClick={() => enabled && onSetTotal(n)}
-              />
-            );
-          })}
+          <div className="grid flex-1 grid-cols-3 md:grid-cols-6 gap-1.5">
+            {TOTAL_QUESTION_CHOICES.map((n) => {
+              // Available source questions × (1 + DEFAULT_ANGLES) =
+              // the most we can ever produce. Disable presets that
+              // exceed it.
+              const maxTotal =
+                available !== null
+                  ? available * (1 + DEFAULT_ANGLES)
+                  : null;
+              const enabled = maxTotal !== null && maxTotal >= n;
+              const isSelected = total === n;
+              return (
+                <PickerButton
+                  key={n}
+                  value={n}
+                  active={isSelected && enabled}
+                  disabled={!enabled}
+                  onClick={() => enabled && onSetTotal(n)}
+                />
+              );
+            })}
+          </div>
         </div>
       </div>
     </section>
@@ -233,20 +212,25 @@ function PickerButton({
 }
 
 /**
- * Slice 23 — Free numeric input for the question total. Mirrors the
- * preset chips' visual idiom (rounded, navy-ink text, line border)
- * so the panel stays cohesive. The component holds a local string
- * for the in-flight typed text so the user can clear the field
- * without the hook snapping back, and parses + dispatches an integer
- * on every change. Incoming `rawTotal` changes (e.g. a preset click)
- * sync back to the displayed string via the effect.
+ * Slice 23 — Free numeric input for the question total. Compact
+ * (same height as a preset chip) with a gold accent border to read
+ * as editable, distinct from the line-border preset chips.
+ *
+ * The component holds a local string buffer for the in-flight typed
+ * text so the user can clear / partial-edit without the hook
+ * snapping back mid-keystroke. Slice 23.1 — on BLUR the field snaps
+ * to the engine-resolved `total` (and dispatches it back to the
+ * hook), so what the user sees in the input is always the truthful
+ * count after they tab away. No inline hint sentence required.
  */
 function TotalNumberInput({
   rawTotal,
+  total,
   onSetTotal,
   disabled,
 }: {
   rawTotal: number;
+  total: number;
   onSetTotal: (n: number) => void;
   disabled: boolean;
 }) {
@@ -274,10 +258,21 @@ function TotalNumberInput({
   };
 
   const handleBlur = (): void => {
-    // If the user left the field empty or invalid, restore the
-    // current clamped value rather than persisting "".
-    if (text === "" || !Number.isFinite(Number.parseInt(text, 10))) {
-      setText(String(rawTotal));
+    // Slice 23.1 — snap-on-blur. The hook's `total` is the engine-
+    // resolved count (sourceCount × (1 + angles)); if the user typed
+    // a number that rounds to a different engine output we sync the
+    // displayed text AND dispatch `total` back so rawTotal === total
+    // afterwards. Empty / invalid input falls back to the current
+    // resolved value, same idea.
+    const parsed = Number.parseInt(text, 10);
+    if (text === "" || !Number.isFinite(parsed)) {
+      setText(String(total));
+      if (rawTotal !== total) onSetTotal(total);
+      return;
+    }
+    if (parsed !== total) {
+      setText(String(total));
+      onSetTotal(total);
     }
   };
 
@@ -295,17 +290,19 @@ function TotalNumberInput({
       aria-label="כמות שאלות"
       className={cn(
         "font-heebo font-bold tabular-nums text-center",
-        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40",
+        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-gold)]/40",
         disabled && "cursor-not-allowed opacity-50"
       )}
       style={{
-        width: 92,
+        // Match the preset chips' vertical rhythm so the input sits
+        // flush with them when they share a flex row.
         padding: "11px 12px",
+        width: 88,
         borderRadius: 10,
         fontSize: 15,
-        background: "var(--color-paper)",
+        background: "var(--color-gold-tint)",
         color: "var(--color-navy-ink)",
-        border: "1.5px solid var(--color-line)",
+        border: "1.5px solid var(--color-gold)",
       }}
     />
   );
