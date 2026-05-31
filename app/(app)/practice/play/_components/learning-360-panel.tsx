@@ -352,12 +352,15 @@ function QuickThinking360({ text }: { text: string }) {
   const parsed = parseQuickThinking360(text);
   const [revealed, setRevealed] = useState<Set<number>>(() => new Set());
 
-  // Slice 20 — narrower gold container shared by both the parsed
-  // and fallback branches. `max-w-lg` (32rem) makes the amber card
-  // read as a per-question row instead of a full-width banner, and
-  // keeps a consistent visual treatment between the two branches.
+  // Slice 20 — shared gold-container styling for both the parsed and
+  // fallback branches. Slice 20.1 dropped the `max-w-lg` width cap
+  // that Slice 20 introduced (it left an empty gap on the inline-end
+  // side and made the cards visually inconsistent with the red
+  // "מלכודת נפוצה" card above them). The cards now span the full
+  // content-column width again; the Slice 20 inline-row layout and
+  // outline reveal Button stay.
   const CARD_CLASSES =
-    "rounded-md border-s-[3px] border-amber-500 bg-amber-50 p-4 text-[15px] leading-relaxed dark:bg-amber-950/30 max-w-lg";
+    "rounded-md border-s-[3px] border-amber-500 bg-amber-50 p-4 text-[15px] leading-relaxed dark:bg-amber-950/30";
 
   if (parsed.kind === "fallback") {
     return (
