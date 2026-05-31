@@ -2,6 +2,10 @@
 
 import { Clock, Pause, Play } from "lucide-react";
 
+import {
+  TIMER_PHASE_CLASSES_NAVY,
+  getTimerPhase,
+} from "@/lib/timer-phase";
 import { cn } from "@/lib/utils";
 
 type Props = {
@@ -14,9 +18,6 @@ type Props = {
   onTogglePause: () => void;
   onSubmit: () => void;
 };
-
-const TIMER_WARNING_SECONDS = 30;
-const TIMER_DANGER_SECONDS = 10;
 
 function formatMinSec(total: number): string {
   const safe = Math.max(0, Math.floor(total));
@@ -53,12 +54,10 @@ export function ExamHeader({
   onTogglePause,
   onSubmit,
 }: Props) {
-  const phase: "neutral" | "warning" | "danger" =
-    remainingSeconds < TIMER_DANGER_SECONDS
-      ? "danger"
-      : remainingSeconds < TIMER_WARNING_SECONDS
-        ? "warning"
-        : "neutral";
+  // Slice 22 — 3-phase derivation moved into the shared
+  // lib/timer-phase helper. Class set is the navy-surface variant,
+  // verbatim from the pre-Slice-22 inline branch.
+  const phase = getTimerPhase(remainingSeconds);
   const minutesLeft = Math.max(0, Math.floor(remainingSeconds / 60));
   return (
     <header className="sticky top-0 z-20 flex h-12 items-center gap-3 bg-primary px-4 text-primary-foreground sm:gap-4 sm:px-6">
@@ -84,11 +83,7 @@ export function ExamHeader({
           aria-hidden
           className={cn(
             "inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 font-mono text-sm font-semibold tabular-nums sm:gap-2 sm:px-3",
-            phase === "danger" &&
-              "bg-destructive text-destructive-foreground timer-pulse",
-            phase === "warning" &&
-              "bg-amber-100 text-amber-800 dark:bg-amber-950/40 dark:text-amber-300",
-            phase === "neutral" && "bg-white/10 text-primary-foreground"
+            TIMER_PHASE_CLASSES_NAVY[phase]
           )}
         >
           <Clock className="size-3.5" aria-hidden />

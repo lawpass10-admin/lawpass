@@ -3,6 +3,10 @@
 import { Clock } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
+import {
+  TIMER_PHASE_CLASSES_LIGHT,
+  getTimerPhase,
+} from "@/lib/timer-phase";
 import { cn } from "@/lib/utils";
 
 type TimerProps = {
@@ -17,8 +21,6 @@ type TimerProps = {
    * multiple times even if React re-renders. */
   onExpired?: () => void;
 };
-
-const LOW_TIME_THRESHOLD_SECONDS = 30;
 
 function formatMinSec(total: number): string {
   const safe = Math.max(0, Math.floor(total));
@@ -77,15 +79,20 @@ export function Timer({ initialSeconds, running, onExpired }: TimerProps) {
     return () => clearInterval(id);
   }, [running, seconds, onExpired, initialSeconds]);
 
-  const low = seconds < LOW_TIME_THRESHOLD_SECONDS;
+  // Slice 22 — adopt the same 3-phase derivation the exam timer
+  // uses (Slice 17 B-1) via the shared helper. Light-surface class
+  // map (the practice timer pill sits on a white card, not navy
+  // chrome), so neutral keeps `bg-muted`, warning carries a subtle
+  // ring so it pops against the near-white card, and danger uses
+  // the solid destructive bg + `.timer-pulse` keyframe (already
+  // gated on prefers-reduced-motion in app/globals.css).
+  const phase = getTimerPhase(seconds);
 
   return (
     <div
       className={cn(
         "inline-flex items-center gap-2 rounded-md px-3 py-1.5 text-sm font-semibold tabular-nums transition-colors",
-        low
-          ? "bg-destructive/10 text-destructive"
-          : "bg-muted text-muted-foreground"
+        TIMER_PHASE_CLASSES_LIGHT[phase]
       )}
       role="timer"
       aria-live="off"
