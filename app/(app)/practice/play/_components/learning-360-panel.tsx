@@ -15,15 +15,21 @@ import {
 } from "lucide-react";
 import { useState } from "react";
 
-import type {
-  AngleQuestionRow,
-  Choice,
-  SourceQuestionRow,
-} from "@/lib/db/practice";
+import type { Choice, Question360 } from "@/lib/db/practice";
 import { cn } from "@/lib/utils";
 
+/**
+ * Slice 17 B-2: the panel's `question` prop is narrowed from
+ * `SourceQuestionRow | AngleQuestionRow` to `Question360` — the
+ * minimal structural type carrying just the 7 × 360° fields plus
+ * `choices: Choice[]`. Both row types still structurally satisfy
+ * this, so practice-play continues to pass its `question` unchanged.
+ * The change lets the exam-results aggregate pass a minimal payload
+ * (no chapter_title/subtopic_title/question_group_id/etc.) without
+ * casts.
+ */
 type Learning360PanelProps = {
-  question: SourceQuestionRow | AngleQuestionRow;
+  question: Question360;
   correctChoice: Choice;
 };
 

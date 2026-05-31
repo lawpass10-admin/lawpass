@@ -38,11 +38,20 @@ import type {
   AngleQuestionRow,
   AttemptRow,
   Choice,
+  Question360,
+  Source360,
   SourceQuestionRow,
 } from "@/lib/db/practice";
 import { stripAnswerFromChoices } from "@/lib/db/practice";
 
-export type { AngleQuestionRow, AttemptRow, Choice, SourceQuestionRow };
+export type {
+  AngleQuestionRow,
+  AttemptRow,
+  Choice,
+  Question360,
+  Source360,
+  SourceQuestionRow,
+};
 export { stripAnswerFromChoices };
 
 type SupabaseSsrClient = Awaited<ReturnType<typeof createClient>>;
@@ -432,7 +441,7 @@ export type ResolvedExamQuestion =
   | { kind: "angle"; question: AngleQuestionRow; parentQuestionGroupId: string }
   | { kind: "archived" };
 
-const SOURCE_SELECT_FULL = `
+export const SOURCE_SELECT_FULL = `
   id, question_group_id, external_id, question_text, chapter_id, subtopic_id,
   legal_topic_analysis, full_explanation, common_pitfall, concepts_and_skills,
   quick_thinking_360, summary_for_memory, references_list,
@@ -440,7 +449,7 @@ const SOURCE_SELECT_FULL = `
   subtopic:subtopics!source_questions_subtopic_id_fkey(title)
 `;
 
-const ANGLE_SELECT_FULL = `
+export const ANGLE_SELECT_FULL = `
   id, source_question_id, angle_letter, angle_title, display_order, question_text,
   legal_topic_analysis, full_explanation, common_pitfall, concepts_and_skills,
   quick_thinking_360, summary_for_memory, references_list
@@ -745,12 +754,22 @@ export type ExamByChapter = {
   total: number;
 };
 
-export type ExamReviewChoice = {
-  letter: ExamLetter;
-  choiceText: string;
-  isCorrect: boolean;
-  distractorAnalysis: string | null;
-  displayOrder: number;
+/**
+ * Slice 17 B-2 — the full 360° payload required to render the inline
+ * `<Learning360Panel>` below the choice rows on the results page. The
+ * 7 × 360° fields come straight from `source_questions` /
+ * `angle_questions`; `correctChoice` is server-derived via
+ * `choices.find(c => c.is_correct)` so the client never has to scan
+ * the choices array a second time.
+ *
+ * `correctChoice` is nullable as a defensive fallback for archived
+ * rows: if a question was active at session-creation time but RLS
+ * hid it before results render, the choices come back empty and we
+ * have nothing to mark "correct". The component null-guards the
+ * panel render in that branch.
+ */
+export type Learning360Payload = Source360 & {
+  correctChoice: Choice | null;
 };
 
 /**
@@ -759,6 +778,14 @@ export type ExamReviewChoice = {
  *  - excerpt (truncated question_text for the collapsed row)
  *  - questionText (full text for the expanded panel)
  *  - choices (4 entries with distractor analyses) — Slice 7.6
+ *  - learning (the 7 × 360° payload + server-derived correctChoice)
+ *    — Slice 17 B-2. Null for archived/un-resolvable rows.
+ *
+ * Slice 17 B-2 also dropped the intermediate `ExamReviewChoice`
+ * projection — `choices` now flows as the full `Choice[]` shape end-
+ * to-end (with `id`, `choice_text`, `is_correct`, `distractor_analysis`),
+ * matching what `<Learning360Panel>` already expects in practice-play
+ * and removing the camelCase/snake_case mismatch.
  *
  * The play page's progress strip uses only `ExamByPosition.status`;
  * the extra fields here cost nothing for it.
@@ -766,7 +793,8 @@ export type ExamReviewChoice = {
 export type ExamReviewRow = ExamByPosition & {
   excerpt: string;
   questionText: string;
-  choices: ExamReviewChoice[];
+  choices: Choice[];
+  learning: Learning360Payload | null;
 };
 
 export type ExamResultsAggregate = {
@@ -1031,11 +1059,16 @@ async function resolveQuestionTextsForList(
  * angle_choices. Both tables are RLS-gated by the parent question's
  * active+is_current status, which holds for any question the user
  * actually attempted in the session.
+ *
+ * Slice 17 B-2 — widened to return the full `Choice` shape (adds
+ * `id`, uses snake_case throughout) so the same payload feeds both
+ * the choice-row renderer and `<Learning360Panel>`'s distractor
+ * table. Removes the prior `ExamReviewChoice` camelCase projection.
  */
 async function resolveChoicesForList(
   supabase: SupabaseSsrClient,
   questionList: ExamQuestionListItem[]
-): Promise<Map<string, ExamReviewChoice[]>> {
+): Promise<Map<string, Choice[]>> {
   const sourceIds: string[] = [];
   const angleIds: string[] = [];
   for (const it of questionList) {
@@ -1048,7 +1081,7 @@ async function resolveChoicesForList(
       ? supabase
           .from("source_choices")
           .select(
-            "source_question_id, letter, choice_text, is_correct, distractor_analysis, display_order"
+            "id, source_question_id, letter, choice_text, is_correct, distractor_analysis, display_order"
           )
           .in("source_question_id", sourceIds)
       : Promise.resolve({ data: null as unknown }),
@@ -1056,16 +1089,17 @@ async function resolveChoicesForList(
       ? supabase
           .from("angle_choices")
           .select(
-            "angle_question_id, letter, choice_text, is_correct, distractor_analysis, display_order"
+            "id, angle_question_id, letter, choice_text, is_correct, distractor_analysis, display_order"
           )
           .in("angle_question_id", angleIds)
       : Promise.resolve({ data: null as unknown }),
   ]);
 
-  const map = new Map<string, ExamReviewChoice[]>();
+  const map = new Map<string, Choice[]>();
   function pushChoice(
     key: string,
     row: {
+      id: string;
       letter: string;
       choice_text: string;
       is_correct: boolean;
@@ -1081,12 +1115,13 @@ async function resolveChoicesForList(
     ) {
       return;
     }
-    const choice: ExamReviewChoice = {
+    const choice: Choice = {
+      id: row.id,
       letter: row.letter,
-      choiceText: row.choice_text,
-      isCorrect: row.is_correct,
-      distractorAnalysis: row.distractor_analysis,
-      displayOrder: row.display_order,
+      choice_text: row.choice_text,
+      is_correct: row.is_correct,
+      distractor_analysis: row.distractor_analysis,
+      display_order: row.display_order,
     };
     const arr = map.get(key) ?? [];
     arr.push(choice);
@@ -1094,6 +1129,7 @@ async function resolveChoicesForList(
   }
 
   for (const row of (sourceRes.data ?? []) as Array<{
+    id: string;
     source_question_id: string;
     letter: string;
     choice_text: string;
@@ -1104,6 +1140,7 @@ async function resolveChoicesForList(
     pushChoice(`source:${row.source_question_id}`, row);
   }
   for (const row of (angleRes.data ?? []) as Array<{
+    id: string;
     angle_question_id: string;
     letter: string;
     choice_text: string;
@@ -1117,7 +1154,94 @@ async function resolveChoicesForList(
   // Sort each bucket by display_order so the renderer can render
   // א/ב/ג/ד in their canonical order regardless of insert order.
   for (const list of map.values()) {
-    list.sort((a, b) => a.displayOrder - b.displayOrder);
+    list.sort((a, b) => a.display_order - b.display_order);
+  }
+  return map;
+}
+
+/**
+ * Slice 17 B-2 — fetch the 7 × 360° fields for every question in
+ * `questionList`. Powers the inline `<Learning360Panel>` rendered
+ * below the choice rows on the exam-results page.
+ *
+ * Strategy mirrors `resolveChoicesForList` / `resolveChapterCodesForList`:
+ *   - Two parallel `.in()` queries, one against `source_questions` and
+ *     one against `angle_questions`, using the existing
+ *     `SOURCE_SELECT_FULL` / `ANGLE_SELECT_FULL` column lists.
+ *     Those constants already enumerate the 7 × 360° fields.
+ *   - Returns a Map keyed by `${question_type}:${question_id}` whose
+ *     value is the 7 × 360° payload. `correctChoice` is NOT computed
+ *     here — the aggregate merges it in once choices are available
+ *     from `resolveChoicesForList`, which runs in the same `Promise.all`.
+ *
+ * RLS: source_questions / angle_questions are gated by status='active'
+ * AND is_current=true for normal callers. Any question RLS-hides
+ * mid-flight (rare) simply doesn't appear in the result Map and the
+ * aggregate's enrichment loop maps that row's `learning` field to null.
+ *
+ * Returns an intermediate shape without `correctChoice` because the
+ * choice list lives in a sibling resolver — the aggregate combines them
+ * before exposing the final `Learning360Payload`. The intermediate
+ * shape is module-internal; callers see `Learning360Payload` only.
+ */
+type Learning360FieldsOnly = Source360;
+
+export async function resolveLearning360ForList(
+  supabase: SupabaseSsrClient,
+  questionList: ExamQuestionListItem[]
+): Promise<Map<string, Learning360FieldsOnly>> {
+  const sourceIds: string[] = [];
+  const angleIds: string[] = [];
+  for (const it of questionList) {
+    if (it.question_type === "source") sourceIds.push(it.question_id);
+    else angleIds.push(it.question_id);
+  }
+
+  const [sourceRes, angleRes] = await Promise.all([
+    sourceIds.length > 0
+      ? supabase
+          .from("source_questions")
+          .select(SOURCE_SELECT_FULL)
+          .in("id", sourceIds)
+      : Promise.resolve({ data: null as unknown }),
+    angleIds.length > 0
+      ? supabase
+          .from("angle_questions")
+          .select(ANGLE_SELECT_FULL)
+          .in("id", angleIds)
+      : Promise.resolve({ data: null as unknown }),
+  ]);
+
+  const map = new Map<string, Learning360FieldsOnly>();
+
+  type Raw360Row = {
+    id: string;
+    legal_topic_analysis: string | null;
+    full_explanation: string | null;
+    common_pitfall: string | null;
+    concepts_and_skills: unknown;
+    quick_thinking_360: string | null;
+    summary_for_memory: string | null;
+    references_list: unknown;
+  };
+
+  function project(row: Raw360Row): Learning360FieldsOnly {
+    return {
+      legal_topic_analysis: row.legal_topic_analysis ?? "",
+      full_explanation: row.full_explanation ?? "",
+      common_pitfall: row.common_pitfall ?? "",
+      concepts_and_skills: toStringArray(row.concepts_and_skills),
+      quick_thinking_360: row.quick_thinking_360 ?? "",
+      summary_for_memory: row.summary_for_memory ?? "",
+      references_list: toStringArray(row.references_list),
+    };
+  }
+
+  for (const row of (sourceRes.data ?? []) as Raw360Row[]) {
+    map.set(`source:${row.id}`, project(row));
+  }
+  for (const row of (angleRes.data ?? []) as Raw360Row[]) {
+    map.set(`angle:${row.id}`, project(row));
   }
   return map;
 }
@@ -1144,6 +1268,11 @@ async function resolveChoicesForList(
  * text + its 4 choices with distractor analyses, so the results page
  * can render an inline per-question expansion without a drill-in.
  *
+ * Slice 17 B-2 — each byPosition row ALSO carries the 7 × 360° fields
+ * (via `resolveLearning360ForList`) so the expanded panel can mount
+ * `<Learning360Panel>` inline below the choice rows. The new resolver
+ * runs in parallel with the others — no extra serial round-trip.
+ *
  * Returns null if the session isn't loadable (page redirects).
  */
 export async function getExamResultsAggregate(
@@ -1154,26 +1283,45 @@ export async function getExamResultsAggregate(
   const session = await getExamSessionById(supabase, userId, sessionId);
   if (!session) return null;
 
-  const [statuses, chapterByItem, textByItem, choicesByItem] = await Promise.all(
-    [
-      getExamPositionStatuses(supabase, sessionId, session.question_list),
-      resolveChapterCodesForList(supabase, session.question_list),
-      resolveQuestionTextsForList(supabase, session.question_list),
-      resolveChoicesForList(supabase, session.question_list),
-    ]
-  );
+  const [
+    statuses,
+    chapterByItem,
+    textByItem,
+    choicesByItem,
+    learningByItem,
+  ] = await Promise.all([
+    getExamPositionStatuses(supabase, sessionId, session.question_list),
+    resolveChapterCodesForList(supabase, session.question_list),
+    resolveQuestionTextsForList(supabase, session.question_list),
+    resolveChoicesForList(supabase, session.question_list),
+    resolveLearning360ForList(supabase, session.question_list),
+  ]);
 
   // Enrich the status array with excerpts + full question text +
-  // choices in one pass.
+  // choices + 360° learning payload in one pass. The learning payload
+  // composes the 7 × 360° fields (from learningByItem) with the
+  // server-derived correctChoice (a one-shot scan of the choices
+  // already in hand). When EITHER the 360° fields or the choices are
+  // missing — defensive branch for archived rows — `learning` is null
+  // and the component skips the `<Learning360Panel>` mount.
   const byPosition: ExamReviewRow[] = statuses.map((s, i) => {
     const item = session.question_list[i];
     const key = `${item.question_type}:${item.question_id}`;
     const text = textByItem.get(key);
+    const choices = choicesByItem.get(key) ?? [];
+    const fields360 = learningByItem.get(key);
+    const learning: Learning360Payload | null = fields360
+      ? {
+          ...fields360,
+          correctChoice: choices.find((c) => c.is_correct) ?? null,
+        }
+      : null;
     return {
       ...s,
       excerpt: makeExcerpt(text),
       questionText: text ?? "",
-      choices: choicesByItem.get(key) ?? [],
+      choices,
+      learning,
     };
   });
 

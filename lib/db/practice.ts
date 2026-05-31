@@ -53,8 +53,11 @@ export type Choice = {
  * The 7 × 360° fields shared by source_questions and angle_questions.
  * `concepts_and_skills` and `references_list` are jsonb arrays of strings
  * (validated by the seed schema; we don't re-validate at read time).
+ *
+ * Exported so the exam-results aggregate (Slice 17 B-2) can compose its
+ * Learning360Payload from the same shape.
  */
-type Source360 = {
+export type Source360 = {
   legal_topic_analysis: string;
   full_explanation: string;
   common_pitfall: string;
@@ -62,6 +65,19 @@ type Source360 = {
   quick_thinking_360: string;
   summary_for_memory: string;
   references_list: string[];
+};
+
+/**
+ * Minimal structural type for `<Learning360Panel>`'s `question` prop.
+ * Both `SourceQuestionRow` and `AngleQuestionRow` structurally satisfy
+ * this (each is `Source360` + `choices: Choice[]` plus extra metadata
+ * the panel doesn't read). Narrowing the panel's prop to this lets the
+ * exam-results aggregate pass a minimal payload without dragging
+ * chapter_title / subtopic_title / question_group_id / angle_letter /
+ * etc. through the wire — none of which the panel reads (Slice 17 B-2).
+ */
+export type Question360 = Source360 & {
+  choices: Choice[];
 };
 
 export type SourceQuestionRow = {

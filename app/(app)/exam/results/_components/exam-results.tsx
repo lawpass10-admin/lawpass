@@ -12,11 +12,12 @@ import { useState, useTransition } from "react";
 import { toast } from "sonner";
 
 import { createExamSession } from "@/app/(app)/exam/_actions";
+import { Learning360Panel } from "@/app/(app)/practice/play/_components/learning-360-panel";
 import { Button } from "@/components/ui/button";
 import type {
+  Choice,
   ExamLetter,
   ExamResultsAggregate,
-  ExamReviewChoice,
   ExamReviewRow,
 } from "@/lib/db/exam";
 import { EXAM_TOTAL_QUESTIONS, type ExamMode } from "@/lib/exam/clusters";
@@ -384,6 +385,13 @@ export function ExamResults({ aggregate }: Props) {
  *
  * When `selectedLetter` is null (skipped or unanswered), only the
  * correct choice gets the ✓ accent; the rest are neutral.
+ *
+ * Slice 17 B-2 — below the choice list, mounts the full
+ * `<Learning360Panel>` (the same 9-section panel rendered on
+ * /practice/play after answer reveal). The panel is null-guarded
+ * against archived rows where the server couldn't resolve the 360°
+ * payload OR couldn't derive a correctChoice — in either case the
+ * choice list above still renders, the 360° panel just sits out.
  */
 function QuestionExpansion({ row }: { row: ExamReviewRow }) {
   return (
@@ -412,6 +420,14 @@ function QuestionExpansion({ row }: { row: ExamReviewRow }) {
           אין נתוני בחירות זמינים לשאלה זו.
         </p>
       )}
+      {row.learning && row.learning.correctChoice ? (
+        <div className="mt-4">
+          <Learning360Panel
+            question={{ ...row.learning, choices: row.choices }}
+            correctChoice={row.learning.correctChoice}
+          />
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -426,15 +442,15 @@ function ChoiceAnalysisRow({
   choice,
   selectedLetter,
 }: {
-  choice: ExamReviewChoice;
+  choice: Choice;
   selectedLetter: ExamLetter | null;
 }) {
   const isUserPick = selectedLetter !== null && choice.letter === selectedLetter;
-  const isWrongPick = isUserPick && !choice.isCorrect;
+  const isWrongPick = isUserPick && !choice.is_correct;
 
   let toneClasses: string;
   let icon: React.ReactNode;
-  if (choice.isCorrect) {
+  if (choice.is_correct) {
     toneClasses =
       "border-[color:var(--color-status-strong)]/40 bg-[var(--color-status-strong-bg)] text-[var(--color-status-strong)]";
     icon = <Check className="size-3.5" aria-hidden />;
@@ -458,27 +474,27 @@ function ChoiceAnalysisRow({
         <span
           className={cn(
             "mt-0.5 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded text-[11px] font-semibold",
-            choice.isCorrect && "bg-[var(--color-status-strong)] text-white",
+            choice.is_correct && "bg-[var(--color-status-strong)] text-white",
             isWrongPick && "bg-[var(--color-status-weak)] text-white",
-            !choice.isCorrect && !isWrongPick && "bg-muted"
+            !choice.is_correct && !isWrongPick && "bg-muted"
           )}
           aria-hidden
         >
           {choice.letter}
         </span>
         <span dir="auto" className="flex-1 text-foreground">
-          {choice.choiceText}
+          {choice.choice_text}
         </span>
         {icon !== null ? (
           <span className="mt-0.5 shrink-0">{icon}</span>
         ) : null}
       </div>
-      {choice.distractorAnalysis ? (
+      {choice.distractor_analysis ? (
         <p
           dir="auto"
           className="mt-2 whitespace-pre-wrap pe-7 text-[13px] text-foreground/80"
         >
-          {choice.distractorAnalysis}
+          {choice.distractor_analysis}
         </p>
       ) : null}
     </div>
