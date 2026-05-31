@@ -1462,8 +1462,17 @@ export async function findResolvedQuestions(
 export async function getActiveBookmarkAndMistakeCounts(
   supabase: SupabaseSsrClient,
   userId: string
-): Promise<{ bookmarksCount: number; mistakesCount: number }> {
-  const [bookmarksRes, mistakesRes] = await Promise.all([
+): Promise<{
+  bookmarksCount: number;
+  mistakesCount: number;
+  notesCount: number;
+}> {
+  // Slice 26 — `notesCount` joins the helper. We pick the row count
+  // up via a `count: 'exact', head: true` request (no payload, just
+  // the count header). Notes don't carry the auto-resolve concept
+  // bookmarks/mistakes do — a note stays counted as long as the row
+  // exists. RLS already gates by has_active_subscription.
+  const [bookmarksRes, mistakesRes, notesRes] = await Promise.all([
     supabase
       .from("bookmarks")
       .select("question_type, source_question_group_id, angle_question_id")
@@ -1473,6 +1482,10 @@ export async function getActiveBookmarkAndMistakeCounts(
       .select("question_type, source_question_group_id, angle_question_id")
       .eq("user_id", userId)
       .eq("manually_removed", false),
+    supabase
+      .from("question_notes")
+      .select("*", { count: "exact", head: true })
+      .eq("user_id", userId),
   ]);
 
   const bookmarkRows = (bookmarksRes.data ?? []) as Array<{
@@ -1521,6 +1534,7 @@ export async function getActiveBookmarkAndMistakeCounts(
   return {
     bookmarksCount: bookmarkRows.filter(isActive).length,
     mistakesCount: mistakeRows.filter(isActive).length,
+    notesCount: notesRes.count ?? 0,
   };
 }
 

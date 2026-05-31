@@ -31,6 +31,394 @@ import type { createClient } from "@/lib/supabase/server";
 type SupabaseSsrClient = Awaited<ReturnType<typeof createClient>>;
 
 // =============================================================================
+// Slice 26 — centralized Notes bank ("/notes")
+// =============================================================================
+
+/** Stable identity passed to `saveNoteByIdentity` from the bank UI.
+ *  Mirrors the table's UNIQUE shape; the action doesn't take a
+ *  (sessionId, position) because the bank has no session context. */
+export type NoteWriteIdentity = {
+  question_type: "source" | "angle";
+  source_question_group_id: string;
+  angle_position: number | null;
+};
+
+/** Plain HTML-strip + truncate for the row excerpts shown in the bank.
+ *  No risk of XSS: we're only displaying the stripped text content. */
+const NOTE_EXCERPT_MAX = 140;
+export function excerptFromHtml(html: string): string {
+  if (!html) return "";
+  const text = html
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (text.length <= NOTE_EXCERPT_MAX) return text;
+  return text.slice(0, NOTE_EXCERPT_MAX).trimEnd() + "…";
+}
+
+/**
+ * Bank row payload. Carries enough to render the collapsed row
+ * (chapter, excerpt, last-updated) AND to drive the expanded-detail
+ * shared resolvers (`questionId` for `resolveLearning360ForList` /
+ * `resolveChoicesForList`).
+ *
+ * `isArchived` = true when the underlying source/angle row was
+ * archived after the note was written (or RLS hides it). The bank
+ * still surfaces the note text + the editor — the user can keep
+ * editing — but the 360/choices detail collapses to a soft "הוסר
+ * זמנית" badge instead of a broken render.
+ */
+export type NoteListItem = {
+  noteId: string;
+  questionType: "source" | "angle";
+  /** Stored identity (always present). */
+  sourceQuestionGroupId: string;
+  /** Stored identity. Null for source notes, 1..5 for angle notes. */
+  anglePosition: number | null;
+  contentHtml: string;
+  contentJson: unknown;
+  excerpt: string;
+  updatedAt: string;
+  /** Current source/angle row id when resolvable; null when archived /
+   *  RLS-hidden. Used as `Learning360Item.question_id` downstream. */
+  questionId: string | null;
+  chapterTitle: string;
+  questionText: string;
+  /** Angle-only display info. */
+  angleLetter: string | null;
+  isArchived: boolean;
+};
+
+type NoteRawRow = {
+  id: string;
+  question_type: "source" | "angle";
+  source_question_group_id: string;
+  angle_position: number | null;
+  content_json: unknown;
+  content_html: string | null;
+  updated_at: string;
+};
+
+type SourceMeta = {
+  current_id: string;
+  question_text: string;
+  chapter_title: string;
+};
+
+type AngleMeta = {
+  current_id: string;
+  angle_letter: string;
+  question_text: string;
+  chapter_title: string;
+};
+
+/**
+ * Resolves each `question_notes` row into the chapter / question
+ * context the bank needs, plus the current question row id the
+ * shared 360°/choice resolvers expect.
+ *
+ * Identity mapping (mirrors the table's UNIQUE shape):
+ *  - SOURCE note: `source_question_group_id` → most recent
+ *    `source_questions WHERE question_group_id = X AND is_current = true`.
+ *  - ANGLE note: parent group_id + `angle_position` (1..5) → join
+ *    `angle_questions` against the parent's current source row +
+ *    `display_order = position`.
+ *
+ * Notes whose underlying question has since been archived land with
+ * `questionId: null`, `isArchived: true`, and empty display metadata.
+ * They still surface (the user can keep editing the note text); the
+ * detail-view just renders a soft "הוסר זמנית" marker instead of the
+ * 360 panel. Mirrors the bookmarks-list archived behavior.
+ *
+ * RLS: `users_own_notes` already filters to this user; the
+ * `source_questions` / `angle_questions` selects use the public
+ * `is_current = true` filter to pick the current row per group.
+ */
+export async function getUserNotes(
+  supabase: SupabaseSsrClient,
+  userId: string
+): Promise<NoteListItem[]> {
+  const { data, error } = await supabase
+    .from("question_notes")
+    .select(
+      "id, question_type, source_question_group_id, angle_position, content_json, content_html, updated_at"
+    )
+    .eq("user_id", userId)
+    .order("updated_at", { ascending: false });
+
+  if (error || !data) return [];
+
+  const rows = data as NoteRawRow[];
+  // Universe of group_ids we need to resolve. Source notes need the
+  // source itself; angle notes need the PARENT source (for chapter
+  // info + as a join target for angles).
+  const groupIds = new Set<string>();
+  // Collected angle_position values per parent group, so we can
+  // filter the angles fetch in JS without a per-note round-trip.
+  const angleSlots = new Map<string, Set<number>>(); // parent_group_id → {positions}
+  for (const r of rows) {
+    if (!r.source_question_group_id) continue;
+    groupIds.add(r.source_question_group_id);
+    if (r.question_type === "angle" && r.angle_position !== null) {
+      const set =
+        angleSlots.get(r.source_question_group_id) ?? new Set<number>();
+      set.add(r.angle_position);
+      angleSlots.set(r.source_question_group_id, set);
+    }
+  }
+
+  // (a) Fetch current source_questions for every group_id we care
+  // about (source notes display from here; angle notes use it as
+  // the chapter source + the angle-join base).
+  const sourceMetaByGroupId = new Map<string, SourceMeta>();
+  // Also: parent group_id → current source row id, for the angle
+  // join below.
+  const sourceIdByGroupId = new Map<string, string>();
+  if (groupIds.size > 0) {
+    type SourceRow = {
+      id: string;
+      question_group_id: string;
+      question_text: string | null;
+      chapter:
+        | { title: string }
+        | { title: string }[]
+        | null;
+    };
+    const { data: sourcesData } = await supabase
+      .from("source_questions")
+      .select(
+        "id, question_group_id, question_text, chapter:chapters!source_questions_chapter_id_fkey(title)"
+      )
+      .in("question_group_id", Array.from(groupIds))
+      .eq("is_current", true);
+    for (const row of (sourcesData ?? []) as unknown as SourceRow[]) {
+      const chapterPick = Array.isArray(row.chapter)
+        ? row.chapter[0]
+        : row.chapter;
+      const meta: SourceMeta = {
+        current_id: row.id,
+        question_text: row.question_text ?? "",
+        chapter_title: chapterPick?.title ?? "",
+      };
+      sourceMetaByGroupId.set(row.question_group_id, meta);
+      sourceIdByGroupId.set(row.question_group_id, row.id);
+    }
+  }
+
+  // (b) Fetch angles whose parent is one of the resolved current
+  // sources. We filter in-JS by display_order so we only need ONE
+  // `.in("source_question_id", parentIds)` query.
+  const angleMetaByParentSlot = new Map<string, AngleMeta>(); // key: `${parentGroupId}:${position}`
+  if (angleSlots.size > 0 && sourceIdByGroupId.size > 0) {
+    const parentSourceIds = Array.from(sourceIdByGroupId.values());
+    type AngleRow = {
+      id: string;
+      source_question_id: string;
+      angle_letter: string;
+      display_order: number;
+      question_text: string | null;
+    };
+    const { data: anglesData } = await supabase
+      .from("angle_questions")
+      .select(
+        "id, source_question_id, angle_letter, display_order, question_text"
+      )
+      .in("source_question_id", parentSourceIds);
+    // Build reverse: source.id → group_id (we have the forward map).
+    const groupByParentId = new Map<string, string>();
+    for (const [gid, sid] of sourceIdByGroupId) groupByParentId.set(sid, gid);
+    for (const row of (anglesData ?? []) as unknown as AngleRow[]) {
+      const parentGroupId = groupByParentId.get(row.source_question_id);
+      if (!parentGroupId) continue;
+      const positionsForThisGroup = angleSlots.get(parentGroupId);
+      if (!positionsForThisGroup) continue;
+      if (!positionsForThisGroup.has(row.display_order)) continue;
+      const parentMeta = sourceMetaByGroupId.get(parentGroupId);
+      angleMetaByParentSlot.set(`${parentGroupId}:${row.display_order}`, {
+        current_id: row.id,
+        angle_letter: row.angle_letter,
+        question_text: row.question_text ?? "",
+        chapter_title: parentMeta?.chapter_title ?? "",
+      });
+    }
+  }
+
+  // (c) Assemble the public row payload.
+  const out: NoteListItem[] = [];
+  for (const r of rows) {
+    const contentHtml = r.content_html ?? "";
+    const excerpt = excerptFromHtml(contentHtml);
+    if (r.question_type === "source") {
+      const meta = sourceMetaByGroupId.get(r.source_question_group_id);
+      out.push({
+        noteId: r.id,
+        questionType: "source",
+        sourceQuestionGroupId: r.source_question_group_id,
+        anglePosition: null,
+        contentHtml,
+        contentJson: r.content_json,
+        excerpt,
+        updatedAt: r.updated_at,
+        questionId: meta?.current_id ?? null,
+        chapterTitle: meta?.chapter_title ?? "",
+        questionText: meta?.question_text ?? "",
+        angleLetter: null,
+        isArchived: meta === undefined,
+      });
+    } else {
+      if (r.angle_position === null) continue;
+      const angleMeta = angleMetaByParentSlot.get(
+        `${r.source_question_group_id}:${r.angle_position}`
+      );
+      out.push({
+        noteId: r.id,
+        questionType: "angle",
+        sourceQuestionGroupId: r.source_question_group_id,
+        anglePosition: r.angle_position,
+        contentHtml,
+        contentJson: r.content_json,
+        excerpt,
+        updatedAt: r.updated_at,
+        questionId: angleMeta?.current_id ?? null,
+        chapterTitle: angleMeta?.chapter_title ?? "",
+        questionText: angleMeta?.question_text ?? "",
+        angleLetter: angleMeta?.angle_letter ?? null,
+        isArchived: angleMeta === undefined,
+      });
+    }
+  }
+  return out;
+}
+
+// =============================================================================
+// Slice 26 — save by stored identity (bank-side write path)
+// =============================================================================
+
+/**
+ * Write helper used by the notes bank server action. Same SOURCE
+ * emulate-UPSERT / ANGLE upsert split as the practice-play
+ * `saveNote` (Slice 25.2) — the only difference is identity
+ * provenance: the bank already has the stored
+ * `(question_type, source_question_group_id, angle_position)` triple
+ * (it loaded the row to render the editor) and passes it in
+ * directly, rather than re-resolving from a (sessionId, position)
+ * pair that doesn't exist on /notes.
+ *
+ * Returns the new `updated_at` on success, or an error string. The
+ * caller maps that to the same { ok, updatedAt } shape the editor's
+ * save callback expects.
+ */
+export async function saveNoteByIdentity(
+  supabase: SupabaseSsrClient,
+  userId: string,
+  identity: NoteWriteIdentity,
+  contentJson: unknown,
+  contentHtml: string
+): Promise<{ ok: true; updatedAt: string } | { ok: false; error: string }> {
+  if (identity.angle_position === null) {
+    // SOURCE branch — Postgres' default NULLS DISTINCT means
+    // .upsert(onConflict) can't recognize the NULL-row case; emulate.
+    const { data: existingRows, error: lookupError } = await supabase
+      .from("question_notes")
+      .select("id")
+      .eq("user_id", userId)
+      .eq("question_type", "source")
+      .eq("source_question_group_id", identity.source_question_group_id)
+      .is("angle_position", null)
+      .order("updated_at", { ascending: false })
+      .limit(1);
+
+    if (lookupError) {
+      console.error(
+        `[notes] save_by_identity lookup FAILED user=${userId} msg=${lookupError.message}`
+      );
+      return { ok: false, error: "התרחשה שגיאה. נסה שוב" };
+    }
+    const existing =
+      existingRows && existingRows.length > 0 ? existingRows[0] : null;
+    if (existing) {
+      const [updateResult, cleanupResult] = await Promise.all([
+        supabase
+          .from("question_notes")
+          .update({ content_json: contentJson, content_html: contentHtml })
+          .eq("id", existing.id)
+          .select("updated_at")
+          .single(),
+        supabase
+          .from("question_notes")
+          .delete()
+          .eq("user_id", userId)
+          .eq("question_type", "source")
+          .eq("source_question_group_id", identity.source_question_group_id)
+          .is("angle_position", null)
+          .neq("id", existing.id),
+      ]);
+      if (updateResult.error || !updateResult.data) {
+        console.error(
+          `[notes] save_by_identity update FAILED user=${userId} msg=${updateResult.error?.message ?? "no data"}`
+        );
+        return { ok: false, error: "התרחשה שגיאה. נסה שוב" };
+      }
+      if (cleanupResult.error) {
+        console.warn(
+          `[notes] save_by_identity cleanup non-fatal user=${userId} msg=${cleanupResult.error.message}`
+        );
+      }
+      return { ok: true, updatedAt: updateResult.data.updated_at as string };
+    }
+    const { data, error } = await supabase
+      .from("question_notes")
+      .insert({
+        user_id: userId,
+        question_type: "source",
+        source_question_group_id: identity.source_question_group_id,
+        angle_position: null,
+        content_json: contentJson,
+        content_html: contentHtml,
+      })
+      .select("updated_at")
+      .single();
+    if (error || !data) {
+      console.error(
+        `[notes] save_by_identity insert FAILED user=${userId} msg=${error?.message ?? "no data"}`
+      );
+      return { ok: false, error: "התרחשה שגיאה. נסה שוב" };
+    }
+    return { ok: true, updatedAt: data.updated_at as string };
+  }
+
+  // ANGLE branch — .upsert(onConflict) works because angle_position
+  // is a non-NULL integer.
+  const { data, error } = await supabase
+    .from("question_notes")
+    .upsert(
+      {
+        user_id: userId,
+        question_type: identity.question_type,
+        source_question_group_id: identity.source_question_group_id,
+        angle_position: identity.angle_position,
+        content_json: contentJson,
+        content_html: contentHtml,
+      },
+      {
+        onConflict:
+          "user_id,question_type,source_question_group_id,angle_position",
+      }
+    )
+    .select("updated_at")
+    .single();
+  if (error || !data) {
+    console.error(
+      `[notes] save_by_identity angle FAILED user=${userId} msg=${error?.message ?? "no data"}`
+    );
+    return { ok: false, error: "התרחשה שגיאה. נסה שוב" };
+  }
+  return { ok: true, updatedAt: data.updated_at as string };
+}
+
+// =============================================================================
 // Types
 // =============================================================================
 

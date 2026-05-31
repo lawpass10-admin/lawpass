@@ -4,6 +4,7 @@ import {
   Bookmark,
   Gauge,
   LogOut,
+  Pencil,
   Scale,
   Settings,
   Shield,
@@ -77,6 +78,12 @@ const NAV_LIBRARY = [
     label: "שאלות שטעיתי בהן",
     Icon: XCircle,
     countKey: "mistakes",
+  },
+  {
+    href: "/notes",
+    label: "הערות",
+    Icon: Pencil,
+    countKey: "notes",
   },
 ] as const;
 
@@ -203,6 +210,7 @@ export function AppSidebar({
   subscription,
   bookmarksCount,
   mistakesCount,
+  notesCount,
   isAdmin,
 }: {
   userEmail: string;
@@ -210,6 +218,8 @@ export function AppSidebar({
   subscription: SubscriptionData;
   bookmarksCount: number;
   mistakesCount: number;
+  /** Slice 26 — count for the new "/notes" nav row. */
+  notesCount: number;
   /**
    * Slice 6 — server-decided flag from (app)/layout.tsx. The admin nav
    * link only renders when this is true. The /admin pages call
@@ -270,7 +280,9 @@ export function AppSidebar({
               const count =
                 item.countKey === "bookmarks"
                   ? bookmarksCount
-                  : mistakesCount;
+                  : item.countKey === "mistakes"
+                    ? mistakesCount
+                    : notesCount;
               return (
                 <SidebarMenuItem key={item.href} className="relative">
                   <SidebarMenuButton

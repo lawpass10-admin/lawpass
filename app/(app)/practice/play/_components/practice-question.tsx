@@ -16,6 +16,7 @@ import { NoteTriggerButton } from "@/app/(app)/_components/note-trigger-button";
 import {
   advanceToNext,
   exitSession,
+  saveNote,
   submitAttempt,
   toggleBookmark,
 } from "@/app/(app)/practice/play/_actions";
@@ -570,10 +571,19 @@ export function PracticeQuestion({
             setNoteSheetOpen(false);
             setHasNote(true);
           }}
-          sessionId={session.id}
-          position={position}
           questionContextLabel={questionContextLabel}
           initialNote={initialNote}
+          // Slice 26 — editor is surface-agnostic; the play screen
+          // wraps the (sessionId, position) save path that resolves
+          // identity via getQuestionForPosition server-side.
+          onSave={({ contentJson, contentHtml }) =>
+            saveNote({
+              sessionId: session.id,
+              position,
+              contentJson,
+              contentHtml,
+            })
+          }
         />
       )}
     </>

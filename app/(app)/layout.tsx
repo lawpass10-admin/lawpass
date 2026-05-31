@@ -140,7 +140,7 @@ export default async function AppLayout({
   // read predicate can't be expressed with `count: exact, head: true`,
   // so we now fetch the rows minimally (id columns only) and count
   // post-filter. See lib/db/practice.ts for the shared helper.
-  const { bookmarksCount, mistakesCount } =
+  const { bookmarksCount, mistakesCount, notesCount } =
     await getActiveBookmarkAndMistakeCounts(supabase, user.id);
 
   return (
@@ -151,6 +151,7 @@ export default async function AppLayout({
         subscription={subscription}
         bookmarksCount={bookmarksCount}
         mistakesCount={mistakesCount}
+        notesCount={notesCount}
         isAdmin={profile.is_admin === true}
       />
       <SidebarInset>

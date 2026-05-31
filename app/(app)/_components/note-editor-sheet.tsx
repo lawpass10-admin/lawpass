@@ -37,7 +37,6 @@ import { Undo2, X } from "lucide-react";
 import { useEffect, useRef, useState, type ChangeEvent } from "react";
 import { toast } from "sonner";
 
-import { saveNote } from "@/app/(app)/practice/play/_actions";
 import { cn } from "@/lib/utils";
 
 const AUTOSAVE_DEBOUNCE_MS = 800;
@@ -62,13 +61,28 @@ type InitialNote = {
   updatedAt: string;
 };
 
+/**
+ * Slice 26 — the save dispatch is provided by the parent surface so
+ * the editor stays surface-agnostic:
+ *   - Practice play screen wraps `saveNote({ sessionId, position, … })`.
+ *   - Notes bank wraps `saveNoteFromBank({ identity, … })`.
+ * The return shape matches both server actions.
+ */
+export type NoteSaveResult =
+  | { ok: true; updatedAt: string }
+  | { ok: false; error: string };
+
+export type NoteSavePayload = {
+  contentJson: unknown;
+  contentHtml: string;
+};
+
 export type NoteEditorSheetProps = {
   open: boolean;
   onClose: () => void;
-  sessionId: string;
-  position: number;
   questionContextLabel: string;
   initialNote: InitialNote | null;
+  onSave: (payload: NoteSavePayload) => Promise<NoteSaveResult>;
 };
 
 type SaveStatus = "idle" | "saving" | "saved" | "error";
@@ -76,10 +90,9 @@ type SaveStatus = "idle" | "saving" | "saved" | "error";
 export function NoteEditorSheet({
   open,
   onClose,
-  sessionId,
-  position,
   questionContextLabel,
   initialNote,
+  onSave,
 }: NoteEditorSheetProps) {
   // Drag-resize: default null lets the CSS class drive the initial
   // height (SSR-safe). User drag switches us to a controlled px
@@ -160,9 +173,7 @@ export function NoteEditorSheet({
     }
     const html = ed.getHTML();
     setSaveStatus("saving");
-    const result = await saveNote({
-      sessionId,
-      position,
+    const result = await onSave({
       contentJson: jsonDoc,
       contentHtml: html,
     });
