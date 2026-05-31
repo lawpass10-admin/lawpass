@@ -1,6 +1,13 @@
 "use client";
 
-import { Check, ChevronDown, ChevronUp, Home, Play, X } from "lucide-react";
+import {
+  ArrowRight,
+  Check,
+  ChevronDown,
+  ChevronUp,
+  Play,
+  X,
+} from "lucide-react";
 import { useState, useTransition } from "react";
 import { toast } from "sonner";
 
@@ -137,12 +144,18 @@ export function ExamResults({ aggregate }: Props) {
 
   return (
     <div className="mx-auto w-full max-w-3xl space-y-8 py-6">
-      {/* Top bar — dashboard affordance visible without scrolling.
+      {/* Top bar — dashboard affordance pinned to the viewport so it
+          stays reachable while the user scrolls through 40 review
+          rows. The (app) layout's /exam/* branch renders <main> with
+          no sidebar and no sticky header, so `top-0` lands cleanly
+          against the viewport edge with no offset.
           Uses window.location.assign (NOT <Link>) for the same reason
           the footer CTAs do: the (app) layout reads a stale x-pathname
           on client-side <Link> transitions and the sidebar stays
-          hidden. See the footer comment below. */}
-      <div className="flex items-center">
+          hidden. See the footer comment below.
+          Icon: lucide ArrowRight — in RTL Hebrew it visually points
+          right, which reads as "back" in the script direction. */}
+      <div className="sticky top-0 z-30 flex items-center bg-background py-2">
         <Button
           variant="ghost"
           size="sm"
@@ -150,8 +163,8 @@ export function ExamResults({ aggregate }: Props) {
             window.location.assign("/dashboard");
           }}
         >
-          <Home className="size-4" aria-hidden />
-          <span className="ms-1.5">בית</span>
+          <ArrowRight className="size-4" aria-hidden />
+          <span className="ms-1.5">חזרה לדשבורד</span>
         </Button>
       </div>
 
