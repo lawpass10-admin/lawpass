@@ -1,53 +1,43 @@
 "use client";
 
+import { useState, type ChangeEvent } from "react";
+
 import {
-  TIME_MAX,
-  TIME_MIN,
-  TIME_STEP,
+  SESSION_DURATION_MAX_SECONDS,
+  SESSION_DURATION_PRESETS_MINUTES,
+  SESSION_TIMER_OFF,
+  clampSessionDurationSeconds,
 } from "@/app/(app)/practice/_lib/use-practice-builder";
 import { cn } from "@/lib/utils";
 
 /**
- * Slice 5 Phase P4 — Timer panel.
+ * Slice 5 Phase P4 — Timer panel (legacy per-question).
+ * Slice 24 — repurposed for the SESSION timer. The user toggles a
+ * single switch ("הפעלת טיימר" on/off); when on, they type the
+ * session budget in MINUTES (or pick a preset chip), stored on the
+ * builder as seconds. When off, the builder writes
+ * `sessionDurationSeconds = 0` and the play screen renders no timer.
  *
- * Mirrors `PracticeBuilder.html` lines 287-321:
- *   - Big Heebo-800 readout on right + presets row on left.
- *   - Custom gold-gradient track + circular thumb (native input
- *     range is invisible but interactive on top of the decorative
- *     divs — keeps keyboard + accessibility while letting us paint
- *     the exact gold-stop colors the prototype calls for).
- *
- * The "ללא" preset writes `timeSeconds = 0` per PM clarification; the
- * slider thumb pins to the min position visually in that case and the
- * dialog reads "ללא טיימר".
+ * The minutes are clamped to the DB CHECK constraint (0..14400s =
+ * 0..240 min). The hook's `clampSessionDurationSeconds` is the
+ * single source of truth.
  */
 
 type Props = {
-  timeSeconds: number;
+  sessionDurationSeconds: number;
   onSet: (n: number) => void;
 };
 
-type Preset = { label: string; value: number };
-const PRESETS: ReadonlyArray<Preset> = [
-  { label: "1:00", value: 60 },
-  { label: "2:30", value: 150 },
-  { label: "5:00", value: 300 },
-  { label: "ללא", value: 0 },
-];
+const MAX_MINUTES = Math.floor(SESSION_DURATION_MAX_SECONDS / 60);
+const MIN_MINUTES = 1;
 
-function formatMinSec(totalSeconds: number): string {
-  const m = Math.floor(totalSeconds / 60);
-  const s = totalSeconds % 60;
-  return `${m}:${s.toString().padStart(2, "0")}`;
+function secondsToMinutes(s: number): number {
+  return Math.max(0, Math.round(s / 60));
 }
 
-export function TimerPanel({ timeSeconds, onSet }: Props) {
-  // Slider fill percentage from the start (right edge in RTL). When
-  // `timeSeconds = 0` ("ללא"), pin to the min position so the visual
-  // doesn't leak past the track's left edge.
-  const effectiveForSlider = Math.max(TIME_MIN, Math.min(TIME_MAX, timeSeconds));
-  const fillPct =
-    ((effectiveForSlider - TIME_MIN) / (TIME_MAX - TIME_MIN)) * 100;
+export function TimerPanel({ sessionDurationSeconds, onSet }: Props) {
+  const isOn = sessionDurationSeconds > 0;
+  const currentMinutes = secondsToMinutes(sessionDurationSeconds);
 
   return (
     <section
@@ -58,140 +48,216 @@ export function TimerPanel({ timeSeconds, onSet }: Props) {
         boxShadow: "var(--shadow-sm)",
       }}
     >
-      <header className="mb-[18px]">
-        <h2
-          className="font-heebo font-bold flex items-center gap-2.5"
-          style={{ fontSize: 18, color: "var(--color-navy-ink)" }}
-        >
-          <span
-            aria-hidden
-            className="inline-flex items-center justify-center font-heebo font-bold"
-            style={{
-              width: 26,
-              height: 26,
-              borderRadius: 8,
-              background: "var(--color-gold-tint)",
-              color: "var(--color-gold-deep)",
-              fontSize: 13,
-            }}
+      <header className="mb-[18px] flex items-start justify-between gap-4">
+        <div>
+          <h2
+            className="font-heebo font-bold flex items-center gap-2.5"
+            style={{ fontSize: 18, color: "var(--color-navy-ink)" }}
           >
-            3
-          </span>
-          זמן לכל שאלה
-        </h2>
-        <p
-          className="font-heebo font-normal mt-1"
-          style={{ fontSize: 13, color: "var(--color-ink-dim)" }}
-        >
-          טיימר ויזואלי שמופיע בזמן התרגול.
-        </p>
+            <span
+              aria-hidden
+              className="inline-flex items-center justify-center font-heebo font-bold"
+              style={{
+                width: 26,
+                height: 26,
+                borderRadius: 8,
+                background: "var(--color-gold-tint)",
+                color: "var(--color-gold-deep)",
+                fontSize: 13,
+              }}
+            >
+              3
+            </span>
+            זמן לסשן
+          </h2>
+          <p
+            className="font-heebo font-normal mt-1"
+            style={{ fontSize: 13, color: "var(--color-ink-dim)" }}
+          >
+            טיימר אחד שספור לאחור כל זמן הסשן.
+          </p>
+        </div>
+        <OnOffToggle isOn={isOn} onChange={onSet} />
       </header>
 
-      <div className="flex items-baseline justify-between mb-3.5 gap-3">
-        <div>
-          <span
-            className="font-heebo font-extrabold tabular-nums"
-            style={{
-              fontSize: 38,
-              color: "var(--color-navy-ink)",
-              lineHeight: 1,
-              letterSpacing: "-0.02em",
-            }}
-          >
-            {timeSeconds === 0 ? "—" : formatMinSec(timeSeconds)}
-          </span>
-          <span
-            className="font-heebo font-medium ms-1.5"
-            style={{ fontSize: 14, color: "var(--color-ink-muted)" }}
-          >
-            {timeSeconds === 0 ? "ללא טיימר" : "דקות לשאלה"}
-          </span>
-        </div>
-        <div className="flex flex-wrap gap-1 justify-end">
-          {PRESETS.map((p) => {
-            const active = p.value === timeSeconds;
-            return (
-              <PresetButton
-                key={p.label}
-                label={p.label}
-                active={active}
-                onClick={() => onSet(p.value)}
-              />
-            );
-          })}
-        </div>
-      </div>
-
-      {/* Slider — overlay decorative track/fill/thumb on top of a
-          visually-hidden range input that owns interactivity. */}
-      <div className="relative mt-[18px]">
-        <div
-          aria-hidden
-          className="h-1.5 rounded-[3px]"
-          style={{ background: "var(--color-line)" }}
+      {isOn ? (
+        <SessionDurationControls
+          currentMinutes={currentMinutes}
+          onSet={onSet}
         />
-        <div
-          aria-hidden
-          className="absolute top-0 h-1.5 rounded-[3px]"
-          style={{
-            insetInlineStart: 0,
-            width: `${fillPct}%`,
-            background:
-              "linear-gradient(270deg, var(--color-gold), var(--color-gold-deep))",
-            opacity: timeSeconds === 0 ? 0.3 : 1,
-            transition: "width 0.18s ease, opacity 0.18s ease",
-          }}
-        />
-        <div
-          aria-hidden
-          className="absolute top-1/2"
-          style={{
-            insetInlineStart: `${fillPct}%`,
-            transform: "translate(50%, -50%)",
-            width: 22,
-            height: 22,
-            borderRadius: "50%",
-            background: "var(--color-white, #FFFFFF)",
-            border: "2px solid var(--color-gold-deep)",
-            boxShadow: "0 4px 10px -3px rgba(0, 0, 0, 0.18)",
-            transition: "inset-inline-start 0.18s ease",
-            pointerEvents: "none",
-          }}
-        />
-        <input
-          type="range"
-          min={TIME_MIN}
-          max={TIME_MAX}
-          step={TIME_STEP}
-          value={effectiveForSlider}
-          onChange={(e) => onSet(Number(e.target.value))}
-          aria-label="זמן לכל שאלה בשניות"
-          className={cn(
-            "absolute inset-0 w-full cursor-pointer opacity-0",
-            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
-          )}
-          style={{ height: 22, top: "50%", transform: "translateY(-50%)" }}
-        />
-      </div>
-
-      <div
-        className="flex justify-between mt-2"
-        style={{ fontSize: 11.5, color: "var(--color-ink-muted)" }}
-      >
-        <span className="font-heebo">1:00</span>
-        <span
-          className="font-heebo font-semibold"
-          style={{ color: "var(--color-gold-deep)" }}
+      ) : (
+        <p
+          className="font-heebo font-medium"
+          style={{ fontSize: 14, color: "var(--color-ink-muted)" }}
         >
-          מומלץ · 2:30
-        </span>
-        <span className="font-heebo">5:00</span>
-      </div>
+          ללא טיימר — תוכל לתרגל ללא מגבלת זמן.
+        </p>
+      )}
     </section>
   );
 }
 
-function PresetButton({
+// =============================================================================
+// On/off switch
+// =============================================================================
+
+function OnOffToggle({
+  isOn,
+  onChange,
+}: {
+  isOn: boolean;
+  onChange: (n: number) => void;
+}) {
+  // Flipping ON seeds the default 15-minute budget so the user has a
+  // sensible starting value (the hook clamps anyway); flipping OFF
+  // writes 0 (the no-timer sentinel).
+  const handleToggle = (): void => {
+    if (isOn) {
+      onChange(SESSION_TIMER_OFF);
+    } else {
+      onChange(15 * 60);
+    }
+  };
+
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={isOn}
+      onClick={handleToggle}
+      className={cn(
+        "relative inline-flex shrink-0 items-center transition-colors",
+        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-gold)]/40"
+      )}
+      style={{
+        width: 44,
+        height: 24,
+        borderRadius: 999,
+        background: isOn ? "var(--color-gold)" : "var(--color-line)",
+      }}
+    >
+      <span
+        aria-hidden
+        className="absolute"
+        style={{
+          width: 18,
+          height: 18,
+          borderRadius: "50%",
+          background: "var(--color-white, #FFFFFF)",
+          boxShadow: "0 1px 3px rgba(0,0,0,0.15)",
+          // In RTL the "on" position is the visual-end (left). Using
+          // `inset-inline-start` keeps the math directional.
+          insetInlineStart: isOn ? 22 : 3,
+          top: 3,
+          transition: "inset-inline-start 0.18s ease",
+        }}
+      />
+    </button>
+  );
+}
+
+// =============================================================================
+// Session-duration controls — minutes input + preset chips
+// =============================================================================
+
+function SessionDurationControls({
+  currentMinutes,
+  onSet,
+}: {
+  currentMinutes: number;
+  onSet: (n: number) => void;
+}) {
+  // Local string buffer so the user can clear / partial-edit without
+  // the hook snapping back mid-keystroke. Mirrors the Slice 23.1
+  // pattern in counts-panel.tsx; the render-time set-state-on-change
+  // guard keeps the lint rule happy.
+  const [text, setText] = useState<string>(String(currentMinutes));
+  const [lastSeen, setLastSeen] = useState<number>(currentMinutes);
+  if (lastSeen !== currentMinutes) {
+    setLastSeen(currentMinutes);
+    setText(String(currentMinutes));
+  }
+
+  const handleChange = (e: ChangeEvent<HTMLInputElement>): void => {
+    const next = e.target.value;
+    setText(next);
+    if (next === "") return;
+    const minutes = Number.parseInt(next, 10);
+    if (Number.isFinite(minutes) && minutes > 0) {
+      onSet(minutes * 60);
+    }
+  };
+
+  const handleBlur = (): void => {
+    const minutes = Number.parseInt(text, 10);
+    if (text === "" || !Number.isFinite(minutes) || minutes <= 0) {
+      // Restore the current clamped value.
+      setText(String(currentMinutes));
+      return;
+    }
+    // Re-sync after the hook clamp so the field never displays a
+    // value the engine would reject.
+    const clamped =
+      clampSessionDurationSeconds(minutes * 60) / 60;
+    if (clamped !== minutes) {
+      setText(String(Math.round(clamped)));
+      onSet(Math.round(clamped) * 60);
+    }
+  };
+
+  return (
+    <div className="flex flex-col gap-3">
+      <div className="flex items-center gap-2">
+        <input
+          type="number"
+          inputMode="numeric"
+          min={MIN_MINUTES}
+          max={MAX_MINUTES}
+          step={1}
+          value={text}
+          onChange={handleChange}
+          onBlur={handleBlur}
+          aria-label="זמן לסשן בדקות"
+          className={cn(
+            "font-heebo font-bold tabular-nums text-center",
+            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-gold)]/40"
+          )}
+          style={{
+            padding: "11px 12px",
+            width: 88,
+            borderRadius: 10,
+            fontSize: 15,
+            background: "var(--color-gold-tint)",
+            color: "var(--color-navy-ink)",
+            border: "1.5px solid var(--color-gold)",
+          }}
+        />
+        <span
+          className="font-heebo"
+          style={{ fontSize: 14, color: "var(--color-ink-muted)" }}
+        >
+          דקות
+        </span>
+      </div>
+
+      <div className="flex flex-wrap gap-1.5">
+        {SESSION_DURATION_PRESETS_MINUTES.map((m) => {
+          const active = m === currentMinutes;
+          return (
+            <PresetChip
+              key={m}
+              label={`${m} דק׳`}
+              active={active}
+              onClick={() => onSet(m * 60)}
+            />
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function PresetChip({
   label,
   active,
   onClick,
@@ -208,16 +274,15 @@ function PresetButton({
       className={cn(
         "font-heebo font-semibold transition-all",
         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40",
-        !active && "hover:border-[var(--color-navy)] hover:text-[var(--color-navy-ink)]"
+        !active &&
+          "hover:border-[var(--color-navy)] hover:text-[var(--color-navy-ink)]"
       )}
       style={{
-        padding: "5px 10px",
+        padding: "6px 12px",
         borderRadius: 6,
-        fontSize: 11.5,
+        fontSize: 12,
         background: active ? "var(--color-gold-tint)" : "transparent",
-        color: active
-          ? "var(--color-gold-deep)"
-          : "var(--color-ink-muted)",
+        color: active ? "var(--color-gold-deep)" : "var(--color-ink-muted)",
         border: active
           ? "1px solid var(--color-gold)"
           : "1px solid var(--color-line)",

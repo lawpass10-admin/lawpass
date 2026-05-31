@@ -235,7 +235,13 @@ export async function createPracticeSession(
           : [],
         source_count_target: data.sourceCountTarget,
         angles_per_source: data.anglesPerSource,
+        // Slice 24 — `time_per_question_seconds` stays NOT NULL on
+        // the DB; keep writing the legacy default so the column
+        // validates. The play UI no longer reads it. The new
+        // `session_duration_seconds` field is the per-session timer
+        // budget (0 = no timer).
         time_per_question_seconds: data.timePerQuestionSeconds,
+        session_duration_seconds: data.sessionDurationSeconds,
         question_list: questionList,
         status: "active",
       })

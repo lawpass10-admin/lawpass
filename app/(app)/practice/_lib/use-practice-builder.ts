@@ -106,6 +106,34 @@ export function totalToSourceCount(total: number): number {
 }
 
 // =============================================================================
+// Slice 24 — per-session timer ("זמן לסשן").
+// =============================================================================
+// Wall-clock model: a single budget in seconds attached to the
+// session at creation time. The server computes remaining on each
+// play-page render as `max(0, sessionDurationSeconds - (now -
+// started_at))`. The builder hold seconds; the timer panel UI lets
+// the user type in MINUTES for legibility.
+//
+// 0 = "no timer" (the off state in the panel); the DB column defaults
+// to 0 so every pre-Slice-24 session keeps its no-timer behavior.
+// 14400s (4h) matches the DB CHECK constraint.
+export const SESSION_TIMER_OFF = 0;
+export const SESSION_DURATION_MIN_SECONDS = 60; // 1 minute floor when on
+export const SESSION_DURATION_MAX_SECONDS = 14400; // 4 hours
+export const DEFAULT_SESSION_DURATION_SECONDS = 15 * 60; // 15 min
+export const SESSION_DURATION_PRESETS_MINUTES = [5, 15, 30, 60, 90] as const;
+
+export function clampSessionDurationSeconds(n: number): number {
+  if (!Number.isFinite(n)) return SESSION_TIMER_OFF;
+  const intval = Math.round(n);
+  if (intval <= 0) return SESSION_TIMER_OFF;
+  return Math.max(
+    SESSION_DURATION_MIN_SECONDS,
+    Math.min(SESSION_DURATION_MAX_SECONDS, intval)
+  );
+}
+
+// =============================================================================
 // Pure helpers — no React; exported so they can pick up unit tests later
 // without rebuilding the hook plumbing.
 // =============================================================================
@@ -179,9 +207,18 @@ export type UsePracticeBuilderResult = {
    *  destructured the Slice 18 name. */
   effectiveTotal: number;
 
-  // Timer
+  // Per-question timer — Slice 24 marks this LEGACY. Still held in
+  // state because `createPracticeSession` keeps writing it (the DB
+  // column is NOT NULL with a default), but the play UI no longer
+  // reads it. Kept on the result so any consumer that destructured
+  // it pre-Slice-24 doesn't break.
   timeSeconds: number;
   setTimeSeconds: (n: number) => void;
+
+  // Per-session timer — Slice 24. The active timer the play screen
+  // surfaces. 0 = no timer ("ללא טיימר").
+  sessionDurationSeconds: number;
+  setSessionDurationSeconds: (n: number) => void;
 
   // Availability (server-derived)
   available: number | null;
@@ -289,6 +326,13 @@ export function usePracticeBuilder({
     setRawTotalState(clampTotalInput(n));
   };
   const [timeSeconds, setTimeSeconds] = useState<number>(initialTime);
+  // Slice 24 — per-session timer state. Default to the off state;
+  // prefill / retry flows don't carry a session timer setting yet.
+  const [sessionDurationSeconds, setSessionDurationSecondsState] =
+    useState<number>(SESSION_TIMER_OFF);
+  const setSessionDurationSeconds = (n: number): void => {
+    setSessionDurationSecondsState(clampSessionDurationSeconds(n));
+  };
   // angles is locked — kept in a const, not state. Engine still
   // receives it via the unchanged createPracticeSession signature.
   const angles: AngleCount = DEFAULT_ANGLES;
@@ -411,7 +455,12 @@ export function usePracticeBuilder({
       selectedSubtopicId: effectiveSubtopicId,
       sourceCountTarget: effectiveSourceCount,
       anglesPerSource: angles,
-      timePerQuestionSeconds: timeSeconds,
+      // Slice 24 — `timePerQuestionSeconds` is still required by the
+      // schema (the DB column is NOT NULL); the play UI no longer
+      // reads it. The active timer the user sees is the session-level
+      // one keyed by `sessionDurationSeconds`.
+      timePerQuestionSeconds: DEFAULT_TIME_SECONDS,
+      sessionDurationSeconds,
     });
     if (!result.ok) {
       toast.error(result.error);
@@ -436,6 +485,8 @@ export function usePracticeBuilder({
     effectiveTotal,
     timeSeconds,
     setTimeSeconds,
+    sessionDurationSeconds,
+    setSessionDurationSeconds,
     available,
     isCountPending,
     hasSelection,

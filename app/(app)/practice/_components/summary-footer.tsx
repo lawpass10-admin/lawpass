@@ -23,8 +23,9 @@ type Props = {
    *  axes. Engine still receives sourceCountTarget + anglesPerSource
    *  via the unchanged action signature inside the builder hook. */
   total: number;
-  /** Per-question time in seconds. 0 = "no timer". Drives the "~N דקות" estimate. */
-  timeSeconds: number;
+  /** Slice 24 — per-session timer budget in seconds. 0 = no timer
+   *  (footer omits the duration suffix). */
+  sessionDurationSeconds: number;
   hasSelection: boolean;
   /** True when chapters picked but no questions matched (clamped lower than min). */
   insufficient: boolean;
@@ -35,15 +36,20 @@ type Props = {
 
 export function SummaryFooter({
   total,
-  timeSeconds,
+  sessionDurationSeconds,
   hasSelection,
   insufficient,
   submitting,
   submitDisabled,
   onSubmit,
 }: Props) {
-  const estimatedMinutes =
-    timeSeconds > 0 ? Math.round((total * timeSeconds) / 60) : null;
+  // Slice 24 — the displayed duration is now the SESSION budget the
+  // user just configured (not the prior per-question × total math).
+  // 0 hides the duration suffix entirely.
+  const sessionMinutes =
+    sessionDurationSeconds > 0
+      ? Math.round(sessionDurationSeconds / 60)
+      : null;
 
   // Pick the helper string for the equation block when disabled.
   const helperText = !hasSelection
@@ -105,8 +111,8 @@ export function SummaryFooter({
               </span>
               <span style={{ fontSize: 13, color: "var(--color-ink-muted)" }}>
                 שאלות
-                {estimatedMinutes !== null && (
-                  <> · ~{estimatedMinutes} דקות</>
+                {sessionMinutes !== null && (
+                  <> · זמן לסשן {sessionMinutes} דקות</>
                 )}
               </span>
             </span>

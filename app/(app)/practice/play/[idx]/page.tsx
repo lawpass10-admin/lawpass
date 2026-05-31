@@ -10,6 +10,7 @@ import {
   type AngleQuestionRow,
   type SourceQuestionRow,
 } from "@/lib/db/practice";
+import { computeRemaining } from "@/lib/practice/session-timer";
 import { createClient } from "@/lib/supabase/server";
 import { practicePlayUrl, practiceSummaryUrl } from "@/lib/urls";
 
@@ -144,6 +145,14 @@ export default async function PracticePlayPage({
         totalQuestions={totalQuestions}
         existingAttempt={existingAttempt}
         bookmarked={bookmarked}
+        // Slice 24 — wall-clock session timer. Re-derived on every
+        // page render from `session_duration_seconds` + `started_at`,
+        // so navigation, resume, and refresh all see the same number.
+        // `null` when `session_duration_seconds === 0` (no timer).
+        sessionRemainingSeconds={computeRemaining({
+          sessionDurationSeconds: session.session_duration_seconds,
+          startedAt: session.started_at,
+        })}
       />
     </>
   );

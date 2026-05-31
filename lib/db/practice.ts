@@ -37,6 +37,9 @@ export type PracticeSessionRow = {
   source_count_target: number;
   angles_per_source: number;
   time_per_question_seconds: number;
+  /** Slice 24 — per-session timer budget. 0 = no timer; remaining
+   *  is wall-clock derived from started_at on each play-page render. */
+  session_duration_seconds: number;
   question_list: QuestionListItem[];
   status: "active" | "completed" | "abandoned";
   questions_answered: number;
@@ -252,7 +255,7 @@ export async function getResumableSessionForUser(
   const { data, error } = await supabase
     .from("practice_sessions")
     .select(
-      "id, user_id, selected_chapters, selected_subtopics, source_count_target, angles_per_source, time_per_question_seconds, question_list, status, questions_answered, questions_correct, started_at, completed_at, last_activity_at"
+      "id, user_id, selected_chapters, selected_subtopics, source_count_target, angles_per_source, time_per_question_seconds, session_duration_seconds, question_list, status, questions_answered, questions_correct, started_at, completed_at, last_activity_at"
     )
     .eq("user_id", userId)
     .eq("status", "active")
@@ -282,6 +285,10 @@ export async function getResumableSessionForUser(
     source_count_target: data.source_count_target,
     angles_per_source: data.angles_per_source,
     time_per_question_seconds: data.time_per_question_seconds,
+    session_duration_seconds:
+      typeof data.session_duration_seconds === "number"
+        ? data.session_duration_seconds
+        : 0,
     question_list: parseQuestionList(data.question_list),
     status: "active",
     questions_answered: data.questions_answered,
@@ -304,7 +311,7 @@ export async function getSessionForUser(
   const { data, error } = await supabase
     .from("practice_sessions")
     .select(
-      "id, user_id, selected_chapters, selected_subtopics, source_count_target, angles_per_source, time_per_question_seconds, question_list, status, questions_answered, questions_correct, started_at, completed_at, last_activity_at"
+      "id, user_id, selected_chapters, selected_subtopics, source_count_target, angles_per_source, time_per_question_seconds, session_duration_seconds, question_list, status, questions_answered, questions_correct, started_at, completed_at, last_activity_at"
     )
     .eq("id", sessionId)
     .eq("user_id", userId)
@@ -324,6 +331,10 @@ export async function getSessionForUser(
     source_count_target: data.source_count_target,
     angles_per_source: data.angles_per_source,
     time_per_question_seconds: data.time_per_question_seconds,
+    session_duration_seconds:
+      typeof data.session_duration_seconds === "number"
+        ? data.session_duration_seconds
+        : 0,
     question_list: parseQuestionList(data.question_list),
     status,
     questions_answered: data.questions_answered,

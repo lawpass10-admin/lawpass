@@ -5,7 +5,6 @@ import {
   ChevronDown,
   ChevronLeft,
   ChevronUp,
-  Play,
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -58,6 +57,11 @@ type PracticeQuestionProps = {
   totalQuestions: number;
   existingAttempt: AttemptRow | null;
   bookmarked: boolean;
+  /** Slice 24 — server-computed seconds left on the session timer.
+   *  `null` when the session was created with no timer
+   *  (`session_duration_seconds === 0`). The play screen renders no
+   *  timer or expiry dialog in that case. */
+  sessionRemainingSeconds: number | null;
 };
 
 /**
@@ -95,6 +99,7 @@ export function PracticeQuestion({
   totalQuestions,
   existingAttempt,
   bookmarked: bookmarkedProp,
+  sessionRemainingSeconds,
 }: PracticeQuestionProps) {
   // Slice 6 fix 2 — router.refresh() after a successful submit
   // re-runs the (app) layout server-side and pulls fresh
@@ -128,16 +133,27 @@ export function PracticeQuestion({
   const [submitting, setSubmitting] = useState(false);
   const [advancing, setAdvancing] = useState(false);
 
-  const [timerStarted, setTimerStarted] = useState(false);
-  const [timerExpired, setTimerExpired] = useState(false);
+  // Slice 24 — per-session timer model. `sessionRemainingSeconds`
+  // is the server-computed wall-clock budget; the visual <Timer>
+  // ticks down from it. When the local tick reaches 0 we open the
+  // session-expired dialog (warn-only — no auto-submit, no lock).
+  // `sessionRemainingSeconds === null` means the session was created
+  // with no timer, so no timer / dialog render at all.
+  const sessionTimerEnabled = sessionRemainingSeconds !== null;
+  const sessionAlreadyExpired =
+    sessionTimerEnabled && sessionRemainingSeconds === 0;
+  const [sessionTimerExpired, setSessionTimerExpired] = useState(
+    sessionAlreadyExpired
+  );
+
   const [exitOpen, setExitOpen] = useState(false);
   const [exiting, setExiting] = useState(false);
   const [panel360Expanded, setPanel360Expanded] = useState(false);
 
-  // Timer runs while: user started it, not yet revealed, not expired.
-  // Once expired we freeze the visual at 0:00 (Timer enforces no-go-
-  // negative); the parent gates `running` to false to stop the interval.
-  const timerRunning = timerStarted && !revealed && !timerExpired;
+  // Session timer runs continuously while it's enabled and hasn't
+  // expired — independent of `revealed`. The Timer component
+  // self-freezes at 0; the dialog state below mirrors that.
+  const timerRunning = sessionTimerEnabled && !sessionTimerExpired;
 
   const isLastQuestion = position === totalQuestions - 1;
 
@@ -187,8 +203,8 @@ export function PracticeQuestion({
     setIsCorrect(result.isCorrect);
     setRevealed(true);
     setSubmitting(false);
-    // Dismiss the expiry dialog if the user answered after it appeared.
-    setTimerExpired(false);
+    // Slice 24 — the session-level expiry dialog is independent of
+    // per-question reveal, so we no longer reset it here.
 
     // Slice 6 fix 2 — refresh the layout so the sidebar
     // bookmarks/mistakes badges reflect this attempt without waiting
@@ -326,11 +342,13 @@ export function PracticeQuestion({
                 aria-hidden
               />
             </button>
-            <Timer
-              initialSeconds={session.time_per_question_seconds}
-              running={timerRunning}
-              onExpired={() => setTimerExpired(true)}
-            />
+            {sessionTimerEnabled && (
+              <Timer
+                initialSeconds={sessionRemainingSeconds}
+                running={timerRunning}
+                onExpired={() => setSessionTimerExpired(true)}
+              />
+            )}
             <Button variant="ghost" size="sm" onClick={handleExitClick}>
               סיים סשן
             </Button>
@@ -375,22 +393,9 @@ export function PracticeQuestion({
           {view.question.question_text}
         </p>
 
-        {!revealed && !timerStarted && (
-          <div className="flex items-center justify-center gap-3">
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => setTimerStarted(true)}
-            >
-              <Play className="size-3.5" aria-hidden />
-              <span className="ms-1.5">התחל טיימר</span>
-            </Button>
-            <span className="text-xs text-muted-foreground">
-              או ענה ישירות בלי טיימר
-            </span>
-          </div>
-        )}
+        {/* Slice 24 — the per-question "התחל טיימר" opt-in is gone.
+            The session timer runs automatically when configured;
+            otherwise no timer surface renders at all. */}
       </div>
 
       {/* Section B' — Answer choices (Phase 9d hotfix): each Choice is
@@ -498,19 +503,15 @@ export function PracticeQuestion({
         confirming={exiting}
       />
 
+      {/* Slice 24 — session-level expiry dialog. Replaces the
+          per-question variant: "המשך תרגול" dismisses; "סיים סשן"
+          ends the session and routes to the summary. No auto-submit,
+          no lock — the user keeps control. */}
       <TimerExpiredDialog
-        open={timerExpired && !revealed}
-        alreadyAnswered={revealed}
-        onContinue={() => setTimerExpired(false)}
-        onSkipNext={async () => {
-          // Use the same advanceToNext path as the post-reveal button.
-          // Since the user hasn't answered, no attempt row exists; the
-          // session's questions_answered stays put. advanceToNext just
-          // increments the URL position.
-          setTimerExpired(false);
-          await handleAdvance();
-        }}
-        pending={advancing}
+        open={sessionTimerExpired}
+        onContinue={() => setSessionTimerExpired(false)}
+        onEndSession={() => void doExit()}
+        pending={exiting}
       />
     </>
   );

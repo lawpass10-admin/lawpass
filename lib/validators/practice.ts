@@ -10,8 +10,10 @@ import { z } from "zod";
  * disables individual buttons when DB availability falls below the chosen
  * count. The 1 + 2 entries enable short spot-review sessions and align
  * with the bookmark/mistake review-session pattern from Phase 4.
+ *
+ * Slice 23 dropped the strict enumeration check — see comment on
+ * `sourceCountTarget` below.
  */
-const SOURCE_COUNT_CHOICES = [1, 2, 5, 10, 20, 50] as const;
 
 /**
  * Schema for createPracticeSession Server Action input. Validated twice —
@@ -26,14 +28,26 @@ export const createPracticeSessionSchema = z
       .array(z.string().uuid({ message: "פרק לא תקין" }))
       .min(1, { message: "יש לבחור לפחות פרק אחד" }),
     selectedSubtopicId: z.string().uuid({ message: "תת-נושא לא תקין" }).nullable(),
+    // Slice 23 widened the picker to a free numeric input that derives
+    // sourceCountTarget via Math.round(total / (1 + angles)). The
+    // resulting integer is no longer restricted to the legacy
+    // SOURCE_COUNT_CHOICES list, so we accept any integer in
+    // [1, 200] (matching the input clamp in use-practice-builder).
     sourceCountTarget: z
       .number()
       .int()
-      .refine((n) => (SOURCE_COUNT_CHOICES as readonly number[]).includes(n), {
-        message: "מספר שאלות חייב להיות 1, 2, 5, 10, 20 או 50",
-      }),
+      .min(1, { message: "מספר שאלות חייב להיות לפחות 1" })
+      .max(200, { message: "מספר שאלות חייב להיות לכל היותר 200" }),
     anglesPerSource: z.number().int().min(0).max(4),
     timePerQuestionSeconds: z.number().int().min(60).max(300),
+    // Slice 24 — per-session timer budget in seconds. 0 = "no timer"
+    // (the off state in the builder); cap matches the DB CHECK
+    // constraint at 14400s (4h).
+    sessionDurationSeconds: z
+      .number()
+      .int()
+      .min(0, { message: "זמן לסשן חייב להיות 0 או יותר" })
+      .max(14400, { message: "זמן לסשן חייב להיות עד 4 שעות" }),
   })
   .refine(
     (data) =>

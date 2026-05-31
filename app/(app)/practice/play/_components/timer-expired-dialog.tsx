@@ -7,31 +7,31 @@ import { cn } from "@/lib/utils";
 
 type TimerExpiredDialogProps = {
   open: boolean;
-  /** True if the user has already answered the current question. In that
-   * case the "דלג לשאלה הבאה" button is hidden — advancing without an
-   * extra confirm step would also be fine, but the design language
-   * prefers giving the user only the actions still meaningful. */
-  alreadyAnswered: boolean;
+  /** Dismiss the dialog and keep practicing (no behavioral change). */
   onContinue: () => void;
-  onSkipNext: () => void | Promise<void>;
+  /** End the session and route to the summary (calls exitSession). */
+  onEndSession: () => void | Promise<void>;
   pending?: boolean;
 };
 
 /**
- * Modal dialog shown when the per-question timer counts down to 0:00.
- * Non-dismissable by clicking outside (matches exit-confirm-dialog
- * convention) — the user must click one of the two buttons.
+ * Slice 24 — modal dialog shown when the SESSION timer counts down
+ * to 0:00. Replaces the prior per-question variant.
  *
- * Built on @base-ui/react/alert-dialog like exit-confirm-dialog.tsx, the
- * only other AlertDialog in the app. We do not auto-submit or
- * auto-advance — the timer is informational in practice mode (plan §2
- * row 7), this dialog is just a soft nudge.
+ * Non-dismissable by clicking outside (matches exit-confirm-dialog
+ * convention) — the user must click one of the two buttons. The two
+ * actions:
+ *   - "המשך תרגול" (dismiss): keep practicing without time pressure.
+ *     Choices remain interactive; no auto-submit, no lock. This is
+ *     the soft-pacing model the owner picked over auto-finish.
+ *   - "סיים סשן" (end): call `exitSession`, route to the summary.
+ *
+ * Built on @base-ui/react/alert-dialog like exit-confirm-dialog.tsx.
  */
 export function TimerExpiredDialog({
   open,
-  alreadyAnswered,
   onContinue,
-  onSkipNext,
+  onEndSession,
   pending = false,
 }: TimerExpiredDialogProps) {
   return (
@@ -56,20 +56,19 @@ export function TimerExpiredDialog({
             הזמן נגמר
           </AlertDialog.Title>
           <AlertDialog.Description className="mt-2 text-sm text-muted-foreground">
-            הזמן לשאלה הזו הסתיים. אתה יכול להמשיך לענות, או לעבור הלאה.
+            הזמן לסשן הסתיים. אפשר להמשיך לתרגל בלי מגבלת זמן, או לסיים
+            ולעבור לסיכום.
           </AlertDialog.Description>
           <div className="mt-6 flex justify-end gap-2">
-            {!alreadyAnswered && (
-              <Button
-                variant="ghost"
-                onClick={() => void onSkipNext()}
-                disabled={pending}
-              >
-                דלג לשאלה הבאה
-              </Button>
-            )}
+            <Button
+              variant="ghost"
+              onClick={() => void onEndSession()}
+              disabled={pending}
+            >
+              סיים סשן
+            </Button>
             <Button onClick={onContinue} disabled={pending}>
-              המשך לענות
+              המשך תרגול
             </Button>
           </div>
         </AlertDialog.Popup>

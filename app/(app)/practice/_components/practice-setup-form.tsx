@@ -53,8 +53,11 @@ export function PracticeSetupForm({
     // surfaces the rounding inline.
     rawTotal,
     setRawTotal,
-    timeSeconds,
-    setTimeSeconds,
+    // Slice 24 — per-session timer state replaces the per-question
+    // `timeSeconds` for the play UI; `timeSeconds` stays in the hook
+    // for legacy reasons but is no longer rendered.
+    sessionDurationSeconds,
+    setSessionDurationSeconds,
     available,
     isCountPending,
     hasSelection,
@@ -88,13 +91,18 @@ export function PracticeSetupForm({
             isCountPending={isCountPending}
             hasSelection={hasSelection}
           />
-          <TimerPanel timeSeconds={timeSeconds} onSet={setTimeSeconds} />
+          <TimerPanel
+            sessionDurationSeconds={sessionDurationSeconds}
+            onSet={setSessionDurationSeconds}
+          />
         </aside>
       </div>
 
       <SummaryFooter
         total={total}
-        timeSeconds={timeSeconds}
+        // Slice 24 — footer now reflects the session-level timer the
+        // user just configured, not the legacy per-question setting.
+        sessionDurationSeconds={sessionDurationSeconds}
         hasSelection={hasSelection}
         insufficient={insufficient}
         submitting={submitting}
