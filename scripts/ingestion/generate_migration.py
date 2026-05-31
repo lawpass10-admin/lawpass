@@ -275,26 +275,106 @@ def _angle_has_exactly_one_correct(angle: dict) -> bool:
 
 
 def _filter_valid_angles(q: dict) -> list[dict]:
-    """Return only the angles whose choices satisfy the one-correct invariant.
-    Records skips in module-level `_skipped_angles` for sanity-check + report."""
+    """Return only the angles that satisfy the DB invariants. Records skips
+    in module-level `_skipped_angles` for sanity-check + report.
+
+    Two invariants enforced here:
+      1. `idx_angle_ch_one_correct` — angle_choices must contain exactly one
+         `is_correct=true`. Sharon's 2024-W Q32 had angles with 2 and 3
+         correct choices, which would UNIQUE-violate at insert time.
+      2. `(source_question_id, angle_letter)` UNIQUE AND
+         `(source_question_id, display_order)` UNIQUE — no two angles for the
+         same source may share a letter or a display_order. Sharon's 2022-S
+         Q24 has 6 angles where letters א/ב are each used twice and
+         display_order 2 is used twice; the duplicates are NOT semantic
+         duplicates (different titles + content) but copy-paste editorial
+         errors during authoring.
+
+    The DB also enforces angle_letter ∈ {א, ב, ג, ד, ה} and
+    display_order ∈ [1, 5]. Angles outside those ranges are also rejected
+    here so a value-error doesn't trip the migration mid-DO-block.
+
+    First-seen wins — earlier angles in the source list are kept; later
+    angles that conflict are dropped.
+    """
     ext_id = q["external_id"]
     kept: list[dict] = []
+    seen_letters: set[str] = set()
+    seen_orders: set[int] = set()
+    allowed_letters = {"א", "ב", "ג", "ד", "ה"}
     for a in q.get("angle_questions") or []:
-        if _angle_has_exactly_one_correct(a):
-            kept.append(a)
-        else:
+        letter = a.get("angle_letter")
+        order_raw = a.get("display_order")
+        try:
+            order = int(order_raw) if order_raw is not None else None
+        except (TypeError, ValueError):
+            order = None
+
+        if not _angle_has_exactly_one_correct(a):
             correct_count = sum(
                 1 for c in (a.get("angle_choices") or []) if c.get("is_correct")
             )
             _skipped_angles.append({
                 "external_id": ext_id,
-                "angle_letter": a.get("angle_letter"),
-                "correct_count": correct_count,
+                "angle_letter": letter,
+                "display_order": order,
                 "reason": (
                     "violates idx_angle_ch_one_correct "
                     f"(expected exactly 1 is_correct=true; found {correct_count})"
                 ),
             })
+            continue
+
+        if letter not in allowed_letters:
+            _skipped_angles.append({
+                "external_id": ext_id,
+                "angle_letter": letter,
+                "display_order": order,
+                "reason": (
+                    f"angle_letter {letter!r} not in {{א, ב, ג, ד, ה}} "
+                    "(DB CHECK constraint)"
+                ),
+            })
+            continue
+
+        if order is None or order < 1 or order > 5:
+            _skipped_angles.append({
+                "external_id": ext_id,
+                "angle_letter": letter,
+                "display_order": order,
+                "reason": (
+                    f"display_order {order!r} outside [1,5] (DB CHECK constraint)"
+                ),
+            })
+            continue
+
+        if letter in seen_letters:
+            _skipped_angles.append({
+                "external_id": ext_id,
+                "angle_letter": letter,
+                "display_order": order,
+                "reason": (
+                    "duplicate angle_letter within source (violates "
+                    "UNIQUE(source_question_id, angle_letter)); first occurrence kept"
+                ),
+            })
+            continue
+
+        if order in seen_orders:
+            _skipped_angles.append({
+                "external_id": ext_id,
+                "angle_letter": letter,
+                "display_order": order,
+                "reason": (
+                    "duplicate display_order within source (violates "
+                    "UNIQUE(source_question_id, display_order)); first occurrence kept"
+                ),
+            })
+            continue
+
+        seen_letters.add(letter)
+        seen_orders.add(order)
+        kept.append(a)
     return kept
 
 
@@ -560,17 +640,22 @@ def main() -> int:
         else sum(len(q.get("source_choices") or []) for q in included_questions)
     )
     # Expected angle counts EXCLUDE any angle filtered out by
-    # _filter_valid_angles. The skipped list is the source of truth — we
-    # can't just count `len(q["angle_questions"])` because the multi-correct
-    # validation drops some.
-    skipped_keys = {(s["external_id"], s["angle_letter"]) for s in _skipped_angles}
+    # _filter_valid_angles. We can't derive this from the global skipped
+    # list (`_skipped_angles`) because that holds skip events — and the
+    # duplicate-letter check skips LATER occurrences only, so the same
+    # letter may appear both as "kept" and "skipped" for one question.
+    # The robust approach is to re-run the filter and count its kept
+    # output directly — that's exactly what the SQL emitter saw.
+    # Filter is idempotent and side-effect-only via _skipped_angles (which
+    # is already populated by the emit pass); save/restore to avoid
+    # double-recording.
+    _stash = list(_skipped_angles)
+    _skipped_angles.clear()
     valid_angles_per_q: dict[str, list[dict]] = {}
     for q in included_questions:
-        valid_angles_per_q[q["external_id"]] = [
-            a
-            for a in (q.get("angle_questions") or [])
-            if (q["external_id"], a.get("angle_letter")) not in skipped_keys
-        ]
+        valid_angles_per_q[q["external_id"]] = _filter_valid_angles(q)
+    _skipped_angles.clear()
+    _skipped_angles.extend(_stash)
     expected_angles = sum(len(v) for v in valid_angles_per_q.values())
     expected_angle_choices = sum(
         len(a.get("angle_choices") or [])

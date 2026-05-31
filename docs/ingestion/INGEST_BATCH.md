@@ -422,6 +422,8 @@ surprising.
 | Consecutive-marker duplicate (Q23 appears as two fences in a row) | between question blocks | normalize.py marker-driven sequencing |
 | Content-level duplicate (Q18 and Q20 have identical question_text + choices) | between question blocks | classification `_drops` list, after spotting via hash |
 | Multiple `is_correct: true` per angle (Sharon's Q32 had 2 and 3) | angle_choices | generator validation skips the angle + records it in SKIPPED ANGLES |
+| Duplicate `angle_letter` or `display_order` within one source's angles (Sharon's 2022-S Q24 had 6 angles with letters א/ב each used twice + display_order 2 used twice) | angle_questions | generator validation drops the later duplicates (first-seen wins) + records in SKIPPED ANGLES. Sharon should be told because the dropped angles carry distinct content (not semantic dups, just mis-labeled). |
+| `angle_letter` outside {א,ב,ג,ד,ה} or `display_order` outside [1,5] | angle_questions | generator validation drops the angle (matches DB CHECK constraints) + records in SKIPPED ANGLES |
 | Genuinely unrepairable JSON (missing `"`, dangling brackets) | rare | parse_docx + normalize record the block, classification skips it |
 | Angle objects use `display_order: null` | angle_choices | generator derives from 1-based position when missing |
 | File-name "חלק ג'" disagrees with file-internal header "חלק ב'" | filename vs page-1 text | operator follows the explicit `exam_part = 2` derivation rule; the disagreement is just a Sharon labeling quirk |

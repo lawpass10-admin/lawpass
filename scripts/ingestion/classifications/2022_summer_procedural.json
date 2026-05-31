@@ -1,0 +1,70 @@
+{
+  "_about": "Per-question classification for the 2022 summer procedural (קיץ 2022, חלק ב', דין דיוני) batch. Each entry maps to a (chapter_code, subtopic_code) in the procedural-track taxonomy (the 6 chapters present in the DB since Slice 0). needs_review=true flags taxonomy gaps where the question's real subject doesn't have a clean home.",
+  "_taxonomy_source": "chapters.track='procedural' (6 chapters: civil_proc, criminal_proc, evidence, execution, insolvency_arbitration, constitutional_intl)",
+  "_batch": {
+    "exam_year": 2022,
+    "exam_season": "summer",
+    "exam_part": 2,
+    "track": "procedural",
+    "external_id_prefix": "2022-S"
+  },
+  "_drops": [
+    {
+      "external_id": "2022-S-Q02",
+      "reason": "exact-content duplicate of Q01 (identical question_text + identical 4 source_choices). Sharon source bug: same question pasted twice."
+    },
+    {
+      "external_id": "2022-S-Q10",
+      "reason": "JSON block structurally malformed beyond automatic repair (Expecting ',' delimiter at line 46). Source needs Sharon's re-export."
+    },
+    {
+      "external_id": "2022-S-Q16",
+      "reason": "JSON block structurally malformed (Extra data at line 310 — content leaked beyond the JSON's closing }). Source needs Sharon's re-export."
+    },
+    {
+      "external_id": "2022-S-Q17",
+      "reason": "Not present in the source docx at all — file 1-20 jumps 16→18. Source needs Sharon's clarification."
+    },
+    {
+      "external_id": "2022-S-Q20",
+      "reason": "Not present in the source docx at all — file 1-20 jumps 19→(end). Source needs Sharon's clarification."
+    }
+  ],
+  "classifications": {
+    "2022-S-Q01": { "chapter": "civil_proc",          "subtopic": "proceedings",                "needs_review": false, "note": "Appeal from registrar's fee-exemption decision — civil procedure interlocutory appeal" },
+    "2022-S-Q03": { "chapter": "civil_proc",          "subtopic": "judge_recusal",              "needs_review": false, "note": "Expert witness disclosing prior relationship with the judge — recusal grounds" },
+    "2022-S-Q04": { "chapter": "criminal_proc",       "subtopic": "charges_withdrawal",         "needs_review": true,  "note": "Court-appointed defense counsel duration — no 'representation' subtopic in procedural taxonomy; flagged for review" },
+    "2022-S-Q05": { "chapter": "civil_proc",          "subtopic": "proceedings",                "needs_review": false, "note": "Temporary receiver (כונס נכסים זמני) appointment — interim relief in civil procedure" },
+    "2022-S-Q06": { "chapter": "civil_proc",          "subtopic": "third_party_notice",         "needs_review": false, "note": "Co-defendant filing third-party notice against another co-defendant in fast-track procedure" },
+    "2022-S-Q07": { "chapter": "civil_proc",          "subtopic": "proceedings",                "needs_review": false, "note": "Plastic-surgery malpractice — civil claim filing options (procedural advice)" },
+    "2022-S-Q08": { "chapter": "civil_proc",          "subtopic": "proceedings",                "needs_review": false, "note": "Required structure of a statement of claim (the third part)" },
+    "2022-S-Q09": { "chapter": "civil_proc",          "subtopic": "service_of_documents",       "needs_review": false, "note": "Service of affidavits via fax at 17:00 — service-of-documents rules" },
+    "2022-S-Q11": { "chapter": "execution",           "subtopic": "debtor_rights",              "needs_review": false, "note": "Debtor with 120K NIS debt across multiple files, can't pay — debtor's options" },
+    "2022-S-Q12": { "chapter": "execution",           "subtopic": "file_opening",               "needs_review": false, "note": "Opening execution file from money judgment with settlement plan; debtor's objection" },
+    "2022-S-Q13": { "chapter": "execution",           "subtopic": "imprisonment_alimony",       "needs_review": false, "note": "Interim alimony order; immediate service — alimony enforcement" },
+    "2022-S-Q14": { "chapter": "civil_proc",          "subtopic": "preliminary_hearing",        "needs_review": false, "note": "Mandatory attendance of unrepresented party — civil pre-trial procedure" },
+    "2022-S-Q15": { "chapter": "civil_proc",          "subtopic": "proceedings",                "needs_review": false, "note": "Interim relief without security deposit — civil procedure" },
+    "2022-S-Q18": { "chapter": "constitutional_intl", "subtopic": "bgz_jurisdiction_revocation","needs_review": true,  "note": "Knesset dissolution + government formation — constitutional law / parliamentary procedure; no clean subtopic. Source review_note flags the same gap" },
+    "2022-S-Q19": { "chapter": "civil_proc",          "subtopic": "third_party_notice",         "needs_review": false, "note": "Third-party defendant (Levi) wishing to file counter-claim against the originating co-defendant (Shimon)" },
+    "2022-S-Q21": { "chapter": "constitutional_intl", "subtopic": "bgz_jurisdiction_revocation","needs_review": true,  "note": "Deputy minister conviction — when does tenure end. Constitutional law gap (no minister-tenure subtopic)" },
+    "2022-S-Q22": { "chapter": "civil_proc",          "subtopic": "jurisdiction_subject",       "needs_review": false, "note": "Mortgage realization, which court has subject-matter jurisdiction" },
+    "2022-S-Q23": { "chapter": "criminal_proc",       "subtopic": "charges_withdrawal",         "needs_review": true,  "note": "AG decision to stay proceedings (עיכוב הליכים) after prosecution rested — closest fit is charges_withdrawal; the JSON's own review_note recommends adding a 'stay of proceedings' subtopic" },
+    "2022-S-Q24": { "chapter": "evidence",            "subtopic": "admissibility",              "needs_review": false, "note": "Civil suit ancillary to criminal conviction — admissibility of criminal findings as evidence (סעיף 42א פקודת הראיות)" },
+    "2022-S-Q25": { "chapter": "criminal_proc",       "subtopic": "lawyer_discipline",          "needs_review": false, "note": "Ethics committee's unilateral withdrawal from disciplinary complaint" },
+    "2022-S-Q26": { "chapter": "criminal_proc",       "subtopic": "lawyer_discipline",          "needs_review": false, "note": "Ethics committee amending a disciplinary complaint after filing" },
+    "2022-S-Q27": { "chapter": "criminal_proc",       "subtopic": "lawyer_discipline",          "needs_review": false, "note": "Ethics committee using private investigator for evidence gathering" },
+    "2022-S-Q28": { "chapter": "criminal_proc",       "subtopic": "publication_ban",            "needs_review": false, "note": "Closed-doors order in sex-offense trial; defendant's right to appeal — court-protective orders" },
+    "2022-S-Q29": { "chapter": "civil_proc",          "subtopic": "proceedings",                "needs_review": true,  "note": "Administrative appeal page length — administrative procedure isn't a dedicated subtopic; civil_proc/proceedings is the closest" },
+    "2022-S-Q30": { "chapter": "civil_proc",          "subtopic": "proceedings",                "needs_review": true,  "note": "Date computation for administrative decision — administrative procedure gap; civil_proc/proceedings is the closest" },
+    "2022-S-Q31": { "chapter": "execution",           "subtopic": "file_opening",               "needs_review": false, "note": "Direct execution from written agreement after demand letter — file opening rules" },
+    "2022-S-Q32": { "chapter": "criminal_proc",       "subtopic": "charges_withdrawal",         "needs_review": true,  "note": "Order of witness examination among multiple defendants — no 'trial procedure' subtopic; closest is charges_withdrawal" },
+    "2022-S-Q33": { "chapter": "civil_proc",          "subtopic": "judge_recusal",              "needs_review": true,  "note": "Judge's self-recusal in criminal trial — judge_recusal subtopic exists only under civil_proc; cross-track classification" },
+    "2022-S-Q34": { "chapter": "evidence",            "subtopic": "admissibility",              "needs_review": false, "note": "Defendant's video evidence in theft case — admissibility" },
+    "2022-S-Q35": { "chapter": "criminal_proc",       "subtopic": "search_seizure",             "needs_review": false, "note": "Emergency wiretap without warrant — search/seizure/surveillance" },
+    "2022-S-Q36": { "chapter": "evidence",            "subtopic": "institutional_record",       "needs_review": false, "note": "Bank's institutional record as evidence in fraud trial" },
+    "2022-S-Q37": { "chapter": "evidence",            "subtopic": "witness_competence",         "needs_review": false, "note": "Two 10-year-old children testifying in sex-offense trial — child witness competence" },
+    "2022-S-Q38": { "chapter": "constitutional_intl", "subtopic": "bgz_jurisdiction_revocation","needs_review": true,  "note": "Defendant collaterally attacking ministerial terror-organization declaration in criminal trial — judicial review of admin action; no perfect subtopic" },
+    "2022-S-Q39": { "chapter": "criminal_proc",       "subtopic": "death_investigation",        "needs_review": false, "note": "Police request to exhume body for re-investigation; grandfather's objection" },
+    "2022-S-Q40": { "chapter": "civil_proc",          "subtopic": "jurisdiction_subject",       "needs_review": false, "note": "Eminent domain (Finance Minister land acquisition) — competing ownership claims, subject-matter jurisdiction over objections" }
+  }
+}
