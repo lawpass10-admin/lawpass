@@ -47,7 +47,11 @@ export function PracticeSetupForm({
     // source + angles pair. `total` is now the truthful generated
     // question count (engine still receives sourceCountTarget +
     // anglesPerSource via the unchanged action signature).
-    effectiveTotal,
+    // Slice 23 — `rawTotal` is what the user typed; `total` is the
+    // engine-resolved count. They differ when the typed number
+    // isn't a multiple of (1 + DEFAULT_ANGLES); the counts panel
+    // surfaces the rounding inline.
+    rawTotal,
     setRawTotal,
     timeSeconds,
     setTimeSeconds,
@@ -77,7 +81,8 @@ export function PracticeSetupForm({
         {/* Left column (RTL visual left): counts + timer stacked. */}
         <aside className="flex flex-col gap-5">
           <CountsPanel
-            total={effectiveTotal}
+            rawTotal={rawTotal}
+            total={total}
             onSetTotal={setRawTotal}
             available={available}
             isCountPending={isCountPending}

@@ -55,25 +55,52 @@ export const MIN_QUESTIONS_REQUIRED: SourceCount = SOURCE_COUNT_CHOICES[0];
 
 // =============================================================================
 // Slice 18 — single "כמות שאלות" picker.
+// Slice 23 — opens the picker to free numeric input.
 // =============================================================================
 // Sharon's decision: the user picks ONE "total questions" number. The
 // engine signature (sourceCountTarget + anglesPerSource) stays
 // unchanged; angles is locked to DEFAULT_ANGLES (2) and is no longer
-// user-editable. The total options are deliberately set to
+// user-editable. The preset chips are deliberately set to
 // SOURCE_COUNT_CHOICES × (1 + DEFAULT_ANGLES) = [1,2,5,10,20,50] × 3,
-// so the number the user picks IS the number of questions they
-// receive (truth-in-display, no rounding gap). Default total = 15
-// matches the previous default (5 × 3).
+// so picking a preset still lands on an exact engine multiple. The
+// new free input lets the user type any integer in
+// [MIN_TOTAL_QUESTIONS_INPUT, MAX_TOTAL_QUESTIONS_INPUT]; when the
+// typed number isn't a multiple of (1 + angles) the derivation
+// rounds to the nearest source count via `totalToSourceCount`, and
+// the resolved `total` returned from the hook is the true engine
+// output (sourceCount × (1 + angles)) — which is what the UI must
+// display for truth-in-display.
 export const TOTAL_QUESTION_CHOICES = [3, 6, 15, 30, 60, 150] as const;
 export type TotalQuestionCount = (typeof TOTAL_QUESTION_CHOICES)[number];
 
-export const DEFAULT_TOTAL_QUESTIONS: TotalQuestionCount = 15;
-export const MIN_TOTAL_QUESTIONS_REQUIRED: TotalQuestionCount =
-  TOTAL_QUESTION_CHOICES[0];
+export const DEFAULT_TOTAL_QUESTIONS = 15;
+export const MIN_TOTAL_QUESTIONS_REQUIRED = TOTAL_QUESTION_CHOICES[0];
 
-/** Derive sourceCountTarget from a chosen total. Because
- *  TOTAL_QUESTION_CHOICES values are exact multiples of (1 + angles),
- *  the division is integer and lossless. */
+/** Slice 23 — input clamp for the free numeric field. 1 is the
+ *  smallest non-trivial value (the engine still resolves to 3 via
+ *  the `max(1, …)` floor in totalToSourceCount, and the truth-in-
+ *  display feedback explains the bump). 200 is a sane upper bound
+ *  for practice sessions — anything larger isn't a single sitting. */
+export const MIN_TOTAL_QUESTIONS_INPUT = 1;
+export const MAX_TOTAL_QUESTIONS_INPUT = 200;
+
+/** Defensive clamp used by `setRawTotal` so callers (typed input,
+ *  preset chips, prefill seeding) all funnel through one bound. */
+export function clampTotalInput(n: number): number {
+  if (!Number.isFinite(n)) return DEFAULT_TOTAL_QUESTIONS;
+  const intval = Math.round(n);
+  return Math.max(
+    MIN_TOTAL_QUESTIONS_INPUT,
+    Math.min(MAX_TOTAL_QUESTIONS_INPUT, intval)
+  );
+}
+
+/** Derive sourceCountTarget from a chosen total. When the total
+ *  isn't an exact multiple of (1 + angles), `Math.round` snaps to
+ *  the nearest source count; the resolved total
+ *  (sourceCount × (1 + angles)) is what the engine actually
+ *  produces — and what `total` from the hook returns — so the UI
+ *  can surface the rounding. */
 export function totalToSourceCount(total: number): number {
   return Math.max(1, Math.round(total / (1 + DEFAULT_ANGLES)));
 }
@@ -141,11 +168,16 @@ export type UsePracticeBuilderResult = {
   subtopicsForSelected: SubtopicRow[];
 
   // Counts — Slice 18 collapses the prior two-axis (source × angles)
-  // picker into a single "כמות שאלות" total. `angles` stays internal,
-  // locked to DEFAULT_ANGLES, and is passed to the engine unchanged.
-  rawTotal: TotalQuestionCount;
-  setRawTotal: (n: TotalQuestionCount) => void;
-  effectiveTotal: TotalQuestionCount;
+  // picker into a single "כמות שאלות" total. Slice 23 opens the
+  // picker to free numeric input — `rawTotal` is now any integer in
+  // [MIN_TOTAL_QUESTIONS_INPUT, MAX_TOTAL_QUESTIONS_INPUT] (clamped
+  // by the setter). `angles` stays internal, locked to DEFAULT_ANGLES,
+  // and is passed to the engine unchanged.
+  rawTotal: number;
+  setRawTotal: (n: number) => void;
+  /** Same as `total` — kept for back-compat with callers that
+   *  destructured the Slice 18 name. */
+  effectiveTotal: number;
 
   // Timer
   timeSeconds: number;
@@ -157,10 +189,13 @@ export type UsePracticeBuilderResult = {
   hasSelection: boolean;
   insufficient: boolean;
 
-  // The actual number of questions the engine will produce. Always
-  // equals `effectiveTotal` (because TOTAL_QUESTION_CHOICES are exact
-  // multiples of 1 + DEFAULT_ANGLES), so the summary footer can
-  // display it as truthful "X questions" without rounding gaps.
+  // The actual number of questions the engine will produce.
+  // Derived as `effectiveSourceCount × (1 + angles)`, so when the
+  // user's typed `rawTotal` isn't a multiple of (1 + angles) the
+  // resolved `total` rounds via `totalToSourceCount`. The summary
+  // footer renders this number (truth-in-display); the counts
+  // panel can compare `rawTotal` against `total` to surface the
+  // rounding hint.
   total: number;
 
   // Submit
@@ -217,8 +252,10 @@ export function usePracticeBuilder({
   // Slice 18 — angles is locked to the default and no longer
   // user-editable, but we still read prefill `angles` to derive an
   // accurate initial total when a "retry session" URL carries the
-  // original two-axis sizing. Map (prefill.sourceCount, prefill.angles)
-  // → initial total, then snap to the nearest valid TOTAL_QUESTION_CHOICES.
+  // original two-axis sizing.
+  // Slice 23 — no longer snaps to TOTAL_QUESTION_CHOICES. The free
+  // input accepts any clamped integer, so prefill maps straight
+  // through `clampTotalInput` and the user sees the original sizing.
   const prefillAngles: AngleCount =
     initialValues?.angles !== undefined && isAngleCount(initialValues.angles)
       ? initialValues.angles
@@ -228,25 +265,10 @@ export function usePracticeBuilder({
     isSourceCount(initialValues.sourceCount)
       ? initialValues.sourceCount
       : DEFAULT_SOURCE_COUNT;
-  const initialTotal: TotalQuestionCount = (() => {
-    const target = prefillSourceCount * (1 + prefillAngles);
-    if (initialValues?.sourceCount === undefined) {
-      return DEFAULT_TOTAL_QUESTIONS;
-    }
-    // Snap to the nearest valid choice (Slice 18's totals are exact
-    // multiples of 1 + DEFAULT_ANGLES, so retries with the default
-    // angles count land exactly on a valid value).
-    let best: TotalQuestionCount = TOTAL_QUESTION_CHOICES[0];
-    let bestDiff = Math.abs(target - best);
-    for (const choice of TOTAL_QUESTION_CHOICES) {
-      const diff = Math.abs(target - choice);
-      if (diff < bestDiff) {
-        best = choice;
-        bestDiff = diff;
-      }
-    }
-    return best;
-  })();
+  const initialTotal: number =
+    initialValues?.sourceCount === undefined
+      ? DEFAULT_TOTAL_QUESTIONS
+      : clampTotalInput(prefillSourceCount * (1 + prefillAngles));
   const initialTime: number =
     initialValues?.timePerQuestion !== undefined
       ? Math.min(TIME_MAX, Math.max(TIME_MIN, initialValues.timePerQuestion))
@@ -258,8 +280,14 @@ export function usePracticeBuilder({
   const [rawSubtopicId, setRawSubtopicId] = useState<string | null>(
     initialSubtopic
   );
-  const [rawTotal, setRawTotal] =
-    useState<TotalQuestionCount>(initialTotal);
+  // Slice 23 — rawTotal is now any clamped integer in the input
+  // range, not one of the fixed TOTAL_QUESTION_CHOICES. We hold the
+  // raw setter as an internal then expose a wrapped public setter
+  // that funnels every write through `clampTotalInput`.
+  const [rawTotal, setRawTotalState] = useState<number>(initialTotal);
+  const setRawTotal = (n: number): void => {
+    setRawTotalState(clampTotalInput(n));
+  };
   const [timeSeconds, setTimeSeconds] = useState<number>(initialTime);
   // angles is locked — kept in a const, not state. Engine still
   // receives it via the unchanged createPracticeSession signature.
@@ -300,24 +328,28 @@ export function usePracticeBuilder({
       ? availabilityResponse.count
       : null;
 
-  // Clamp the total to the highest enabled choice when the user's
-  // previous pick now exceeds availability. `available` is the count
-  // of distinct source questions in the selection; max producible
-  // total = available × (1 + angles).
+  // Clamp the user's typed total down to the producible ceiling when
+  // their previous pick exceeds availability. `available` is the
+  // count of distinct source questions in the selection; max
+  // producible total = available × (1 + angles).
+  //
+  // Slice 23: with free numeric input, `effectiveTotal` is the raw
+  // typed value clamped by availability (still un-rounded relative
+  // to engine multiples). The final `total` below derives via
+  // `totalToSourceCount` and multiplies back, so the rounding step
+  // is observable as `total !== rawTotal` for the truth-in-display
+  // hint in the counts panel.
   const maxTotal = available !== null ? available * (1 + angles) : null;
-  const effectiveTotal: TotalQuestionCount = (() => {
-    if (maxTotal === null) return rawTotal;
-    if (maxTotal < MIN_TOTAL_QUESTIONS_REQUIRED) return rawTotal;
-    if (rawTotal <= maxTotal) return rawTotal;
-    const highest = [...TOTAL_QUESTION_CHOICES]
-      .reverse()
-      .find((n) => n <= maxTotal);
-    return (highest ?? rawTotal) as TotalQuestionCount;
-  })();
+  const effectiveTotal: number =
+    maxTotal !== null &&
+    maxTotal >= MIN_TOTAL_QUESTIONS_REQUIRED &&
+    rawTotal > maxTotal
+      ? maxTotal
+      : rawTotal;
   // Engine still expects sourceCountTarget + anglesPerSource. Derive
-  // it from the chosen total via the totalToSourceCount helper — the
-  // TOTAL_QUESTION_CHOICES values are exact multiples of (1 + angles)
-  // so this division is integer and lossless.
+  // it from the (availability-clamped) effective total. When the
+  // user's typed number isn't a multiple of (1 + angles), `Math.round`
+  // inside the helper snaps to the nearest source count.
   const effectiveSourceCount = totalToSourceCount(effectiveTotal);
 
   // ---------- reactive availability lookup (race-guarded) ----------
