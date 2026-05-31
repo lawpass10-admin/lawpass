@@ -25,10 +25,21 @@ import { BookmarkRow } from "./bookmark-row";
 export function BookmarksList({
   bookmarks,
   chapterCounts,
+  notedIdentitiesArray,
 }: {
   bookmarks: BookmarkListRow[];
   chapterCounts: ChapterChip[];
+  /** Slice 27 — array of identity keys ("source:groupId" /
+   *  "angle:groupId:position") the user already has a note for.
+   *  Passed as an array because Sets aren't serializable across the
+   *  RSC payload boundary. */
+  notedIdentitiesArray: string[];
 }) {
+  // Materialize the Set in client-land; lookup is O(1).
+  const notedSet = useMemo(
+    () => new Set(notedIdentitiesArray),
+    [notedIdentitiesArray]
+  );
   const [removedIds, setRemovedIds] = useState<Set<string>>(() => new Set());
   const [activeChapter, setActiveChapter] = useState<string | null>(null);
 
@@ -73,11 +84,33 @@ export function BookmarksList({
       </div>
 
       <ul className="space-y-2">
-        {visible.map((b) => (
-          <li key={b.bookmarkId}>
-            <BookmarkRow bookmark={b} onRemoved={markRemoved} />
-          </li>
-        ))}
+        {visible.map((b) => {
+          // Slice 27 — derive the note identity from the bookmark
+          // row, mirroring `deriveNoteIdentity` on the play side.
+          // SOURCE: questionGroupId, position=null. ANGLE: parent
+          // group_id + displayOrder. Archived rows have empty
+          // parentQuestionGroupId / null displayOrder → indicator
+          // is forcibly off.
+          const noteKey =
+            b.questionType === "source"
+              ? b.sourceQuestion.questionGroupId
+                ? `source:${b.sourceQuestion.questionGroupId}`
+                : null
+              : b.angleQuestion.parentQuestionGroupId &&
+                  b.angleQuestion.displayOrder !== null
+                ? `angle:${b.angleQuestion.parentQuestionGroupId}:${b.angleQuestion.displayOrder}`
+                : null;
+          const hasNote = noteKey !== null && notedSet.has(noteKey);
+          return (
+            <li key={b.bookmarkId}>
+              <BookmarkRow
+                bookmark={b}
+                onRemoved={markRemoved}
+                hasNote={hasNote}
+              />
+            </li>
+          );
+        })}
       </ul>
     </div>
   );

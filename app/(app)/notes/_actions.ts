@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
-import { saveNoteByIdentity } from "@/lib/db/notes";
+import { getNoteByIdentity, saveNoteByIdentity } from "@/lib/db/notes";
 import { createClient } from "@/lib/supabase/server";
 
 /**
@@ -81,4 +81,69 @@ export async function saveNoteFromBank(
   );
 
   return result;
+}
+
+// =============================================================================
+// Slice 27 — lazy by-identity load for the bookmarks/mistakes list pages
+// =============================================================================
+
+const loadNoteByIdentitySchema = z.object({
+  questionType: z.enum(["source", "angle"]),
+  sourceQuestionGroupId: z.string().uuid(),
+  anglePosition: z.number().int().min(1).max(5).nullable(),
+});
+
+type LoadNoteByIdentityResult =
+  | {
+      ok: true;
+      note: {
+        contentJson: unknown;
+        contentHtml: string;
+        updatedAt: string;
+      } | null;
+    }
+  | { ok: false; error: string };
+
+/**
+ * Slice 27 — called on pencil-trigger click from the bookmarks +
+ * mistakes list rows. Loads the user's note for the row's stored
+ * identity (or null when none). The list pages don't pre-fetch all
+ * notes' content — only this server-action call costs a round-trip,
+ * and only for rows the user actually opens.
+ */
+export async function loadNoteByIdentity(
+  input: unknown
+): Promise<LoadNoteByIdentityResult> {
+  const parsed = loadNoteByIdentitySchema.safeParse(input);
+  if (!parsed.success) return { ok: false, error: "טופס לא תקין" };
+  const data = parsed.data;
+
+  // Cross-field guard (same as the save action).
+  if (data.questionType === "source" && data.anglePosition !== null) {
+    return { ok: false, error: "טופס לא תקין" };
+  }
+  if (data.questionType === "angle" && data.anglePosition === null) {
+    return { ok: false, error: "טופס לא תקין" };
+  }
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false, error: "לא מחובר" };
+
+  const row = await getNoteByIdentity(supabase, user.id, {
+    question_type: data.questionType,
+    source_question_group_id: data.sourceQuestionGroupId,
+    angle_position: data.anglePosition,
+  });
+  if (!row) return { ok: true, note: null };
+  return {
+    ok: true,
+    note: {
+      contentJson: row.content_json,
+      contentHtml: row.content_html,
+      updatedAt: row.updated_at,
+    },
+  };
 }

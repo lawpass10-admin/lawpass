@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import type { ChapterChip } from "@/components/practice/chapter-filter-chips";
 import { buttonVariants } from "@/components/ui/button";
 import { requireActiveSubscription } from "@/lib/auth/subscription-gate";
+import { getNotedIdentities } from "@/lib/db/notes";
 import { getUserBookmarks } from "@/lib/db/practice";
 import { createClient } from "@/lib/supabase/server";
 import { cn } from "@/lib/utils";
@@ -25,7 +26,14 @@ export default async function BookmarksPage() {
   const supabase = await createClient();
   if (!user) redirect("/login");
 
-  const bookmarks = await getUserBookmarks(supabase, user.id);
+  // Slice 27 — fetch the user's note identities in parallel with
+  // bookmarks so each row can render a filled/marked pencil for
+  // questions that already have a note. Both reads are RLS-gated by
+  // (auth.uid() = user_id AND has_active_subscription()).
+  const [bookmarks, notedIdentities] = await Promise.all([
+    getUserBookmarks(supabase, user.id),
+    getNotedIdentities(supabase, user.id),
+  ]);
 
   // Per-chapter counts for the filter chips. Built from the bookmarks
   // result so the chip counts always match what's in the visible list
@@ -71,7 +79,11 @@ export default async function BookmarksPage() {
           </Link>
         </div>
       ) : (
-        <BookmarksList bookmarks={bookmarks} chapterCounts={chapterCounts} />
+        <BookmarksList
+          bookmarks={bookmarks}
+          chapterCounts={chapterCounts}
+          notedIdentitiesArray={[...notedIdentities]}
+        />
       )}
     </div>
   );

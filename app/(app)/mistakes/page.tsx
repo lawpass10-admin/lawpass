@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import type { ChapterChip } from "@/components/practice/chapter-filter-chips";
 import { buttonVariants } from "@/components/ui/button";
 import { requireActiveSubscription } from "@/lib/auth/subscription-gate";
+import { getNotedIdentities } from "@/lib/db/notes";
 import { getUserMistakes } from "@/lib/db/practice";
 import { createClient } from "@/lib/supabase/server";
 import { cn } from "@/lib/utils";
@@ -20,7 +21,12 @@ export default async function MistakesPage() {
   const supabase = await createClient();
   if (!user) redirect("/login");
 
-  const mistakes = await getUserMistakes(supabase, user.id);
+  // Slice 27 — fetch noted-identity set in parallel; drives the
+  // per-row pencil-filled state on the mistakes list.
+  const [mistakes, notedIdentities] = await Promise.all([
+    getUserMistakes(supabase, user.id),
+    getNotedIdentities(supabase, user.id),
+  ]);
 
   const chapterCountsMap = new Map<string, { title: string; count: number }>();
   for (const m of mistakes) {
@@ -64,7 +70,11 @@ export default async function MistakesPage() {
           </Link>
         </div>
       ) : (
-        <MistakesList mistakes={mistakes} chapterCounts={chapterCounts} />
+        <MistakesList
+          mistakes={mistakes}
+          chapterCounts={chapterCounts}
+          notedIdentitiesArray={[...notedIdentities]}
+        />
       )}
     </div>
   );

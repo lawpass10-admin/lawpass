@@ -293,6 +293,105 @@ export async function getUserNotes(
 }
 
 // =============================================================================
+// Slice 27 — by-identity read helpers for the bookmarks/mistakes lists
+// =============================================================================
+
+/**
+ * Slice 27 — lazily fetch the user's note for a given identity. The
+ * bookmarks + mistakes list pages call this on pencil click rather
+ * than pre-fetching all notes' content (which would be wasteful for
+ * pages with many rows; only the rows the user actually opens cost
+ * a round-trip).
+ *
+ * Tolerates pre-Slice-25.2 duplicate rows (NULL-in-UNIQUE leftover)
+ * by ordering on `updated_at` and taking the most recent — same
+ * defensive read shape as `getNoteForPosition`. Returns null when
+ * no row exists.
+ */
+export async function getNoteByIdentity(
+  supabase: SupabaseSsrClient,
+  userId: string,
+  identity: NoteWriteIdentity
+): Promise<NoteRow | null> {
+  let query = supabase
+    .from("question_notes")
+    .select(NOTE_SELECT_COLS)
+    .eq("user_id", userId)
+    .eq("question_type", identity.question_type)
+    .eq("source_question_group_id", identity.source_question_group_id);
+
+  query =
+    identity.angle_position === null
+      ? query.is("angle_position", null)
+      : query.eq("angle_position", identity.angle_position);
+
+  const { data, error } = await query
+    .order("updated_at", { ascending: false })
+    .limit(1);
+  if (error || !data || data.length === 0) return null;
+  const row = data[0];
+  return {
+    id: row.id as string,
+    question_type: row.question_type as "source" | "angle",
+    source_question_group_id: row.source_question_group_id as string,
+    angle_position: (row.angle_position as number | null) ?? null,
+    content_json: row.content_json,
+    content_html: (row.content_html as string) ?? "",
+    created_at: row.created_at as string,
+    updated_at: row.updated_at as string,
+  };
+}
+
+/**
+ * Slice 27 — list every note identity the user has, so the list
+ * pages can flag rows that already have a note WITHOUT a per-row
+ * round-trip. Returns a `Set<string>` keyed:
+ *
+ *   source notes → `"source:${sourceQuestionGroupId}"`
+ *   angle notes  → `"angle:${parentGroupId}:${anglePosition}"`
+ *
+ * Use `notedIdentityKey()` to derive the lookup key from either
+ * side so callers don't accidentally write a different shape.
+ */
+export async function getNotedIdentities(
+  supabase: SupabaseSsrClient,
+  userId: string
+): Promise<Set<string>> {
+  const { data, error } = await supabase
+    .from("question_notes")
+    .select("question_type, source_question_group_id, angle_position")
+    .eq("user_id", userId);
+  const set = new Set<string>();
+  if (error || !data) return set;
+  for (const row of data as Array<{
+    question_type: "source" | "angle";
+    source_question_group_id: string | null;
+    angle_position: number | null;
+  }>) {
+    if (!row.source_question_group_id) continue;
+    if (row.question_type === "source") {
+      set.add(`source:${row.source_question_group_id}`);
+    } else if (row.angle_position !== null) {
+      set.add(
+        `angle:${row.source_question_group_id}:${row.angle_position}`
+      );
+    }
+  }
+  return set;
+}
+
+/**
+ * Slice 27 — single source of truth for the indicator-set lookup
+ * key. Same shape as the strings produced by `getNotedIdentities`.
+ */
+export function notedIdentityKey(identity: NoteWriteIdentity): string {
+  if (identity.angle_position === null) {
+    return `source:${identity.source_question_group_id}`;
+  }
+  return `angle:${identity.source_question_group_id}:${identity.angle_position}`;
+}
+
+// =============================================================================
 // Slice 26 — save by stored identity (bank-side write path)
 // =============================================================================
 

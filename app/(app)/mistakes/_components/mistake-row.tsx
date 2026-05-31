@@ -4,6 +4,7 @@ import { ChevronLeft, Loader2, X } from "lucide-react";
 import { useState, useTransition } from "react";
 import { toast } from "sonner";
 
+import { RowNotePencil } from "@/app/(app)/_components/row-note-pencil";
 import { createReviewSession } from "@/app/(app)/practice/_actions";
 import type { MistakeListRow } from "@/lib/db/practice";
 import { formatHebrewDateShort } from "@/lib/format/hebrew-date";
@@ -21,9 +22,13 @@ import { removeMistake } from "../_actions";
 export function MistakeRow({
   mistake,
   onRemoved,
+  hasNote,
 }: {
   mistake: MistakeListRow;
   onRemoved: (id: string) => void;
+  /** Slice 27 — server-side flag from the page's notedIdentities
+   *  set. */
+  hasNote: boolean;
 }) {
   const [removing, setRemoving] = useState(false);
   const [opening, startOpening] = useTransition();
@@ -139,6 +144,42 @@ export function MistakeRow({
       </p>
 
       <div className="flex shrink-0 items-center gap-2">
+        {/* Slice 27 — note pencil. Same derivation rules as the
+            bookmarks row. */}
+        {(() => {
+          if (mistake.questionType === "source") {
+            const groupId = mistake.sourceQuestion.questionGroupId;
+            return (
+              <RowNotePencil
+                identity={{
+                  questionType: "source",
+                  sourceQuestionGroupId: groupId,
+                  anglePosition: null,
+                }}
+                initiallyHasNote={hasNote}
+                disabled={isArchived || !groupId}
+                questionContextLabel={chapterTitle || "הערה אישית"}
+              />
+            );
+          }
+          const parentGroupId =
+            mistake.angleQuestion.parentQuestionGroupId;
+          const displayOrder = mistake.angleQuestion.displayOrder;
+          return (
+            <RowNotePencil
+              identity={{
+                questionType: "angle",
+                sourceQuestionGroupId: parentGroupId,
+                anglePosition: displayOrder,
+              }}
+              initiallyHasNote={hasNote}
+              disabled={
+                isArchived || !parentGroupId || displayOrder === null
+              }
+              questionContextLabel={chapterTitle || "הערה אישית"}
+            />
+          );
+        })()}
         <button
           type="button"
           aria-label="הסר מטעויות"

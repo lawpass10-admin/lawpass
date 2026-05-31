@@ -4,6 +4,7 @@ import { Bookmark, ChevronLeft, Loader2 } from "lucide-react";
 import { useState, useTransition } from "react";
 import { toast } from "sonner";
 
+import { RowNotePencil } from "@/app/(app)/_components/row-note-pencil";
 import { createReviewSession } from "@/app/(app)/practice/_actions";
 import type { BookmarkListRow } from "@/lib/db/practice";
 import { formatHebrewDateShort } from "@/lib/format/hebrew-date";
@@ -26,9 +27,14 @@ import { removeBookmark } from "../_actions";
 export function BookmarkRow({
   bookmark,
   onRemoved,
+  hasNote,
 }: {
   bookmark: BookmarkListRow;
   onRemoved: (id: string) => void;
+  /** Slice 27 — server-side flag from the page's notedIdentities
+   *  set. Drives the pencil-fill state without an additional
+   *  per-row round-trip. */
+  hasNote: boolean;
 }) {
   const [removing, setRemoving] = useState(false);
   const [opening, startOpening] = useTransition();
@@ -145,8 +151,48 @@ export function BookmarkRow({
         )}
       </p>
 
-      {/* RTL-end cluster: icon, date, chevron */}
+      {/* RTL-end cluster: pencil, bookmark-remove, date, chevron */}
       <div className="flex shrink-0 items-center gap-2">
+        {/* Slice 27 — note pencil. Click opens the shared editor
+            sheet for THIS question (identity derived from the
+            stored bookmark row). Disabled for archived rows where
+            the note identity can't be resolved. */}
+        {(() => {
+          if (bookmark.questionType === "source") {
+            const groupId = bookmark.sourceQuestion.questionGroupId;
+            return (
+              <RowNotePencil
+                identity={{
+                  questionType: "source",
+                  sourceQuestionGroupId: groupId,
+                  anglePosition: null,
+                }}
+                initiallyHasNote={hasNote}
+                disabled={isArchived || !groupId}
+                questionContextLabel={
+                  chapterTitle || "הערה אישית"
+                }
+              />
+            );
+          }
+          const parentGroupId =
+            bookmark.angleQuestion.parentQuestionGroupId;
+          const displayOrder = bookmark.angleQuestion.displayOrder;
+          return (
+            <RowNotePencil
+              identity={{
+                questionType: "angle",
+                sourceQuestionGroupId: parentGroupId,
+                anglePosition: displayOrder,
+              }}
+              initiallyHasNote={hasNote}
+              disabled={
+                isArchived || !parentGroupId || displayOrder === null
+              }
+              questionContextLabel={chapterTitle || "הערה אישית"}
+            />
+          );
+        })()}
         <button
           type="button"
           aria-label="הסר מהסימניות"

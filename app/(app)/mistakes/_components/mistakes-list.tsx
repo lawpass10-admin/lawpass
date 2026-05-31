@@ -19,10 +19,18 @@ import { MistakeRow } from "./mistake-row";
 export function MistakesList({
   mistakes,
   chapterCounts,
+  notedIdentitiesArray,
 }: {
   mistakes: MistakeListRow[];
   chapterCounts: ChapterChip[];
+  /** Slice 27 — keys ("source:groupId" / "angle:groupId:position")
+   *  the user already has a note for. */
+  notedIdentitiesArray: string[];
 }) {
+  const notedSet = useMemo(
+    () => new Set(notedIdentitiesArray),
+    [notedIdentitiesArray]
+  );
   const [removedIds, setRemovedIds] = useState<Set<string>>(() => new Set());
   const [activeChapter, setActiveChapter] = useState<string | null>(null);
 
@@ -65,11 +73,29 @@ export function MistakesList({
       </div>
 
       <ul className="space-y-2">
-        {visible.map((m) => (
-          <li key={m.mistakeId}>
-            <MistakeRow mistake={m} onRemoved={markRemoved} />
-          </li>
-        ))}
+        {visible.map((m) => {
+          // Slice 27 — derive note identity from the mistake row,
+          // same shape used by the bookmarks list.
+          const noteKey =
+            m.questionType === "source"
+              ? m.sourceQuestion.questionGroupId
+                ? `source:${m.sourceQuestion.questionGroupId}`
+                : null
+              : m.angleQuestion.parentQuestionGroupId &&
+                  m.angleQuestion.displayOrder !== null
+                ? `angle:${m.angleQuestion.parentQuestionGroupId}:${m.angleQuestion.displayOrder}`
+                : null;
+          const hasNote = noteKey !== null && notedSet.has(noteKey);
+          return (
+            <li key={m.mistakeId}>
+              <MistakeRow
+                mistake={m}
+                onRemoved={markRemoved}
+                hasNote={hasNote}
+              />
+            </li>
+          );
+        })}
       </ul>
     </div>
   );

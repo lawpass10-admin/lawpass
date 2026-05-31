@@ -1096,6 +1096,15 @@ export type BookmarkAnglePreview = {
   chapterTitle: string;
   subtopicTitle: string;
   isArchived: boolean;
+  /** Slice 27 — parent source's `question_group_id`. Together with
+   *  `displayOrder` this is what `question_notes.angle_position`
+   *  keys on, so the list pages can derive the note-identity for
+   *  an angle row WITHOUT a separate join. Empty string when the
+   *  underlying question is archived / RLS-hidden. */
+  parentQuestionGroupId: string;
+  /** Slice 27 — the angle's `display_order` (1..5), which IS the
+   *  `angle_position` value for notes. Null when archived. */
+  displayOrder: number | null;
 };
 
 export type BookmarkListRow =
@@ -1154,6 +1163,10 @@ type AngleMetaRow = {
   angle_letter: string;
   angle_title: string | null;
   question_text: string;
+  /** Slice 27 — the angle's slot (1..5) within its parent source.
+   *  Surfaced into BookmarkAnglePreview so the bookmarks/mistakes
+   *  list pages can derive the note identity. */
+  display_order: number;
   source_question: AngleSourceParent | AngleSourceParent[] | null;
 };
 
@@ -1164,7 +1177,7 @@ const SOURCE_PREVIEW_SELECT = `
 `;
 
 const ANGLE_PREVIEW_SELECT = `
-  id, angle_letter, angle_title, question_text,
+  id, angle_letter, angle_title, question_text, display_order,
   source_question:source_questions!angle_questions_source_question_id_fkey(
     id, question_group_id, external_id, chapter_id,
     chapter:chapters!source_questions_chapter_id_fkey(title),
@@ -1217,6 +1230,8 @@ function mapAnglePreview(
       chapterTitle: "",
       subtopicTitle: "",
       isArchived: true,
+      parentQuestionGroupId: "",
+      displayOrder: null,
     };
   }
   const letter = angleLetterOrNull(row.angle_letter) ?? "א";
@@ -1232,6 +1247,10 @@ function mapAnglePreview(
       chapterTitle: "",
       subtopicTitle: "",
       isArchived: true,
+      // Slice 27 — parent missing means the note identity can't
+      // be derived; trigger renders disabled in the UI.
+      parentQuestionGroupId: "",
+      displayOrder: row.display_order ?? null,
     };
   }
   const chapter = pickOne(parent.chapter);
@@ -1246,6 +1265,8 @@ function mapAnglePreview(
     chapterTitle: chapter?.title ?? "",
     subtopicTitle: subtopic?.title ?? "",
     isArchived: false,
+    parentQuestionGroupId: parent.question_group_id,
+    displayOrder: row.display_order,
   };
 }
 
