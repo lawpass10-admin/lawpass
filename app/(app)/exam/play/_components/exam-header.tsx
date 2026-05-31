@@ -15,7 +15,8 @@ type Props = {
   onSubmit: () => void;
 };
 
-const LOW_TIME_THRESHOLD_SECONDS = 600;
+const TIMER_WARNING_SECONDS = 30;
+const TIMER_DANGER_SECONDS = 10;
 
 function formatMinSec(total: number): string {
   const safe = Math.max(0, Math.floor(total));
@@ -33,7 +34,8 @@ function formatMinSec(total: number): string {
  *   - Brand label hides on `<sm` (just the "L" mark stays)
  *   - Counter hides on `<sm`
  *   - Pause/resume label hides on `<sm` (icon-only)
- *   - Timer pulses red at <600s (reduced-motion gated)
+ *   - Timer turns amber at <30s, red + pulses at <10s (reduced-motion
+ *     gated)
  *
  * Phase 6 — a11y:
  *   - Visible timer is `aria-hidden` so screen readers don't spam every
@@ -51,7 +53,12 @@ export function ExamHeader({
   onTogglePause,
   onSubmit,
 }: Props) {
-  const lowTime = remainingSeconds < LOW_TIME_THRESHOLD_SECONDS;
+  const phase: "neutral" | "warning" | "danger" =
+    remainingSeconds < TIMER_DANGER_SECONDS
+      ? "danger"
+      : remainingSeconds < TIMER_WARNING_SECONDS
+        ? "warning"
+        : "neutral";
   const minutesLeft = Math.max(0, Math.floor(remainingSeconds / 60));
   return (
     <header className="sticky top-0 z-20 flex h-12 items-center gap-3 bg-primary px-4 text-primary-foreground sm:gap-4 sm:px-6">
@@ -77,9 +84,11 @@ export function ExamHeader({
           aria-hidden
           className={cn(
             "inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 font-mono text-sm font-semibold tabular-nums sm:gap-2 sm:px-3",
-            lowTime
-              ? "bg-destructive text-destructive-foreground timer-pulse"
-              : "bg-white/10 text-primary-foreground"
+            phase === "danger" &&
+              "bg-destructive text-destructive-foreground timer-pulse",
+            phase === "warning" &&
+              "bg-amber-100 text-amber-800 dark:bg-amber-950/40 dark:text-amber-300",
+            phase === "neutral" && "bg-white/10 text-primary-foreground"
           )}
         >
           <Clock className="size-3.5" aria-hidden />

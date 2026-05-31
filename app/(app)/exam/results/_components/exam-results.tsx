@@ -1,6 +1,6 @@
 "use client";
 
-import { Check, ChevronDown, ChevronUp, Play, X } from "lucide-react";
+import { Check, ChevronDown, ChevronUp, Home, Play, X } from "lucide-react";
 import { useState, useTransition } from "react";
 import { toast } from "sonner";
 
@@ -137,6 +137,24 @@ export function ExamResults({ aggregate }: Props) {
 
   return (
     <div className="mx-auto w-full max-w-3xl space-y-8 py-6">
+      {/* Top bar — dashboard affordance visible without scrolling.
+          Uses window.location.assign (NOT <Link>) for the same reason
+          the footer CTAs do: the (app) layout reads a stale x-pathname
+          on client-side <Link> transitions and the sidebar stays
+          hidden. See the footer comment below. */}
+      <div className="flex items-center">
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => {
+            window.location.assign("/dashboard");
+          }}
+        >
+          <Home className="size-4" aria-hidden />
+          <span className="ms-1.5">בית</span>
+        </Button>
+      </div>
+
       {/* A. Hero */}
       <header className="space-y-3 text-center">
         <div
@@ -166,7 +184,7 @@ export function ExamResults({ aggregate }: Props) {
           <span className="text-5xl font-bold tabular-nums sm:text-7xl">
             {score}
           </span>
-          <span className="text-2xl font-semibold text-muted-foreground tabular-nums">
+          <span className="text-5xl font-bold tabular-nums sm:text-7xl">
             /{total}
           </span>
         </div>
