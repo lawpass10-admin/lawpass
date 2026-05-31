@@ -11,15 +11,11 @@ import {
 import { useState, useTransition } from "react";
 import { toast } from "sonner";
 
+import { ChoiceAnalysisRow } from "@/app/(app)/_components/choice-analysis-row";
 import { createExamSession } from "@/app/(app)/exam/_actions";
 import { Learning360Panel } from "@/app/(app)/practice/play/_components/learning-360-panel";
 import { Button } from "@/components/ui/button";
-import type {
-  Choice,
-  ExamLetter,
-  ExamResultsAggregate,
-  ExamReviewRow,
-} from "@/lib/db/exam";
+import type { ExamResultsAggregate, ExamReviewRow } from "@/lib/db/exam";
 import { EXAM_TOTAL_QUESTIONS, type ExamMode } from "@/lib/exam/clusters";
 import { cn } from "@/lib/utils";
 
@@ -486,96 +482,7 @@ function QuestionExpansion({ row }: { row: ExamReviewRow }) {
   );
 }
 
-/**
- * Single-choice row inside the expansion panel. Indicator + letter +
- * choice_text on the first line, distractor_analysis below (when
- * present). Tones come from the project's status tokens so the visual
- * matches admin-content badges.
- *
- * Slice 19 — adds an always-visible "סימנת" pill on the choice the
- * user actually picked (`isUserPick`), LAYERED on top of the existing
- * green/red tone rather than replacing it. The prior visual only
- * marked a wrong pick (red ✗); on a CORRECT pick the user couldn't
- * tell their selection from the system-rendered correct answer. The
- * "סימנת" pill resolves that ambiguity:
- *   - correct AND picked  → green ✓ + "סימנת" pill
- *   - wrong AND picked    → red ✗ + "סימנת" pill
- *   - correct, not picked → green ✓ only
- *   - other               → neutral, unchanged
- *   - unanswered/skipped  → no pill anywhere (selectedLetter null)
- *
- * The pill carries its own neutral background so it stays legible
- * against both the green and red row tones.
- */
-function ChoiceAnalysisRow({
-  choice,
-  selectedLetter,
-}: {
-  choice: Choice;
-  selectedLetter: ExamLetter | null;
-}) {
-  const isUserPick = selectedLetter !== null && choice.letter === selectedLetter;
-  const isWrongPick = isUserPick && !choice.is_correct;
-
-  let toneClasses: string;
-  let icon: React.ReactNode;
-  if (choice.is_correct) {
-    toneClasses =
-      "border-[color:var(--color-status-strong)]/40 bg-[var(--color-status-strong-bg)] text-[var(--color-status-strong)]";
-    icon = <Check className="size-3.5" aria-hidden />;
-  } else if (isWrongPick) {
-    toneClasses =
-      "border-[color:var(--color-status-weak)]/40 bg-[var(--color-status-weak-bg)] text-[var(--color-status-weak)]";
-    icon = <X className="size-3.5" aria-hidden />;
-  } else {
-    toneClasses = "border-border bg-card text-muted-foreground";
-    icon = null;
-  }
-
-  return (
-    <div
-      className={cn(
-        "rounded-md border p-3 text-sm leading-relaxed",
-        toneClasses
-      )}
-    >
-      <div className="flex items-start gap-2">
-        <span
-          className={cn(
-            "mt-0.5 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded text-[11px] font-semibold",
-            choice.is_correct && "bg-[var(--color-status-strong)] text-white",
-            isWrongPick && "bg-[var(--color-status-weak)] text-white",
-            !choice.is_correct && !isWrongPick && "bg-muted"
-          )}
-          aria-hidden
-        >
-          {choice.letter}
-        </span>
-        <span dir="auto" className="flex-1 text-foreground">
-          {choice.choice_text}
-        </span>
-        {isUserPick ? (
-          <span
-            className={cn(
-              "mt-0.5 inline-flex shrink-0 items-center rounded-full bg-background/70 px-2 py-0.5 text-[11px] font-semibold",
-              "border border-current/40"
-            )}
-          >
-            סימנת
-          </span>
-        ) : null}
-        {icon !== null ? (
-          <span className="mt-0.5 shrink-0">{icon}</span>
-        ) : null}
-      </div>
-      {choice.distractor_analysis ? (
-        <p
-          dir="auto"
-          className="mt-2 whitespace-pre-wrap pe-7 text-[13px] text-foreground/80"
-        >
-          {choice.distractor_analysis}
-        </p>
-      ) : null}
-    </div>
-  );
-}
+// Slice 21 — ChoiceAnalysisRow extracted to
+// app/(app)/_components/choice-analysis-row.tsx so the practice-summary
+// page can reuse the same per-choice review row (with the Slice 19
+// "סימנת" pill). Imported at the top of this file.

@@ -10,6 +10,12 @@
  * on RLS (`has_active_subscription()`) for defense in depth.
  */
 
+import {
+  type Learning360Item,
+  type Learning360Payload,
+  resolveChoicesForList,
+  resolveLearning360ForList,
+} from "@/lib/db/learning360";
 import type { createClient } from "@/lib/supabase/server";
 
 // Mirrors the SSR client type used everywhere in Slice 1 + Phase 2.
@@ -126,6 +132,38 @@ export type AttemptRow = {
   attempted_at: string;
 };
 
+/**
+ * Slice 21 — per-question review row for the practice-summary page,
+ * mirroring the shape of `ExamReviewRow` on the exam side. Built by
+ * iterating `session.question_list` in position order and joining
+ * each item to its attempt (if any).
+ *
+ * `learning` is `null` when the 360° payload OR the correct choice
+ * can't be resolved (archived row): the UI then skips the 360°
+ * toggle on that row, same as the exam-results archived branch.
+ *
+ * Note: there is intentionally no source/angle label on this row —
+ * source/angle was removed from the user-facing UI in Slice 18.
+ * `questionType` is kept for grouping/debugging only.
+ */
+export type PracticeReviewRow = {
+  position: number;
+  questionType: "source" | "angle";
+  questionId: string;
+  /** Truncated question_text for the collapsed row header. */
+  excerpt: string;
+  /** Full question_text for the expanded panel. */
+  questionText: string;
+  choices: Choice[];
+  selectedLetter: "א" | "ב" | "ג" | "ד" | null;
+  /** True/false when an attempt was recorded; null when none was. */
+  isCorrect: boolean | null;
+  wasSkipped: boolean;
+  /** Pulled from attempts row. Null when no attempt was recorded. */
+  attemptedAt: string | null;
+  learning: Learning360Payload | null;
+};
+
 export type SummaryAggregate = {
   session: PracticeSessionRow;
   totalAnswered: number;
@@ -134,6 +172,9 @@ export type SummaryAggregate = {
   sourceCorrect: number;
   angleAnswered: number;
   angleCorrect: number;
+  /** Slice 21 — per-question review in `question_list` position
+   *  order. Empty array when question_list is empty (legacy session). */
+  byPosition: PracticeReviewRow[];
   byBucket: Array<{
     chapterTitle: string | null;
     subtopicTitle: string | null;
@@ -671,7 +712,69 @@ type AttemptForSummary = {
   source_question_id: string | null;
   angle_question_id: string | null;
   is_correct: boolean | null;
+  selected_letter: "א" | "ב" | "ג" | "ד" | null;
+  was_skipped: boolean;
+  attempted_at: string | null;
 };
+
+// Slice 21 — same shape + threshold used by the exam-results
+// aggregate (lib/db/exam.ts:802) for parity. Kept inline rather
+// than re-exported so the two aggregates stay independent.
+const PRACTICE_REVIEW_EXCERPT_MAX_CHARS = 70;
+function makeExcerpt(text: string | null | undefined): string {
+  if (!text) return "—";
+  const t = text.trim();
+  if (t.length <= PRACTICE_REVIEW_EXCERPT_MAX_CHARS) return t;
+  return t.slice(0, PRACTICE_REVIEW_EXCERPT_MAX_CHARS).trimEnd() + "…";
+}
+
+/**
+ * Slice 21 — batched question_text fetch for the practice-summary
+ * review. Mirrors the inline text resolver pattern from
+ * `lib/db/exam.ts` rather than moving it into the shared learning360
+ * module (text isn't part of the 360° payload semantics there).
+ */
+async function resolveQuestionTextsForList(
+  supabase: SupabaseSsrClient,
+  items: Learning360Item[]
+): Promise<Map<string, string>> {
+  const sourceIds: string[] = [];
+  const angleIds: string[] = [];
+  for (const it of items) {
+    if (it.question_type === "source") sourceIds.push(it.question_id);
+    else angleIds.push(it.question_id);
+  }
+
+  const map = new Map<string, string>();
+  const [srcRes, angRes] = await Promise.all([
+    sourceIds.length > 0
+      ? supabase
+          .from("source_questions")
+          .select("id, question_text")
+          .in("id", sourceIds)
+      : Promise.resolve({ data: null as unknown }),
+    angleIds.length > 0
+      ? supabase
+          .from("angle_questions")
+          .select("id, question_text")
+          .in("id", angleIds)
+      : Promise.resolve({ data: null as unknown }),
+  ]);
+
+  for (const row of (srcRes.data ?? []) as Array<{
+    id: string;
+    question_text: string | null;
+  }>) {
+    if (row.question_text) map.set(`source:${row.id}`, row.question_text);
+  }
+  for (const row of (angRes.data ?? []) as Array<{
+    id: string;
+    question_text: string | null;
+  }>) {
+    if (row.question_text) map.set(`angle:${row.id}`, row.question_text);
+  }
+  return map;
+}
 
 /**
  * Build the summary aggregate for a session. Bucket by (chapter,
@@ -690,22 +793,62 @@ export async function getSummary(
   const session = await getSessionForUser(supabase, userId, sessionId);
   if (!session) return null;
 
-  const { data: attemptRows, error: attemptsError } = await supabase
-    .from("attempts")
-    .select(
-      "question_type, source_question_id, angle_question_id, is_correct"
-    )
-    .eq("user_id", userId)
-    .eq("practice_session_id", sessionId);
+  // Slice 21 — build the item list used by the shared 360°/choice
+  // resolvers from `session.question_list`. This becomes the ordering
+  // source for `byPosition`. The shape adapts practice's
+  // {id,type,position} list to the resolver's {question_id,question_type}
+  // contract.
+  const reviewItems: Learning360Item[] = session.question_list.map((it) => ({
+    question_type: it.type,
+    question_id: it.id,
+  }));
 
+  // Slice 21 — fetch the attempts row + the three batched per-question
+  // payloads (choices, 360° fields, question text) IN PARALLEL. The
+  // attempts query is what gates the existing aggregate logic below,
+  // so we await Promise.all and unwrap after. No extra serial round-trip
+  // is added vs. the pre-Slice-21 path — the resolvers are pure adds
+  // alongside the existing attempts query.
+  const [
+    attemptsRes,
+    choicesByItem,
+    learning360ByItem,
+    textsByItem,
+  ] = await Promise.all([
+    supabase
+      .from("attempts")
+      .select(
+        "question_type, source_question_id, angle_question_id, is_correct, selected_letter, was_skipped, attempted_at"
+      )
+      .eq("user_id", userId)
+      .eq("practice_session_id", sessionId),
+    resolveChoicesForList(supabase, reviewItems),
+    resolveLearning360ForList(supabase, reviewItems),
+    resolveQuestionTextsForList(supabase, reviewItems),
+  ]);
+
+  const { data: attemptRows, error: attemptsError } = attemptsRes;
   if (attemptsError) return null;
 
-  const attempts: AttemptForSummary[] = (attemptRows ?? []).map((r) => ({
-    question_type: r.question_type as "source" | "angle",
-    source_question_id: r.source_question_id,
-    angle_question_id: r.angle_question_id,
-    is_correct: r.is_correct,
-  }));
+  const attempts: AttemptForSummary[] = (attemptRows ?? []).map((r) => {
+    const rawLetter = r.selected_letter as string | null;
+    const letter: "א" | "ב" | "ג" | "ד" | null =
+      rawLetter === "א" ||
+      rawLetter === "ב" ||
+      rawLetter === "ג" ||
+      rawLetter === "ד"
+        ? rawLetter
+        : null;
+    return {
+      question_type: r.question_type as "source" | "angle",
+      source_question_id: r.source_question_id,
+      angle_question_id: r.angle_question_id,
+      is_correct: r.is_correct,
+      selected_letter: letter,
+      was_skipped: Boolean(r.was_skipped),
+      attempted_at: (r.attempted_at as string | null) ?? null,
+    };
+  });
 
   // Top-line counters from raw attempts (immune to archival).
   let sourceAnswered = 0,
@@ -832,6 +975,63 @@ export async function getSummary(
     return (a.subtopicTitle ?? "").localeCompare(b.subtopicTitle ?? "", "he");
   });
 
+  // Slice 21 — assemble per-question review rows in `question_list`
+  // position order. For each item we join its attempt (if any), the
+  // resolved Choice[], and the 360° payload (with server-derived
+  // correctChoice from the choice list). When EITHER the 360° fields
+  // OR the choices can't be resolved (archived row), `learning` is
+  // null and the UI skips the 360° toggle.
+  const attemptByKey = new Map<
+    string,
+    {
+      is_correct: boolean | null;
+      selected_letter: "א" | "ב" | "ג" | "ד" | null;
+      was_skipped: boolean;
+      attempted_at: string | null;
+    }
+  >();
+  for (const a of attempts) {
+    const id =
+      a.question_type === "source" ? a.source_question_id : a.angle_question_id;
+    if (!id) continue;
+    attemptByKey.set(`${a.question_type}:${id}`, {
+      is_correct: a.is_correct,
+      selected_letter: a.selected_letter,
+      was_skipped: a.was_skipped,
+      attempted_at: a.attempted_at,
+    });
+  }
+
+  const orderedList = [...session.question_list].sort(
+    (a, b) => a.position - b.position
+  );
+  const byPosition: PracticeReviewRow[] = orderedList.map((it) => {
+    const key = `${it.type}:${it.id}`;
+    const att = attemptByKey.get(key);
+    const choices = choicesByItem.get(key) ?? [];
+    const fields360 = learning360ByItem.get(key);
+    const text = textsByItem.get(key);
+    const learning: Learning360Payload | null = fields360
+      ? {
+          ...fields360,
+          correctChoice: choices.find((c) => c.is_correct) ?? null,
+        }
+      : null;
+    return {
+      position: it.position,
+      questionType: it.type,
+      questionId: it.id,
+      excerpt: makeExcerpt(text),
+      questionText: text ?? "",
+      choices,
+      selectedLetter: att?.selected_letter ?? null,
+      isCorrect: att?.is_correct ?? null,
+      wasSkipped: att?.was_skipped ?? false,
+      attemptedAt: att?.attempted_at ?? null,
+      learning,
+    };
+  });
+
   return {
     session,
     totalAnswered: sourceAnswered + angleAnswered,
@@ -842,6 +1042,7 @@ export async function getSummary(
     angleCorrect,
     byBucket,
     archivedSkipped,
+    byPosition,
   };
 }
 

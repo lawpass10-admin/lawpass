@@ -1,11 +1,21 @@
 "use client";
 
-import { ChevronLeft, Sparkles, TriangleAlert, X } from "lucide-react";
+import {
+  ChevronDown,
+  ChevronLeft,
+  ChevronUp,
+  Sparkles,
+  TriangleAlert,
+  X,
+} from "lucide-react";
 import Link from "next/link";
+import { useState } from "react";
 
-import { buttonVariants } from "@/components/ui/button";
+import { ChoiceAnalysisRow } from "@/app/(app)/_components/choice-analysis-row";
+import { Learning360Panel } from "@/app/(app)/practice/play/_components/learning-360-panel";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import type { SummaryAggregate } from "@/lib/db/practice";
+import type { PracticeReviewRow, SummaryAggregate } from "@/lib/db/practice";
 import { practiceSetupUrl } from "@/lib/urls";
 import { cn } from "@/lib/utils";
 
@@ -18,16 +28,80 @@ function pct(numerator: number, denominator: number): number {
   return Math.round((numerator / denominator) * 100);
 }
 
+/**
+ * Slice 21 — per-question review status mapping, mirrors the
+ * exam-results equivalent at exam-results.tsx:30-49 so both surfaces
+ * share the same pill vocabulary. NOTE: no source/angle label
+ * surfaces here — source/angle was removed from the user-facing UI
+ * in Slice 18.
+ */
+const REVIEW_STATUS_COPY: Record<string, { label: string; classes: string }> = {
+  correct: {
+    label: "נכון",
+    classes:
+      "bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300",
+  },
+  wrong: {
+    label: "שגוי",
+    classes: "bg-destructive/15 text-destructive",
+  },
+  skipped: {
+    label: "דולג",
+    classes: "bg-muted text-muted-foreground",
+  },
+  unanswered: {
+    label: "לא נענה",
+    classes: "bg-muted text-muted-foreground",
+  },
+};
+
+function deriveStatusKey(row: PracticeReviewRow): keyof typeof REVIEW_STATUS_COPY {
+  if (row.wasSkipped) return "skipped";
+  if (row.isCorrect === true) return "correct";
+  if (row.isCorrect === false) return "wrong";
+  return "unanswered";
+}
+
+const REVIEW_INITIAL_ROWS = 5;
+
 export function PracticeSummary({ summary }: PracticeSummaryProps) {
   // Slice 18 — only the aggregate totals are surfaced now. The
   // SummaryAggregate type still carries sourceAnswered / sourceCorrect
   // / angleAnswered / angleCorrect (lib/db/practice.ts); we just stop
   // pulling them into the view.
-  const { session, totalAnswered, totalCorrect, byBucket, archivedSkipped } =
-    summary;
+  // Slice 21 — pull `byPosition` to render the per-question review
+  // section below the existing stats.
+  const {
+    session,
+    totalAnswered,
+    totalCorrect,
+    byBucket,
+    archivedSkipped,
+    byPosition,
+  } = summary;
 
   const overallPct = pct(totalCorrect, totalAnswered);
   const mistakeCount = totalAnswered - totalCorrect;
+
+  // Slice 21 — per-question review state (same shape as
+  // exam-results.tsx ExamResults).
+  const [showAllReview, setShowAllReview] = useState(false);
+  const [expandedReview, setExpandedReview] = useState<Set<number>>(
+    () => new Set()
+  );
+  function toggleExpandedReview(position: number): void {
+    setExpandedReview((prev) => {
+      const next = new Set(prev);
+      if (next.has(position)) next.delete(position);
+      else next.add(position);
+      return next;
+    });
+  }
+  const visibleReviewRows = showAllReview
+    ? byPosition
+    : byPosition.slice(0, REVIEW_INITIAL_ROWS);
+  const hasHiddenReviewRows =
+    !showAllReview && byPosition.length > REVIEW_INITIAL_ROWS;
 
   // PM decision: when a session spans multiple chapters, prefix every
   // subtopic row with the chapter title so users can tell which chapter
@@ -208,6 +282,91 @@ export function PracticeSummary({ summary }: PracticeSummaryProps) {
         )
       )}
 
+      {/* Slice 21 — per-question review. Mirrors the exam-results
+          Section C pattern: collapsed-by-default rows showing
+          position + excerpt + status pill, expanding inline to the
+          choice rows + a collapsible Learning360Panel. Renders only
+          when there's something to review (skipped + answered both
+          count). NO source/angle label appears here — Slice 18 removed
+          that distinction from the user-facing UI. */}
+      {byPosition.length > 0 ? (
+        <section className="overflow-hidden rounded-xl border border-border bg-card">
+          <header className="border-b border-border px-5 py-3">
+            <h2 className="text-sm font-semibold">סקירת שאלות</h2>
+          </header>
+          <ul>
+            {visibleReviewRows.map((row, idx) => {
+              const statusKey = deriveStatusKey(row);
+              const meta = REVIEW_STATUS_COPY[statusKey];
+              const isLast =
+                idx === visibleReviewRows.length - 1 && !hasHiddenReviewRows;
+              const isOpen = expandedReview.has(row.position);
+              return (
+                <li
+                  key={row.position}
+                  className={cn(!isLast && "border-b border-border/70")}
+                >
+                  <button
+                    type="button"
+                    onClick={() => toggleExpandedReview(row.position)}
+                    aria-expanded={isOpen}
+                    className={cn(
+                      "grid w-full grid-cols-[2.5rem_1fr_auto_auto] items-center gap-3 px-5 py-3 text-start text-sm transition-colors",
+                      "hover:bg-muted/40",
+                      "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
+                    )}
+                  >
+                    <span className="font-mono text-muted-foreground tabular-nums">
+                      {String(row.position + 1).padStart(2, "0")}
+                    </span>
+                    <span
+                      dir="auto"
+                      className="min-w-0 overflow-hidden text-ellipsis whitespace-nowrap text-muted-foreground"
+                    >
+                      {row.excerpt}
+                    </span>
+                    <span
+                      className={cn(
+                        "inline-flex shrink-0 rounded-full px-2.5 py-0.5 text-xs font-semibold",
+                        meta.classes
+                      )}
+                    >
+                      {meta.label}
+                    </span>
+                    {isOpen ? (
+                      <ChevronUp
+                        className="size-4 text-muted-foreground"
+                        aria-hidden
+                      />
+                    ) : (
+                      <ChevronDown
+                        className="size-4 text-muted-foreground"
+                        aria-hidden
+                      />
+                    )}
+                  </button>
+                  {isOpen ? <PracticeQuestionExpansion row={row} /> : null}
+                </li>
+              );
+            })}
+          </ul>
+          {hasHiddenReviewRows && (
+            <button
+              type="button"
+              onClick={() => setShowAllReview(true)}
+              className={cn(
+                "flex w-full items-center justify-center gap-1.5 px-5 py-3 text-sm font-medium text-primary/80 transition-colors",
+                "hover:bg-muted/40 hover:text-primary",
+                "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+              )}
+            >
+              <span>הצג את כל {byPosition.length} השאלות</span>
+              <ChevronDown className="size-4" aria-hidden />
+            </button>
+          )}
+        </section>
+      ) : null}
+
       {/* Archived note */}
       {archivedSkipped > 0 && (
         <p className="text-center text-xs text-muted-foreground">
@@ -230,6 +389,85 @@ export function PracticeSummary({ summary }: PracticeSummaryProps) {
           תרגול נוסף
         </Link>
       </div>
+    </div>
+  );
+}
+
+// =============================================================================
+// Per-question expansion — mirrors exam-results.tsx QuestionExpansion
+// =============================================================================
+
+/**
+ * Slice 21 — the expanded body rendered below a clicked review row.
+ * Identical structure to the exam-side `QuestionExpansion`
+ * (exam-results.tsx:395-486): full question text, the 4 choice rows
+ * (each with the Slice 19 "סימנת" pill), and a collapsible
+ * Learning360Panel mounted only when `row.learning` and
+ * `row.learning.correctChoice` are both present (archived rows skip
+ * the toggle entirely).
+ */
+function PracticeQuestionExpansion({ row }: { row: PracticeReviewRow }) {
+  const [panel360Open, setPanel360Open] = useState(false);
+  const canShowPanel =
+    row.learning !== null && row.learning.correctChoice !== null;
+
+  return (
+    <div className="border-t border-border/70 bg-muted/20 px-5 py-4">
+      {row.questionText ? (
+        <p
+          dir="auto"
+          className="mb-3 whitespace-pre-wrap text-sm leading-relaxed text-foreground/90"
+        >
+          {row.questionText}
+        </p>
+      ) : null}
+      {row.choices.length > 0 ? (
+        <ul className="space-y-2">
+          {row.choices.map((choice) => (
+            <li key={choice.letter}>
+              <ChoiceAnalysisRow
+                choice={choice}
+                selectedLetter={row.selectedLetter}
+              />
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="text-sm text-muted-foreground">
+          אין נתוני בחירות זמינים לשאלה זו.
+        </p>
+      )}
+      {canShowPanel ? (
+        <div className="mt-4">
+          <Button
+            type="button"
+            variant="secondary"
+            size="lg"
+            onClick={() => setPanel360Open((v) => !v)}
+            aria-expanded={panel360Open}
+          >
+            {panel360Open ? (
+              <>
+                <ChevronUp className="size-4" aria-hidden />
+                <span className="ms-1.5">הסר פירוט</span>
+              </>
+            ) : (
+              <>
+                <ChevronDown className="size-4" aria-hidden />
+                <span className="ms-1.5">פירוט 360° מלא</span>
+              </>
+            )}
+          </Button>
+          {panel360Open ? (
+            <div className="mt-3">
+              <Learning360Panel
+                question={{ ...row.learning!, choices: row.choices }}
+                correctChoice={row.learning!.correctChoice!}
+              />
+            </div>
+          ) : null}
+        </div>
+      ) : null}
     </div>
   );
 }
