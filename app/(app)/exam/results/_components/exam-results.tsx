@@ -144,38 +144,53 @@ export function ExamResults({ aggregate }: Props) {
   }
 
   return (
-    <div className="mx-auto w-full max-w-3xl space-y-8 py-6">
-      {/* Top bar — dashboard affordance pinned to the viewport so it
-          stays reachable while the user scrolls through 40 review
-          rows. The (app) layout's /exam/* branch renders <main> with
-          no sidebar and no sticky header, so `top-0` lands cleanly
-          against the viewport edge with no offset.
+    <>
+      {/* Sticky top bar — dashboard affordance pinned to the viewport
+          so it stays reachable while the user scrolls through 40
+          review rows. The (app) layout's /exam/* branch renders
+          <main> with no sidebar and no sticky header, so `top-0`
+          lands cleanly against the viewport edge with no offset.
+
+          Full-width navy chrome: the bar lives OUTSIDE the
+          max-w-3xl content container as its own sibling under
+          <main>, with `-mx-6` to cancel the layout's `p-6`
+          horizontal padding — so the navy stripe bleeds edge-to-
+          edge across the viewport. The button stays centered with
+          the rest of the page via an inner `mx-auto max-w-3xl`
+          wrapper, so it aligns with the hero + review list below.
+          (Slice 17 polish 2 — Slice 17 C2 follow-up had the bar
+          inside max-w-3xl, which clamped it to ~768px.)
+
           Navy chrome (bg-primary / text-primary-foreground) matches
           the exam-play sticky header at exam-header.tsx:64, so both
           sticky bars in the exam flow share the same visual idiom
           instead of blending into the page surface.
-          Uses window.location.assign (NOT <Link>) for the same reason
-          the footer CTAs do: the (app) layout reads a stale x-pathname
-          on client-side <Link> transitions and the sidebar stays
-          hidden. See the footer comment below.
+
+          Uses window.location.assign (NOT <Link>) for the same
+          reason the footer CTAs do: the (app) layout reads a stale
+          x-pathname on client-side <Link> transitions and the
+          sidebar stays hidden. See the footer comment below.
           Icon: lucide ArrowRight — in RTL Hebrew it visually points
           right, which reads as "back" in the script direction. */}
-      <div className="sticky top-0 z-30 flex items-center bg-primary py-2 text-primary-foreground">
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={() => {
-            window.location.assign("/dashboard");
-          }}
-          className="text-primary-foreground hover:bg-white/10 hover:text-primary-foreground"
-        >
-          <ArrowRight className="size-4" aria-hidden />
-          <span className="ms-1.5">חזרה לדשבורד</span>
-        </Button>
+      <div className="sticky top-0 z-30 -mx-6 bg-primary py-2 text-primary-foreground">
+        <div className="mx-auto flex w-full max-w-3xl items-center px-6">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => {
+              window.location.assign("/dashboard");
+            }}
+            className="text-primary-foreground hover:bg-white/10 hover:text-primary-foreground"
+          >
+            <ArrowRight className="size-4" aria-hidden />
+            <span className="ms-1.5">חזרה לדשבורד</span>
+          </Button>
+        </div>
       </div>
 
-      {/* A. Hero */}
-      <header className="space-y-3 text-center">
+      <div className="mx-auto w-full max-w-3xl space-y-8 py-6">
+        {/* A. Hero */}
+        <header className="space-y-3 text-center">
         <div
           className={cn(
             "mx-auto inline-flex items-center gap-2 rounded-full px-4 py-1.5 text-sm font-semibold",
@@ -372,7 +387,8 @@ export function ExamResults({ aggregate }: Props) {
           {!creating && <Play className="ms-2 size-4" aria-hidden />}
         </Button>
       </div>
-    </div>
+      </div>
+    </>
   );
 }
 
