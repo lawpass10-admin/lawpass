@@ -91,7 +91,9 @@ function Section({ icon, title, accent = "default", children }: SectionProps) {
  *                                   + red alert content card, Slice 12)
  *   6. quick_thinking_360        → "חשיבה 360°" (gold accent,
  *                                   per-variation card stack)
- *   7. summary_for_memory        → "מבט מסכם לזכירה"
+ *   7. summary_for_memory        → "מבט מסכם" (Slice 19 — was
+ *                                   "מבט מסכם לזכירה"; admin form
+ *                                   labels keep the old field name)
  *   8. concepts_and_skills jsonb → "מושגים ומיומנויות" (tag chips)
  *   9. references_list jsonb     → "רפרנסים" (ul/li, dir="auto")
  */
@@ -209,7 +211,7 @@ export function Learning360Panel({
       </Section>
 
       {/* 7. Summary */}
-      <Section icon={<Eye className="size-3.5" />} title="מבט מסכם לזכירה">
+      <Section icon={<Eye className="size-3.5" />} title="מבט מסכם">
         <p dir="auto" className="whitespace-pre-wrap">
           {question.summary_for_memory}
         </p>

@@ -491,6 +491,21 @@ function QuestionExpansion({ row }: { row: ExamReviewRow }) {
  * choice_text on the first line, distractor_analysis below (when
  * present). Tones come from the project's status tokens so the visual
  * matches admin-content badges.
+ *
+ * Slice 19 — adds an always-visible "סימנת" pill on the choice the
+ * user actually picked (`isUserPick`), LAYERED on top of the existing
+ * green/red tone rather than replacing it. The prior visual only
+ * marked a wrong pick (red ✗); on a CORRECT pick the user couldn't
+ * tell their selection from the system-rendered correct answer. The
+ * "סימנת" pill resolves that ambiguity:
+ *   - correct AND picked  → green ✓ + "סימנת" pill
+ *   - wrong AND picked    → red ✗ + "סימנת" pill
+ *   - correct, not picked → green ✓ only
+ *   - other               → neutral, unchanged
+ *   - unanswered/skipped  → no pill anywhere (selectedLetter null)
+ *
+ * The pill carries its own neutral background so it stays legible
+ * against both the green and red row tones.
  */
 function ChoiceAnalysisRow({
   choice,
@@ -539,6 +554,16 @@ function ChoiceAnalysisRow({
         <span dir="auto" className="flex-1 text-foreground">
           {choice.choice_text}
         </span>
+        {isUserPick ? (
+          <span
+            className={cn(
+              "mt-0.5 inline-flex shrink-0 items-center rounded-full bg-background/70 px-2 py-0.5 text-[11px] font-semibold",
+              "border border-current/40"
+            )}
+          >
+            סימנת
+          </span>
+        ) : null}
         {icon !== null ? (
           <span className="mt-0.5 shrink-0">{icon}</span>
         ) : null}
