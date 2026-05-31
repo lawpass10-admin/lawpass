@@ -126,10 +126,39 @@ export const exitSessionSchema = z.object({
   sessionId: z.string().uuid(),
 });
 
+/**
+ * Slice 25 B-1 — note save/delete inputs.
+ * Same identity model as toggleBookmark: the server resolves the
+ * question at (sessionId, position) and derives the
+ * (question_type, source_question_group_id, angle_position) triple.
+ * Clients never send identity columns directly.
+ *
+ * `contentJson` is the canonical TipTap document; `contentHtml` is
+ * the cached sanitized HTML. Both columns are NOT NULL on the DB,
+ * so both are required here.
+ *
+ * `contentHtml` is capped at 200_000 chars as a defensive ceiling
+ * against a malicious or accidental Mb-sized paste — well above any
+ * realistic study note.
+ */
+export const saveNoteSchema = z.object({
+  sessionId: z.string().uuid(),
+  position: z.number().int().min(0),
+  contentJson: z.unknown(),
+  contentHtml: z.string().min(0).max(200_000),
+});
+
+export const deleteNoteSchema = z.object({
+  sessionId: z.string().uuid(),
+  position: z.number().int().min(0),
+});
+
 export type SubmitAttemptInput = z.infer<typeof submitAttemptSchema>;
 export type AdvanceToNextInput = z.infer<typeof advanceToNextSchema>;
 export type ToggleBookmarkInput = z.infer<typeof toggleBookmarkSchema>;
 export type ExitSessionInput = z.infer<typeof exitSessionSchema>;
+export type SaveNoteInput = z.infer<typeof saveNoteSchema>;
+export type DeleteNoteInput = z.infer<typeof deleteNoteSchema>;
 
 // =============================================================================
 // Phase 4 — Bookmarks + Mistakes list actions

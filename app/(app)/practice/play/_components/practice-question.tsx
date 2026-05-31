@@ -6,11 +6,13 @@ import {
   ChevronLeft,
   ChevronUp,
 } from "lucide-react";
+import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useRef, useState } from "react";
 import { toast } from "sonner";
 
+import { NoteTriggerButton } from "@/app/(app)/_components/note-trigger-button";
 import {
   advanceToNext,
   exitSession,
@@ -34,6 +36,22 @@ import { Learning360Panel } from "./learning-360-panel";
 import { Timer } from "./timer";
 import { TimerExpiredDialog } from "./timer-expired-dialog";
 
+// Slice 25 B-1 — TipTap + the note sheet ship a ~80-110 KB chunk;
+// lazy-load it via next/dynamic + ssr:false so the play screen's
+// initial bundle stays clean. The chunk only downloads when the
+// user opens the editor for the first time in this page load.
+// `next/dynamic` resolves the import on demand, and because the
+// parent conditionally renders <NoteEditorSheet> only when
+// `noteSheetOpen === true`, the import promise doesn't fire until
+// the trigger button is clicked.
+const NoteEditorSheet = dynamic(
+  () =>
+    import("@/app/(app)/_components/note-editor-sheet").then(
+      (m) => m.NoteEditorSheet
+    ),
+  { ssr: false }
+);
+
 type ViewModel =
   | {
       kind: "source";
@@ -50,6 +68,14 @@ type ViewModel =
       subtopicTitle: string;
     };
 
+/** Slice 25 B-1 — initial note state passed in from the play page.
+ *  `null` when no note has been saved for this question yet. */
+type InitialNotePayload = {
+  contentJson: unknown;
+  contentHtml: string;
+  updatedAt: string;
+};
+
 type PracticeQuestionProps = {
   session: PracticeSessionRow;
   view: ViewModel;
@@ -62,6 +88,11 @@ type PracticeQuestionProps = {
    *  (`session_duration_seconds === 0`). The play screen renders no
    *  timer or expiry dialog in that case. */
   sessionRemainingSeconds: number | null;
+  /** Slice 25 B-1 — `null` when this question has no saved note. */
+  initialNote: InitialNotePayload | null;
+  /** Slice 25 B-1 — server-built Hebrew header label for the
+   *  note-editor sheet ("שאלה N · {chapter}"). */
+  questionContextLabel: string;
 };
 
 /**
@@ -100,6 +131,8 @@ export function PracticeQuestion({
   existingAttempt,
   bookmarked: bookmarkedProp,
   sessionRemainingSeconds,
+  initialNote,
+  questionContextLabel,
 }: PracticeQuestionProps) {
   // Slice 6 fix 2 — router.refresh() after a successful submit
   // re-runs the (app) layout server-side and pulls fresh
@@ -149,6 +182,13 @@ export function PracticeQuestion({
   const [exitOpen, setExitOpen] = useState(false);
   const [exiting, setExiting] = useState(false);
   const [panel360Expanded, setPanel360Expanded] = useState(false);
+
+  // Slice 25 B-1 — Notes sheet open state. The lazy `<NoteEditorSheet>`
+  // import only fires once `noteSheetOpen` flips to `true` for the
+  // first time, keeping TipTap out of the play screen's initial
+  // chunk. `hasNote` drives the gold-filled trigger icon.
+  const [noteSheetOpen, setNoteSheetOpen] = useState(false);
+  const [hasNote, setHasNote] = useState(initialNote !== null);
 
   // Session timer runs continuously while it's enabled and hasn't
   // expired — independent of `revealed`. The Timer component
@@ -342,6 +382,10 @@ export function PracticeQuestion({
                 aria-hidden
               />
             </button>
+            <NoteTriggerButton
+              hasNote={hasNote}
+              onClick={() => setNoteSheetOpen(true)}
+            />
             {sessionTimerEnabled && (
               <Timer
                 initialSeconds={sessionRemainingSeconds}
@@ -513,6 +557,25 @@ export function PracticeQuestion({
         onEndSession={() => void doExit()}
         pending={exiting}
       />
+
+      {/* Slice 25 B-1 — Notes editor (lazy-loaded — see import at
+          top of file). Mounted only when the user has opened the
+          sheet at least once. After close, the local hasNote flag
+          flips to true so the trigger icon stays gold-filled
+          (matches Bookmark's amber-fill convention). */}
+      {noteSheetOpen && (
+        <NoteEditorSheet
+          open={noteSheetOpen}
+          onClose={() => {
+            setNoteSheetOpen(false);
+            setHasNote(true);
+          }}
+          sessionId={session.id}
+          position={position}
+          questionContextLabel={questionContextLabel}
+          initialNote={initialNote}
+        />
+      )}
     </>
   );
 }

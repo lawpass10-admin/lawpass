@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 
+import { deriveNoteIdentity } from "@/lib/db/notes";
 import {
   getExistingAttempt,
   getQuestionForPosition,
@@ -11,7 +12,9 @@ import { createClient } from "@/lib/supabase/server";
 import { practicePlayUrl, practiceSummaryUrl } from "@/lib/urls";
 import {
   advanceToNextSchema,
+  deleteNoteSchema,
   exitSessionSchema,
+  saveNoteSchema,
   submitAttemptSchema,
   toggleBookmarkSchema,
 } from "@/lib/validators/practice";
@@ -450,4 +453,140 @@ export async function exitSession(input: unknown): Promise<ExitSessionResult> {
     ok: true,
     url: isCompletion ? practiceSummaryUrl(sessionId) : "/practice",
   };
+}
+
+// =============================================================================
+// saveNote / deleteNote — Slice 25 B-1
+// =============================================================================
+
+type SaveNoteResult =
+  | { ok: true; updatedAt: string }
+  | { ok: false; error: string };
+
+type DeleteNoteResult = { ok: true } | { ok: false; error: string };
+
+/**
+ * UPSERT the user's note for the question at (sessionId, position).
+ * The server resolves the position → `(question_type,
+ * source_question_group_id, angle_position)` triple; the client
+ * never sends those columns directly (same defensive pattern as
+ * `toggleBookmark`).
+ *
+ * The DB UNIQUE constraint
+ *   (user_id, question_type, source_question_group_id, angle_position)
+ * is the conflict target. supabase-js's `.upsert(..., {
+ * onConflict: "..." })` handles the INSERT-vs-UPDATE branch atomically.
+ *
+ * RLS (`users_own_notes`) already gates this on
+ * `auth.uid() = user_id AND has_active_subscription()`, so an
+ * expired-sub user fails CLOSED at the DB level — even if the UI
+ * trigger somehow leaked through. We don't recheck subscription in
+ * application code.
+ */
+export async function saveNote(input: unknown): Promise<SaveNoteResult> {
+  const parsed = saveNoteSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, error: "טופס לא תקין" };
+  const { sessionId, position, contentJson, contentHtml } = parsed.data;
+
+  const { supabase, user } = await authedClient();
+  if (!user) return { ok: false, error: "לא מחובר" };
+
+  const session = await getSessionForUser(supabase, user.id, sessionId);
+  if (!session) return { ok: false, error: "סשן לא נמצא" };
+
+  const resolved = await getQuestionForPosition(supabase, session, position);
+  if (resolved.kind !== "source" && resolved.kind !== "angle") {
+    return { ok: false, error: "מיקום לא תקין" };
+  }
+  const identity = deriveNoteIdentity(resolved);
+  if (!identity) {
+    console.error(
+      `[practice] save_note IDENTITY_FAILED user=${user.id} session=${sessionId} position=${position} kind=${resolved.kind}`
+    );
+    return { ok: false, error: "מיקום לא תקין" };
+  }
+
+  const { data, error } = await supabase
+    .from("question_notes")
+    .upsert(
+      {
+        user_id: user.id,
+        question_type: identity.question_type,
+        source_question_group_id: identity.source_question_group_id,
+        angle_position: identity.angle_position,
+        content_json: contentJson,
+        content_html: contentHtml,
+      },
+      {
+        onConflict:
+          "user_id,question_type,source_question_group_id,angle_position",
+      }
+    )
+    .select("updated_at")
+    .single();
+
+  if (error || !data) {
+    const code = (error as { code?: string } | null)?.code;
+    console.error(
+      `[practice] save_note FAILED user=${user.id} session=${sessionId} position=${position} code=${
+        code ?? "unknown"
+      } msg=${error?.message ?? "no data"}`
+    );
+    return { ok: false, error: "התרחשה שגיאה. נסה שוב" };
+  }
+
+  console.info(
+    `[practice] save_note OK user=${user.id} session=${sessionId} position=${position} type=${identity.question_type}`
+  );
+
+  return { ok: true, updatedAt: data.updated_at as string };
+}
+
+/**
+ * Delete the user's note for the question at (sessionId, position).
+ * Idempotent — silently succeeds when no note exists. Same identity
+ * derivation as `saveNote`.
+ */
+export async function deleteNote(input: unknown): Promise<DeleteNoteResult> {
+  const parsed = deleteNoteSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, error: "טופס לא תקין" };
+  const { sessionId, position } = parsed.data;
+
+  const { supabase, user } = await authedClient();
+  if (!user) return { ok: false, error: "לא מחובר" };
+
+  const session = await getSessionForUser(supabase, user.id, sessionId);
+  if (!session) return { ok: false, error: "סשן לא נמצא" };
+
+  const resolved = await getQuestionForPosition(supabase, session, position);
+  if (resolved.kind !== "source" && resolved.kind !== "angle") {
+    return { ok: false, error: "מיקום לא תקין" };
+  }
+  const identity = deriveNoteIdentity(resolved);
+  if (!identity) return { ok: false, error: "מיקום לא תקין" };
+
+  let q = supabase
+    .from("question_notes")
+    .delete()
+    .eq("user_id", user.id)
+    .eq("question_type", identity.question_type)
+    .eq("source_question_group_id", identity.source_question_group_id);
+  q =
+    identity.angle_position === null
+      ? q.is("angle_position", null)
+      : q.eq("angle_position", identity.angle_position);
+
+  const { error } = await q;
+  if (error) {
+    console.error(
+      `[practice] delete_note FAILED user=${user.id} session=${sessionId} position=${position} code=${
+        (error as { code?: string }).code ?? "unknown"
+      } msg=${error.message}`
+    );
+    return { ok: false, error: "התרחשה שגיאה. נסה שוב" };
+  }
+  console.info(
+    `[practice] delete_note OK user=${user.id} session=${sessionId} position=${position}`
+  );
+  return { ok: true };
 }

@@ -10,6 +10,7 @@ import {
   type AngleQuestionRow,
   type SourceQuestionRow,
 } from "@/lib/db/practice";
+import { getNoteForPosition } from "@/lib/db/notes";
 import { computeRemaining } from "@/lib/practice/session-timer";
 import { createClient } from "@/lib/supabase/server";
 import { practicePlayUrl, practiceSummaryUrl } from "@/lib/urls";
@@ -89,13 +90,16 @@ export default async function PracticePlayPage({
     );
   }
 
-  const existingAttempt = await getExistingAttempt(
-    supabase,
-    user.id,
-    sessionId,
-    resolved
-  );
-  const bookmarked = await getBookmarkState(supabase, user.id, resolved);
+  // Slice 25 B-1 — Notes are fetched alongside the existing reads
+  // so the play page render carries the initial note state (or
+  // `null` for first-time view). RLS gates this on
+  // has_active_subscription, so an expired user fails CLOSED at the
+  // DB layer — the page can't show a stale note.
+  const [existingAttempt, bookmarked, initialNote] = await Promise.all([
+    getExistingAttempt(supabase, user.id, sessionId, resolved),
+    getBookmarkState(supabase, user.id, resolved),
+    getNoteForPosition(supabase, user.id, resolved),
+  ]);
 
   // Replay vs first-view: strip `is_correct` + `distractor_analysis`
   // from the choices when the user hasn't answered yet — otherwise the
@@ -153,6 +157,20 @@ export default async function PracticePlayPage({
           sessionDurationSeconds: session.session_duration_seconds,
           startedAt: session.started_at,
         })}
+        // Slice 25 B-1 — initial note state + a server-built Hebrew
+        // context label for the sheet header. The label collapses
+        // source/angle since Slice 18 removed that vocabulary from
+        // the user-facing UI; it shows position + chapter only.
+        initialNote={
+          initialNote
+            ? {
+                contentJson: initialNote.content_json,
+                contentHtml: initialNote.content_html,
+                updatedAt: initialNote.updated_at,
+              }
+            : null
+        }
+        questionContextLabel={`שאלה ${idx + 1} · ${view.breadcrumbChapter}`}
       />
     </>
   );
