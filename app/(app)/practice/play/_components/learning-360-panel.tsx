@@ -2,8 +2,6 @@
 
 import {
   BookOpen,
-  ChevronDown,
-  ChevronUp,
   Compass,
   Eye,
   Gavel,
@@ -15,6 +13,7 @@ import {
 } from "lucide-react";
 import { useState } from "react";
 
+import { Button } from "@/components/ui/button";
 import type { Choice, Question360 } from "@/lib/db/practice";
 import { cn } from "@/lib/utils";
 
@@ -353,12 +352,16 @@ function QuickThinking360({ text }: { text: string }) {
   const parsed = parseQuickThinking360(text);
   const [revealed, setRevealed] = useState<Set<number>>(() => new Set());
 
+  // Slice 20 — narrower gold container shared by both the parsed
+  // and fallback branches. `max-w-lg` (32rem) makes the amber card
+  // read as a per-question row instead of a full-width banner, and
+  // keeps a consistent visual treatment between the two branches.
+  const CARD_CLASSES =
+    "rounded-md border-s-[3px] border-amber-500 bg-amber-50 p-4 text-[15px] leading-relaxed dark:bg-amber-950/30 max-w-lg";
+
   if (parsed.kind === "fallback") {
     return (
-      <div
-        dir="rtl"
-        className="rounded-md border-s-[3px] border-amber-500 bg-amber-50 p-4 text-[15px] leading-relaxed whitespace-pre-wrap dark:bg-amber-950/30"
-      >
+      <div dir="rtl" className={cn(CARD_CLASSES, "whitespace-pre-wrap")}>
         {parsed.text}
       </div>
     );
@@ -378,51 +381,40 @@ function QuickThinking360({ text }: { text: string }) {
       {parsed.variations.map((v, i) => {
         const isOpen = revealed.has(i);
         return (
-          <article
-            key={i}
-            dir="rtl"
-            className="rounded-md border-s-[3px] border-amber-500 bg-amber-50 p-4 text-[15px] leading-relaxed dark:bg-amber-950/30"
-          >
-            <p
-              dir="auto"
-              className="whitespace-pre-wrap font-medium text-foreground/90"
-            >
-              {v.question}
-            </p>
-            {v.answer !== null ? (
-              <>
-                {isOpen ? (
-                  <p
-                    dir="auto"
-                    className="mt-3 whitespace-pre-wrap border-t border-amber-200 pt-3 text-foreground/85 dark:border-amber-900/50"
-                  >
-                    {v.answer}
-                  </p>
-                ) : null}
-                <button
+          <article key={i} dir="rtl" className={CARD_CLASSES}>
+            {/* Slice 20 — inline row: question on the visual-start
+                (right in RTL), reveal button on the visual-end (left).
+                The button uses the shared <Button variant="outline">
+                idiom rather than the prior bespoke amber chip + chevron
+                so it reads as a standard reveal action. On reveal the
+                answer expands BELOW this row inside the same card. */}
+            <div className="flex items-center gap-3">
+              <p
+                dir="auto"
+                className="flex-1 whitespace-pre-wrap font-medium text-foreground/90"
+              >
+                {v.question}
+              </p>
+              {v.answer !== null ? (
+                <Button
                   type="button"
+                  variant="outline"
+                  size="sm"
                   onClick={() => toggle(i)}
                   aria-expanded={isOpen}
-                  className={cn(
-                    "mt-3 inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium",
-                    "text-amber-800 hover:bg-amber-100/70",
-                    "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500/40",
-                    "dark:text-amber-200 dark:hover:bg-amber-900/40"
-                  )}
+                  className="shrink-0"
                 >
-                  {isOpen ? (
-                    <>
-                      <span>הסתר תשובה</span>
-                      <ChevronUp className="size-3.5" aria-hidden />
-                    </>
-                  ) : (
-                    <>
-                      <span>הראה תשובה</span>
-                      <ChevronDown className="size-3.5" aria-hidden />
-                    </>
-                  )}
-                </button>
-              </>
+                  {isOpen ? "הסתר תשובה" : "הראה תשובה"}
+                </Button>
+              ) : null}
+            </div>
+            {v.answer !== null && isOpen ? (
+              <p
+                dir="auto"
+                className="mt-3 whitespace-pre-wrap border-t border-amber-200 pt-3 text-foreground/85 dark:border-amber-900/50"
+              >
+                {v.answer}
+              </p>
             ) : null}
           </article>
         );
