@@ -150,19 +150,24 @@ export function ExamResults({ aggregate }: Props) {
           rows. The (app) layout's /exam/* branch renders <main> with
           no sidebar and no sticky header, so `top-0` lands cleanly
           against the viewport edge with no offset.
+          Navy chrome (bg-primary / text-primary-foreground) matches
+          the exam-play sticky header at exam-header.tsx:64, so both
+          sticky bars in the exam flow share the same visual idiom
+          instead of blending into the page surface.
           Uses window.location.assign (NOT <Link>) for the same reason
           the footer CTAs do: the (app) layout reads a stale x-pathname
           on client-side <Link> transitions and the sidebar stays
           hidden. See the footer comment below.
           Icon: lucide ArrowRight — in RTL Hebrew it visually points
           right, which reads as "back" in the script direction. */}
-      <div className="sticky top-0 z-30 flex items-center bg-background py-2">
+      <div className="sticky top-0 z-30 flex items-center bg-primary py-2 text-primary-foreground">
         <Button
           variant="ghost"
           size="sm"
           onClick={() => {
             window.location.assign("/dashboard");
           }}
+          className="text-primary-foreground hover:bg-white/10 hover:text-primary-foreground"
         >
           <ArrowRight className="size-4" aria-hidden />
           <span className="ms-1.5">חזרה לדשבורד</span>
@@ -394,6 +399,16 @@ export function ExamResults({ aggregate }: Props) {
  * choice list above still renders, the 360° panel just sits out.
  */
 function QuestionExpansion({ row }: { row: ExamReviewRow }) {
+  // Slice 17 polish — the 360° panel is collapsed by default behind a
+  // toggle button, mirroring the practice-page pattern at
+  // practice-question.tsx:455 (panel360Expanded + ChevronDown/Up).
+  // State is row-local: each row's expansion mounts its own
+  // QuestionExpansion instance, so per-row state lives here without
+  // any prop drilling. Default closed.
+  const [panel360Open, setPanel360Open] = useState(false);
+  const canShowPanel =
+    row.learning !== null && row.learning.correctChoice !== null;
+
   return (
     <div className="border-t border-border/70 bg-muted/20 px-5 py-4">
       {row.questionText ? (
@@ -420,12 +435,35 @@ function QuestionExpansion({ row }: { row: ExamReviewRow }) {
           אין נתוני בחירות זמינים לשאלה זו.
         </p>
       )}
-      {row.learning && row.learning.correctChoice ? (
+      {canShowPanel ? (
         <div className="mt-4">
-          <Learning360Panel
-            question={{ ...row.learning, choices: row.choices }}
-            correctChoice={row.learning.correctChoice}
-          />
+          <Button
+            type="button"
+            variant="secondary"
+            size="lg"
+            onClick={() => setPanel360Open((v) => !v)}
+            aria-expanded={panel360Open}
+          >
+            {panel360Open ? (
+              <>
+                <ChevronUp className="size-4" aria-hidden />
+                <span className="ms-1.5">הסר פירוט</span>
+              </>
+            ) : (
+              <>
+                <ChevronDown className="size-4" aria-hidden />
+                <span className="ms-1.5">פירוט 360° מלא</span>
+              </>
+            )}
+          </Button>
+          {panel360Open ? (
+            <div className="mt-3">
+              <Learning360Panel
+                question={{ ...row.learning!, choices: row.choices }}
+                correctChoice={row.learning!.correctChoice!}
+              />
+            </div>
+          ) : null}
         </div>
       ) : null}
     </div>
