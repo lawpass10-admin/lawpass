@@ -364,3 +364,73 @@
     animation: none;
   }
 }
+/* ============================================
+   Slice 25 B-1.1 — scoped styling for the in-sheet TipTap note
+   editor. Tailwind's preflight resets `ul`/`ol`/`h1`..`h3` to
+   unstyled, so list bullets and heading sizes disappear inside the
+   editor even though the StarterKit commands apply the elements
+   correctly. We restore the visual rendering on a single scoping
+   class so the rules don't leak outside the editor surface.
+
+   The class is set on EditorContent's root via `editorProps.attributes`
+   in note-editor-sheet.tsx.
+   ============================================ */
+.note-editor-content {
+  /* Spacing rhythm for paragraphs + headings. The editor surface
+     defaults to `font-heebo` (set on the same element) and 15px /
+     1.7 leading via the Tailwind utility classes. */
+  --note-spacing: 0.6em;
+}
+.note-editor-content > * + * {
+  margin-top: var(--note-spacing);
+}
+.note-editor-content h1 {
+  font-size: 1.55rem;
+  font-weight: 700;
+  line-height: 1.25;
+  color: var(--color-navy-ink);
+}
+.note-editor-content h2 {
+  font-size: 1.3rem;
+  font-weight: 700;
+  line-height: 1.3;
+  color: var(--color-navy-ink);
+}
+.note-editor-content h3 {
+  font-size: 1.1rem;
+  font-weight: 600;
+  line-height: 1.35;
+  color: var(--color-navy-ink);
+}
+.note-editor-content ul,
+.note-editor-content ol {
+  padding-inline-start: 1.5rem;
+}
+.note-editor-content ul {
+  list-style: disc outside;
+}
+.note-editor-content ol {
+  list-style: decimal outside;
+}
+.note-editor-content li > p {
+  margin: 0;
+}
+.note-editor-content li + li {
+  margin-top: 0.2em;
+}
+.note-editor-content a {
+  color: var(--color-gold-deep);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+/* TipTap Placeholder renders an empty paragraph that carries
+   `data-placeholder`; the rule below shows the placeholder text
+   via ::before only while the editor is empty (`is-editor-empty`
+   class set by the Placeholder extension). */
+.note-editor-content p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  float: inline-start;
+  height: 0;
+  color: var(--color-ink-muted, var(--muted-foreground));
+  pointer-events: none;
+}

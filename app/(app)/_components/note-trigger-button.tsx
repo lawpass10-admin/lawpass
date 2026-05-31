@@ -11,7 +11,7 @@
 
 "use client";
 
-import { StickyNote } from "lucide-react";
+import { Pencil } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 
@@ -36,7 +36,7 @@ export function NoteTriggerButton({
       onClick={onClick}
       disabled={disabled}
       title="הערה אישית"
-      aria-label="פתח הערה אישית"
+      aria-label="הערה אישית"
       aria-pressed={hasNote}
       className={cn(
         "flex h-8 w-8 items-center justify-center rounded-md border border-border bg-card transition-colors",
@@ -47,7 +47,7 @@ export function NoteTriggerButton({
         disabled && "opacity-50"
       )}
     >
-      <StickyNote
+      <Pencil
         className={cn(
           "size-4",
           hasNote

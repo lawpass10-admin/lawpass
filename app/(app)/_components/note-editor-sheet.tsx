@@ -28,6 +28,7 @@
 
 import { Color } from "@tiptap/extension-color";
 import { Link as TipTapLink } from "@tiptap/extension-link";
+import { Placeholder } from "@tiptap/extension-placeholder";
 import { TextStyle } from "@tiptap/extension-text-style";
 import { Underline } from "@tiptap/extension-underline";
 import { StarterKit } from "@tiptap/starter-kit";
@@ -98,11 +99,10 @@ export function NoteEditorSheet({
 
   const editor = useEditor({
     extensions: [
-      StarterKit.configure({
-        // Slice 25 B-1 — `link` ships with StarterKit but we drive
-        // it from our own toolbar button, so the default keyboard
-        // shortcut + auto-link rules are fine.
-      }),
+      // StarterKit v3 already ships Heading, BulletList, OrderedList,
+      // ListItem — the Slice 25 B-1 commands were correct; Slice 25
+      // B-1.1 scopes display CSS so they render visually too.
+      StarterKit,
       Underline,
       TextStyle,
       Color,
@@ -110,13 +110,22 @@ export function NoteEditorSheet({
         openOnClick: false,
         HTMLAttributes: { rel: "noopener noreferrer" },
       }),
+      Placeholder.configure({
+        placeholder:
+          "כתוב כאן הערה אישית לשאלה הזו — רק אתה רואה אותה.",
+      }),
     ],
     content: (initialNote?.contentJson as object | undefined) ?? "",
     editorProps: {
       attributes: {
         dir: "rtl",
+        // Slice 25 B-1.1 — `note-editor-content` is the scoped class
+        // defined in app/globals.css that restores list bullets +
+        // heading sizes the Tailwind preflight reset away. The prior
+        // `prose prose-sm` markers were no-ops (the typography plugin
+        // isn't installed in this project).
         class:
-          "font-heebo prose prose-sm max-w-none focus:outline-none min-h-[160px] text-[15px] leading-relaxed",
+          "note-editor-content font-heebo max-w-none focus:outline-none min-h-[160px] text-[15px] leading-relaxed",
       },
     },
     // Slice 25 B-1 — SSR safety. Without this option, useEditor
@@ -327,11 +336,15 @@ export function NoteEditorSheet({
 // =============================================================================
 
 function SaveStatusBadge({ status }: { status: SaveStatus }) {
+  // Slice 25 B-1.1 — distinguish "idle / never edited yet" from
+  // "just-saved". Idle reads "נשמר אוטומטית" (the standing promise);
+  // the post-save state pops "נשמר ✓" so the user gets a brief
+  // confirmation right after each successful flush.
   const label =
     status === "saving"
       ? "שומר…"
       : status === "saved"
-        ? "נשמר אוטומטית"
+        ? "נשמר ✓"
         : status === "error"
           ? "שגיאת שמירה"
           : "נשמר אוטומטית";
@@ -340,7 +353,9 @@ function SaveStatusBadge({ status }: { status: SaveStatus }) {
       ? "text-destructive"
       : status === "saving"
         ? "text-amber-700"
-        : "text-muted-foreground";
+        : status === "saved"
+          ? "text-[var(--color-status-strong)]"
+          : "text-muted-foreground";
   return (
     <span
       role="status"
