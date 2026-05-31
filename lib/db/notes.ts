@@ -142,17 +142,29 @@ export async function getNoteForPosition(
       ? query.is("angle_position", null)
       : query.eq("angle_position", identity.angle_position);
 
-  const { data, error } = await query.maybeSingle();
-  if (error || !data) return null;
-
+  // Slice 25.2 bugfix — the original implementation used
+  // `.maybeSingle()`, which ERRORS when 2+ rows match. Source notes
+  // accumulated duplicates because the UNIQUE constraint allowed
+  // them (Postgres default is NULLS DISTINCT, so the
+  // (..., angle_position=NULL) tuple matched no existing row in
+  // `.upsert(onConflict)`). When duplicates existed, the read here
+  // returned null → editor opened empty even though saved notes
+  // existed. We now `.order(updated_at desc).limit(1)` so the most
+  // recent row wins regardless. `saveNote` cleans up the older
+  // duplicates atomically going forward.
+  const { data, error } = await query
+    .order("updated_at", { ascending: false })
+    .limit(1);
+  if (error || !data || data.length === 0) return null;
+  const row = data[0];
   return {
-    id: data.id as string,
-    question_type: data.question_type as "source" | "angle",
-    source_question_group_id: data.source_question_group_id as string,
-    angle_position: (data.angle_position as number | null) ?? null,
-    content_json: data.content_json,
-    content_html: (data.content_html as string) ?? "",
-    created_at: data.created_at as string,
-    updated_at: data.updated_at as string,
+    id: row.id as string,
+    question_type: row.question_type as "source" | "angle",
+    source_question_group_id: row.source_question_group_id as string,
+    angle_position: (row.angle_position as number | null) ?? null,
+    content_json: row.content_json,
+    content_html: (row.content_html as string) ?? "",
+    created_at: row.created_at as string,
+    updated_at: row.updated_at as string,
   };
 }

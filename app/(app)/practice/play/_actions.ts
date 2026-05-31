@@ -506,6 +506,37 @@ export async function saveNote(input: unknown): Promise<SaveNoteResult> {
     return { ok: false, error: "מיקום לא תקין" };
   }
 
+  // Slice 25.2 bugfix — UPSERT correctness depends on the
+  // question type because of how Postgres treats NULL in unique
+  // constraints.
+  //
+  //   ANGLE notes: `angle_position` is a 1..5 integer; the UNIQUE
+  //     constraint's onConflict matches existing rows correctly,
+  //     so `.upsert(onConflict)` works as designed.
+  //
+  //   SOURCE notes: `angle_position` is NULL. PostgreSQL's default
+  //     UNIQUE treats NULL values as DISTINCT, so a new row with
+  //     angle_position=NULL never "conflicts" with an existing row
+  //     with angle_position=NULL — every save INSERTs a brand-new
+  //     duplicate. Subsequent reads then fail (.maybeSingle errors
+  //     when 2+ rows match) and the editor opens empty.
+  //
+  // We emulate UPSERT manually for the SOURCE branch: look up the
+  // most recent existing row, UPDATE that, and DELETE any older
+  // duplicates so the row count converges back to one going forward.
+  // ANGLE notes keep the simpler onConflict-backed upsert.
+  if (identity.angle_position === null) {
+    return await saveSourceNote({
+      supabase,
+      userId: user.id,
+      sessionId,
+      position,
+      sourceQuestionGroupId: identity.source_question_group_id,
+      contentJson,
+      contentHtml,
+    });
+  }
+
   const { data, error } = await supabase
     .from("question_notes")
     .upsert(
@@ -539,6 +570,136 @@ export async function saveNote(input: unknown): Promise<SaveNoteResult> {
     `[practice] save_note OK user=${user.id} session=${sessionId} position=${position} type=${identity.question_type}`
   );
 
+  return { ok: true, updatedAt: data.updated_at as string };
+}
+
+/**
+ * Slice 25.2 — manual UPSERT for source notes (angle_position=NULL),
+ * working around Postgres' default NULLS-DISTINCT UNIQUE semantics.
+ *
+ *   1. Find the most-recent existing row (if any) for this
+ *      (user, source_question_group_id, NULL) slot.
+ *   2a. If found: UPDATE that one + DELETE any older duplicates so
+ *       the slot converges to a single row.
+ *   2b. If not found: INSERT a fresh row.
+ *
+ * Race window: between the lookup and the INSERT, two concurrent
+ * saves from the same user could both decide "no row exists" and
+ * both INSERT. The cleanup step on the next save heals the
+ * duplicates; the read tolerates them in the meantime via
+ * `order updated_at desc limit 1`. Notes are personal + low
+ * contention, so this trade-off is fine without an explicit
+ * advisory lock.
+ */
+type SaveSourceNoteArgs = {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  supabase: any;
+  userId: string;
+  sessionId: string;
+  position: number;
+  sourceQuestionGroupId: string;
+  contentJson: unknown;
+  contentHtml: string;
+};
+
+async function saveSourceNote(
+  args: SaveSourceNoteArgs
+): Promise<{ ok: true; updatedAt: string } | { ok: false; error: string }> {
+  const {
+    supabase,
+    userId,
+    sessionId,
+    position,
+    sourceQuestionGroupId,
+    contentJson,
+    contentHtml,
+  } = args;
+
+  const { data: existingRows, error: lookupError } = await supabase
+    .from("question_notes")
+    .select("id")
+    .eq("user_id", userId)
+    .eq("question_type", "source")
+    .eq("source_question_group_id", sourceQuestionGroupId)
+    .is("angle_position", null)
+    .order("updated_at", { ascending: false })
+    .limit(1);
+
+  if (lookupError) {
+    console.error(
+      `[practice] save_note lookup FAILED user=${userId} session=${sessionId} position=${position} msg=${lookupError.message}`
+    );
+    return { ok: false, error: "התרחשה שגיאה. נסה שוב" };
+  }
+
+  const existing =
+    existingRows && existingRows.length > 0 ? existingRows[0] : null;
+
+  if (existing) {
+    // UPDATE the chosen row, then defensively prune any older
+    // duplicates from previous buggy saves. Running them in parallel
+    // shaves a round-trip.
+    const [updateResult, cleanupResult] = await Promise.all([
+      supabase
+        .from("question_notes")
+        .update({
+          content_json: contentJson,
+          content_html: contentHtml,
+        })
+        .eq("id", existing.id)
+        .select("updated_at")
+        .single(),
+      supabase
+        .from("question_notes")
+        .delete()
+        .eq("user_id", userId)
+        .eq("question_type", "source")
+        .eq("source_question_group_id", sourceQuestionGroupId)
+        .is("angle_position", null)
+        .neq("id", existing.id),
+    ]);
+
+    if (updateResult.error || !updateResult.data) {
+      console.error(
+        `[practice] save_note update FAILED user=${userId} session=${sessionId} position=${position} msg=${updateResult.error?.message ?? "no data"}`
+      );
+      return { ok: false, error: "התרחשה שגיאה. נסה שוב" };
+    }
+    if (cleanupResult.error) {
+      // Non-fatal — the update succeeded. Future saves will retry.
+      console.warn(
+        `[practice] save_note cleanup non-fatal user=${userId} session=${sessionId} position=${position} msg=${cleanupResult.error.message}`
+      );
+    }
+    console.info(
+      `[practice] save_note OK source/update user=${userId} session=${sessionId} position=${position}`
+    );
+    return { ok: true, updatedAt: updateResult.data.updated_at as string };
+  }
+
+  // No existing row — INSERT a fresh one.
+  const { data, error } = await supabase
+    .from("question_notes")
+    .insert({
+      user_id: userId,
+      question_type: "source",
+      source_question_group_id: sourceQuestionGroupId,
+      angle_position: null,
+      content_json: contentJson,
+      content_html: contentHtml,
+    })
+    .select("updated_at")
+    .single();
+
+  if (error || !data) {
+    console.error(
+      `[practice] save_note insert FAILED user=${userId} session=${sessionId} position=${position} msg=${error?.message ?? "no data"}`
+    );
+    return { ok: false, error: "התרחשה שגיאה. נסה שוב" };
+  }
+  console.info(
+    `[practice] save_note OK source/insert user=${userId} session=${sessionId} position=${position}`
+  );
   return { ok: true, updatedAt: data.updated_at as string };
 }
 
