@@ -15,20 +15,23 @@ import type { PrefillInput } from "@/lib/urls";
 /**
  * Slice 5 Phase P4 — PracticeSetupForm shell.
  * Slice 34 — sub-topics panel relocated out of `<ChapterPanel>` and
- *   placed at the BOTTOM of the left aside, under `<TimerPanel>`. New
- *   order (desktop right column → chapters; left column → counts →
- *   timer → sub-topics; mobile single column → chapters → counts →
- *   timer → sub-topics). The "exactly one chapter selected" gating
- *   that used to live in ChapterPanel now lives here, so the panel
- *   simply doesn't render in the multi-chapter / no-chapter cases.
+ *   placed at the BOTTOM of the left aside, under `<TimerPanel>`.
+ * Slice 35 — sub-topics panel moved BACK under the chapters (same
+ *   right-column cluster). New order:
+ *     - Desktop: right column = chapters → sub-topics; left column =
+ *       counts → timer.
+ *     - Mobile (single column): chapters → sub-topics → counts → timer.
+ *   The "exactly one chapter selected" gating still lives here (the
+ *   panel simply doesn't render in multi-chapter / no-chapter cases).
+ *   <SubtopicsPanel> itself is unchanged — only its mount point moves.
  *
  * Pure layout. All state + actions come from `usePracticeBuilder`
  * (Phase P1 lift) and get threaded into 5 presentational panels:
  *
- *   - `<ChapterPanel />`    — chapters grid (collapsible)
+ *   - `<ChapterPanel />`    — chapters grid (3-row default + "הצג הכל")
+ *   - `<SubtopicsPanel />`  — chips, gated on single-chapter
  *   - `<CountsPanel />`     — question-count picker
  *   - `<TimerPanel />`      — preset + slider
- *   - `<SubtopicsPanel />`  — chips, gated on single-chapter
  *   - `<SummaryFooter />`   — sticky bottom equation + gold CTA
  *
  * The form adds `pb-32` to its outer container so scrollable content
@@ -92,16 +95,26 @@ export function PracticeSetupForm({
   return (
     <>
       <div className="grid grid-cols-1 lg:grid-cols-[1.4fr_1fr] gap-5 items-start pb-32">
-        {/* Right column (RTL visual right): chapters. */}
-        <ChapterPanel
-          chapters={chapters}
-          selectedChapterIds={selectedChapterIds}
-          onToggleChapter={toggleChapter}
-          onSelectAllChapters={selectAllChapters}
-          onClearAllChapters={clearAllChapters}
-        />
+        {/* Right column (RTL visual right): chapters → sub-topics. */}
+        <div className="flex flex-col gap-5">
+          <ChapterPanel
+            chapters={chapters}
+            selectedChapterIds={selectedChapterIds}
+            onToggleChapter={toggleChapter}
+            onSelectAllChapters={selectAllChapters}
+            onClearAllChapters={clearAllChapters}
+          />
+          {showSubtopics && (
+            <SubtopicsPanel
+              subtopicsForSelected={subtopicsForSelected}
+              effectiveSubtopicId={effectiveSubtopicId}
+              onSelectSubtopic={setRawSubtopicId}
+              singleSelectedChapter={singleSelectedChapter}
+            />
+          )}
+        </div>
 
-        {/* Left column (RTL visual left): counts → timer → sub-topics. */}
+        {/* Left column (RTL visual left): counts → timer. */}
         <aside className="flex flex-col gap-5">
           <CountsPanel
             rawTotal={rawTotal}
@@ -115,14 +128,6 @@ export function PracticeSetupForm({
             sessionDurationSeconds={sessionDurationSeconds}
             onSet={setSessionDurationSeconds}
           />
-          {showSubtopics && (
-            <SubtopicsPanel
-              subtopicsForSelected={subtopicsForSelected}
-              effectiveSubtopicId={effectiveSubtopicId}
-              onSelectSubtopic={setRawSubtopicId}
-              singleSelectedChapter={singleSelectedChapter}
-            />
-          )}
         </aside>
       </div>
 
