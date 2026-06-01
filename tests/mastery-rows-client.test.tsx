@@ -26,6 +26,12 @@ vi.mock("@/app/(app)/dashboard/_components/chapter-icon", () => ({
   ChapterIcon: () => null,
 }));
 
+// Slice 32 — the collapse cap moved 6 → 11. The fixtures + assertions
+// below are anchored to `CAP` so a future tweak of the constant only
+// needs an update here. Behavior under test (default-collapsed,
+// show-more/less, filter-resets-collapse, empty state) is unchanged.
+const CAP = 11;
+
 /**
  * Build a deterministic MasteryRow with sensible defaults so the
  * tests focus on the filter + collapse behavior rather than the
@@ -49,13 +55,21 @@ function row(
   };
 }
 
-// Build a 16-row mix: 6 procedural + 10 substantive — matches the
-// live taxonomy at the time of writing. Some rows MUST exceed the
-// 6-row collapse cap on both filters AND on "all".
-const ROWS_16: MasteryRow[] = [
-  ...Array.from({ length: 6 }, (_, i) => row(i + 1, "procedural")),
-  ...Array.from({ length: 10 }, (_, i) => row(i + 1, "substantive")),
+// Sized so:
+//   - "הכל" (all)        : 20 rows  → exceeds CAP=11 → show-more visible
+//   - "דיוני" (procedural): 6 rows   → under CAP      → no show-more
+//   - "מהותי" (substantive): 14 rows → exceeds CAP    → show-more visible
+const PROCEDURAL_COUNT = 6;
+const SUBSTANTIVE_COUNT = 14;
+const ROWS: MasteryRow[] = [
+  ...Array.from({ length: PROCEDURAL_COUNT }, (_, i) =>
+    row(i + 1, "procedural")
+  ),
+  ...Array.from({ length: SUBSTANTIVE_COUNT }, (_, i) =>
+    row(i + 1, "substantive")
+  ),
 ];
+const TOTAL_ROWS = PROCEDURAL_COUNT + SUBSTANTIVE_COUNT;
 
 function getVisibleTitles(): string[] {
   return screen
@@ -66,31 +80,30 @@ function getVisibleTitles(): string[] {
 describe("MasteryRowsClient", () => {
   afterEach(() => cleanup());
 
-  it("renders the first 6 rows by default and shows the 'הצג עוד' affordance", () => {
-    render(<MasteryRowsClient rows={ROWS_16} />);
-    expect(screen.getAllByRole("link").length).toBe(6);
+  it("renders the first CAP rows by default and shows the 'הצג עוד' affordance", () => {
+    render(<MasteryRowsClient rows={ROWS} />);
+    expect(screen.getAllByRole("link").length).toBe(CAP);
     expect(
       screen.getByRole("button", { name: /הצג עוד/ })
     ).toBeInTheDocument();
   });
 
-  it("'הצג עוד' expands to the full set; 'הצג פחות' collapses back to 6", () => {
-    render(<MasteryRowsClient rows={ROWS_16} />);
+  it("'הצג עוד' expands to the full set; 'הצג פחות' collapses back to CAP", () => {
+    render(<MasteryRowsClient rows={ROWS} />);
 
     fireEvent.click(screen.getByRole("button", { name: /הצג עוד/ }));
-    expect(screen.getAllByRole("link").length).toBe(16);
+    expect(screen.getAllByRole("link").length).toBe(TOTAL_ROWS);
 
     fireEvent.click(screen.getByRole("button", { name: "הצג פחות" }));
-    expect(screen.getAllByRole("link").length).toBe(6);
+    expect(screen.getAllByRole("link").length).toBe(CAP);
   });
 
   it("clicking 'דיוני' narrows the list to procedural rows", () => {
-    render(<MasteryRowsClient rows={ROWS_16} />);
+    render(<MasteryRowsClient rows={ROWS} />);
 
     fireEvent.click(screen.getByRole("radio", { name: "דיוני" }));
-    // 6 procedural rows — exactly at the cap, so the show-more
-    // button doesn't appear.
-    expect(screen.getAllByRole("link").length).toBe(6);
+    // 6 procedural rows — under CAP, so the show-more button doesn't appear.
+    expect(screen.getAllByRole("link").length).toBe(PROCEDURAL_COUNT);
     expect(
       screen.queryByRole("button", { name: /הצג/ })
     ).not.toBeInTheDocument();
@@ -101,15 +114,15 @@ describe("MasteryRowsClient", () => {
     }
   });
 
-  it("clicking 'מהותי' narrows the list to substantive rows + shows show-more (10 > 6)", () => {
-    render(<MasteryRowsClient rows={ROWS_16} />);
+  it("clicking 'מהותי' narrows + shows show-more when set exceeds CAP", () => {
+    render(<MasteryRowsClient rows={ROWS} />);
 
     fireEvent.click(screen.getByRole("radio", { name: "מהותי" }));
-    expect(screen.getAllByRole("link").length).toBe(6);
+    expect(screen.getAllByRole("link").length).toBe(CAP);
     expect(screen.getByRole("button", { name: /הצג עוד/ })).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: /הצג עוד/ }));
-    expect(screen.getAllByRole("link").length).toBe(10);
+    expect(screen.getAllByRole("link").length).toBe(SUBSTANTIVE_COUNT);
     for (const aria of getVisibleTitles()) {
       expect(aria).toContain("פרק מהותי");
       expect(aria).not.toContain("פרק דיוני");
@@ -117,22 +130,23 @@ describe("MasteryRowsClient", () => {
   });
 
   it("switching the filter resets the collapsed view (showAll → false)", () => {
-    render(<MasteryRowsClient rows={ROWS_16} />);
+    render(<MasteryRowsClient rows={ROWS} />);
 
     // Expand on the default 'all' filter first.
     fireEvent.click(screen.getByRole("button", { name: /הצג עוד/ }));
-    expect(screen.getAllByRole("link").length).toBe(16);
+    expect(screen.getAllByRole("link").length).toBe(TOTAL_ROWS);
 
-    // Switch filter — should collapse back to 6 and show 'הצג עוד' again.
+    // Switch filter to a set that still overflows CAP — should collapse
+    // back to CAP and show 'הצג עוד' again.
     fireEvent.click(screen.getByRole("radio", { name: "מהותי" }));
-    expect(screen.getAllByRole("link").length).toBe(6);
+    expect(screen.getAllByRole("link").length).toBe(CAP);
     expect(screen.getByRole("button", { name: /הצג עוד/ })).toBeInTheDocument();
   });
 
   it("hides the show-more button entirely when the filtered set fits the cap", () => {
-    render(<MasteryRowsClient rows={ROWS_16} />);
+    render(<MasteryRowsClient rows={ROWS} />);
 
-    // Procedural-only (6 rows) is exactly at the cap → no button.
+    // Procedural-only (6 rows) is under CAP → no button.
     fireEvent.click(screen.getByRole("radio", { name: "דיוני" }));
     expect(
       screen.queryByRole("button", { name: /הצג/ })
@@ -141,7 +155,7 @@ describe("MasteryRowsClient", () => {
 
   it("renders the empty-state hint when the current filter has no rows", () => {
     // Procedural-only fixture; substantive filter should be empty.
-    const proceduralOnly = ROWS_16.filter((r) => r.track === "procedural");
+    const proceduralOnly = ROWS.filter((r) => r.track === "procedural");
     render(<MasteryRowsClient rows={proceduralOnly} />);
 
     fireEvent.click(screen.getByRole("radio", { name: "מהותי" }));

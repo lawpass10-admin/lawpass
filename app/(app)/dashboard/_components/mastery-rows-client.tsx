@@ -26,7 +26,11 @@ import { cn } from "@/lib/utils";
  * selected option, neutral border on the rest.
  */
 
-const INITIAL_VISIBLE_ROWS = 6;
+// Slice 32 — raised from 6 → 11 so the mastery panel roughly fills
+// the right-column height (which now stacks trend chart + activity
+// box + streak card). "הצג עוד" still appears when the filtered set
+// exceeds this default; the toggle behavior is unchanged. Tunable.
+const INITIAL_VISIBLE_ROWS = 11;
 
 type Track = "all" | "procedural" | "substantive";
 

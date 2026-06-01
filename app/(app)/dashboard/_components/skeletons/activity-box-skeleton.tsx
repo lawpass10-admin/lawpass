@@ -5,10 +5,11 @@ import { Skeleton } from "@/components/ui/skeleton";
  * dimensions.
  * Slice 30 — radius 22, padding 22×24 to join the trend/streak
  *   cluster.
- * Slice 31 — chart placeholder updated from a 7-bar row to a thin
- *   horizontal line with 7 evenly-spaced dot markers to mirror the
- *   new minimal-line chart. Without this, the stream-in would flash
- *   from bars to a line.
+ * Slice 31 — line silhouette placeholder.
+ * Slice 32 — taller (height 160 to match the new TrendCard-parity
+ *   chart) and shows 3 horizontal gridline placeholders + a thin
+ *   chart-line + 7 dots, mirroring the silhouette of the resolved
+ *   chart so the stream-in doesn't flash.
  */
 export function ActivityBoxSkeleton() {
   return (
@@ -23,19 +24,41 @@ export function ActivityBoxSkeleton() {
       aria-busy="true"
       aria-label="טוען מדד פעילות"
     >
-      <div className="mb-3 flex items-baseline justify-between gap-3">
+      {/* Header placeholders — title (16px) + eyebrow (12px) to
+          match the live card's <h3> + <span> pair. */}
+      <div className="mb-3.5 flex items-center justify-between gap-3">
+        <Skeleton className="h-4 w-24" />
         <Skeleton className="h-3 w-20" />
-        <Skeleton className="h-3.5 w-24" />
       </div>
-      {/* Chart surface — a centered baseline + 7 evenly-spaced dot
-          placeholders so the streaming silhouette matches the line
-          chart that will resolve in its place. */}
-      <div className="relative" style={{ height: 120 }} aria-hidden>
+
+      {/* Chart surface — three faint gridlines + a thin centered
+          line with 7 evenly-spaced dot placeholders. Height 160
+          matches the live SVG so the column doesn't shift on stream. */}
+      <div className="relative" style={{ height: 160 }} aria-hidden>
+        {[0.25, 0.5, 0.75].map((t) => (
+          <div
+            key={t}
+            className="absolute inset-x-2 rounded-full"
+            style={{
+              top: `${t * 100}%`,
+              height: 1,
+              background: "var(--color-line)",
+              opacity: 0.6,
+            }}
+          />
+        ))}
         <div
-          className="absolute inset-x-2 top-1/2 -translate-y-1/2 rounded-full"
-          style={{ height: 2, background: "var(--color-line)" }}
+          className="absolute inset-x-2 rounded-full"
+          style={{
+            top: "55%",
+            height: 2,
+            background: "var(--color-line)",
+          }}
         />
-        <div className="absolute inset-x-2 top-1/2 -translate-y-1/2 flex items-center justify-between">
+        <div
+          className="absolute inset-x-2 flex items-center justify-between"
+          style={{ top: "55%", transform: "translateY(-50%)" }}
+        >
           {Array.from({ length: 7 }).map((_, i) => (
             <Skeleton key={i} className="size-2 rounded-full" />
           ))}

@@ -8,8 +8,9 @@ import { Skeleton } from "@/components/ui/skeleton";
  *
  * Slice 30 — added a THIRD placeholder for the "מדד פעילות" activity
  * box that now lives in the same right-column Suspense boundary
- * (rendered by `TrendCardAsync` under StreakCard). Without this the
- * stream would resolve into a taller column and shift the layout.
+ * (rendered by `TrendCardAsync` under StreakCard).
+ * Slice 32 — placeholders reordered to mirror the new live order:
+ *   trend chart → activity box → streak card.
  */
 export function TrendCardSkeleton() {
   return (
@@ -18,6 +19,7 @@ export function TrendCardSkeleton() {
       aria-busy="true"
       aria-label="טוען מגמת הצלחה"
     >
+      {/* 1. Trend chart placeholder. */}
       <div
         className="rounded-[22px] border bg-card"
         style={{
@@ -34,6 +36,12 @@ export function TrendCardSkeleton() {
           <Skeleton className="h-9 w-full" />
         </div>
       </div>
+
+      {/* 2. Activity box placeholder — reuses the standalone skeleton
+          so the placeholder stays in lockstep with the live card. */}
+      <ActivityBoxSkeleton />
+
+      {/* 3. Streak card placeholder (navy gradient block). */}
       <div
         className="rounded-[22px]"
         style={{
@@ -50,10 +58,6 @@ export function TrendCardSkeleton() {
           </div>
         </div>
       </div>
-      {/* Slice 30 — activity box placeholder. Reuses the standalone
-          `<ActivityBoxSkeleton>` so the placeholder stays in lockstep
-          with the live card's styling. */}
-      <ActivityBoxSkeleton />
     </div>
   );
 }

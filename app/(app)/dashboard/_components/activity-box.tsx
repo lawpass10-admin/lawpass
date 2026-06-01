@@ -4,18 +4,28 @@ import type { SparklinePoint } from "@/lib/dashboard/types";
  * Slice 29 — small "מדד פעילות" daily-activity box.
  * Slice 30 — joined the right-column trend/streak cluster (radius
  *   22, padding 22×24).
- * Slice 31 — chart body swapped from vertical bars back to a minimal
- *   line chart matching Sharon's proposal:
- *     - single thin polyline through the 7 daily points (no
- *       smoothing, no area fill)
- *     - uniform small filled circle marker at each point
- *     - navy (#0F1F4F) line + markers
- *     - y-axis labels show only `0` (baseline) and `max` (top), at
- *       the visual-start (right) edge of the chart
- *     - no gridlines beyond a single very faint baseline
- *     - zero-attempt days sit at the baseline like any other point,
- *       no special stub
- *     - no peak callout text, no "today" highlight
+ * Slice 31 — minimal line chart.
+ * Slice 32 — adopts the FULL chart language of `<TrendCard>` so the
+ *   two charts read as siblings. Mirrored deliberately (not via a
+ *   shared component) — the accuracy chart and the daily-attempts
+ *   chart only share visual language, not data semantics; unifying
+ *   them would fatten the API faster than it would pay back.
+ *
+ * Mirror from `trend-card.tsx`:
+ *   - Geometry: VIEW 360×160, X_LEFT/X_RIGHT 30/345, CHART_TOP/BOTTOM 40/120.
+ *   - 3 dashed horizontal gridlines (stroke var(--color-line),
+ *     strokeWidth 1, dasharray "3 3") at yMax / yMax/2 / 0.
+ *   - Y-axis labels at x=0, y=gridY(v)+4, Heebo 11px ink-muted —
+ *     integers, no `%` suffix (this chart counts attempts, not %).
+ *   - Area gradient under the line: navy (#0F1F4F) 0.30 → 0.02
+ *     vertically, area path extended +30 units below CHART_BOTTOM_Y
+ *     so the bottom edge bleeds past the axis baseline.
+ *   - Line: navy #0F1F4F, strokeWidth 2.2, round join/cap.
+ *   - Markers: uniform (no peak/current/today variant) — r 3.5, fill
+ *     card-bg, stroke navy 2.
+ *   - X-axis labels: per-point DD.MM in Heebo 11px ink-muted at y=155.
+ *   - Header parity: title <h3> Heebo bold 16px navy-ink (FIRST in
+ *     DOM); eyebrow <span> 12px ink-muted (SECOND).
  *
  * Pure Server Component. The 7-day payload comes from
  * `dailyAccuracy[].attempts` on the already-cached `getKpiData()`
@@ -23,15 +33,21 @@ import type { SparklinePoint } from "@/lib/dashboard/types";
  * NO new DB read.
  */
 
-const W = 360;
-const H = 140;
-const PADDING_X = 32; // room for the y-axis labels on the visual-start edge
-const PADDING_TOP = 14;
-const PADDING_BOTTOM = 26;
+// Geometry constants — copied verbatim from `trend-card.tsx` so the
+// two charts share spatial language. SLOTS=7 (one point per day in
+// the last 7 IL-local days) so X_STEP differs from TrendCard's 8.
+const VIEW_W = 360;
+const VIEW_H = 160;
+const CHART_TOP_Y = 40;
+const CHART_BOTTOM_Y = 120;
+const X_LEFT = 30;
+const X_RIGHT = 345;
+const SLOTS = 7;
+const X_STEP = (X_RIGHT - X_LEFT) / (SLOTS - 1); // = 52.5
+const AREA_CLOSE_Y = CHART_BOTTOM_Y + 30; // matches TrendCard's "+30" overshoot
 
 const LINE_COLOR = "#0F1F4F";
-const BASELINE_COLOR = "rgba(15, 31, 79, 0.10)";
-const AXIS_LABEL_COLOR = "var(--color-ink-muted)";
+const AREA_GRADIENT_ID = "activity-navy-area";
 
 export function ActivityBox({ points }: { points: SparklinePoint[] }) {
   // Defensive: the dashboard payload always returns 7 points, but
@@ -43,109 +59,115 @@ export function ActivityBox({ points }: { points: SparklinePoint[] }) {
   const peak = counts.reduce((m, n) => (n > m ? n : m), 0);
   // Always show at least y=0..1 so a brand-new account (all zeros)
   // renders a flat baseline rather than a divide-by-zero crash.
-  const yMax = peak === 0 ? 1 : peak;
+  const yMin = 0;
+  const yMax = Math.max(1, peak);
 
-  const innerW = W - PADDING_X * 2;
-  const innerH = H - PADDING_TOP - PADDING_BOTTOM;
-  const stepX = series.length > 1 ? innerW / (series.length - 1) : 0;
-  const baselineY = PADDING_TOP + innerH;
+  const gridValues = [yMax, Math.round(yMax / 2), yMin];
+  const gridY = (v: number) =>
+    CHART_TOP_Y + (1 - (v - yMin) / (yMax - yMin)) * (CHART_BOTTOM_Y - CHART_TOP_Y);
 
-  const coords = series.map((p, i) => {
-    const x = PADDING_X + i * stepX;
-    // Zero-attempt days land on the baseline (y = baselineY).
-    const y = PADDING_TOP + (1 - p.attempts / yMax) * innerH;
-    return { x, y, point: p };
-  });
+  const coords = series.map((p, i) => ({
+    x: X_LEFT + i * X_STEP,
+    y: gridY(p.attempts),
+    point: p,
+  }));
 
   const linePath = coords
     .map(({ x, y }, i) => `${i === 0 ? "M" : "L"}${x.toFixed(1)},${y.toFixed(1)}`)
     .join(" ");
+  const areaPath = `${linePath} L${X_RIGHT.toFixed(1)},${AREA_CLOSE_Y.toFixed(1)} L${X_LEFT.toFixed(1)},${AREA_CLOSE_Y.toFixed(1)} Z`;
 
   return (
-    <section
-      className="relative overflow-hidden border bg-card"
+    <div
+      className="rounded-[22px] border bg-card"
       style={{
         padding: "22px 24px",
-        borderRadius: 22,
         borderColor: "var(--color-line)",
         boxShadow: "var(--shadow-sm)",
       }}
-      aria-label="מדד פעילות — שאלות שתורגלו ב־7 הימים האחרונים"
     >
-      <header className="mb-3 flex items-baseline justify-between gap-3">
-        <span
-          className="font-heebo"
-          style={{ fontSize: 12.5, color: "var(--color-ink-muted)" }}
-        >
-          7 ימים אחרונים
-        </span>
-        <span
-          className="font-heebo font-semibold"
-          style={{ fontSize: 13.5, color: "var(--color-gold-deep)" }}
+      {/* Header — mirrors TrendCard's title/eyebrow pair exactly. */}
+      <div
+        className="flex items-center justify-between mb-3.5"
+        // No explicit aria-label on the card itself — the <h3> below
+        // is the accessible heading. The SVG inside carries its own
+        // role="img" + aria-label for the chart contents.
+      >
+        <h3
+          className="font-heebo font-bold"
+          style={{ fontSize: 16, color: "var(--color-navy-ink)" }}
         >
           מדד פעילות
+        </h3>
+        <span style={{ fontSize: 12, color: "var(--color-ink-muted)" }}>
+          7 ימים אחרונים
         </span>
-      </header>
+      </div>
 
       <svg
-        viewBox={`0 0 ${W} ${H}`}
+        viewBox={`0 0 ${VIEW_W} ${VIEW_H}`}
         preserveAspectRatio="xMidYMid meet"
         role="img"
-        aria-label={`שיא יומי ${peak} שאלות`}
-        style={{ width: "100%", height: H, display: "block", direction: "ltr" }}
+        aria-label={`מדד פעילות יומי — 7 ימים אחרונים, שיא יומי ${peak} שאלות`}
+        style={{ width: "100%", height: VIEW_H, display: "block", direction: "ltr" }}
       >
-        {/* Single very faint baseline — the only horizontal guide. */}
-        <line
-          x1={PADDING_X}
-          x2={W - PADDING_X}
-          y1={baselineY}
-          y2={baselineY}
-          stroke={BASELINE_COLOR}
-          strokeWidth={1}
-        />
+        <defs>
+          <linearGradient id={AREA_GRADIENT_ID} x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor={LINE_COLOR} stopOpacity={0.3} />
+            <stop offset="100%" stopColor={LINE_COLOR} stopOpacity={0.02} />
+          </linearGradient>
+        </defs>
 
-        {/* Y-axis labels — only `max` at the top and `0` at the
-            baseline, anchored at the visual-start (right) edge so
-            the RTL card reads them as the leading edge. */}
-        <text
-          x={W - PADDING_X + 6}
-          y={PADDING_TOP + 4}
-          textAnchor="start"
-          fontSize="11"
-          fontFamily="var(--font-mono)"
-          fill={AXIS_LABEL_COLOR}
-        >
-          {peak}
-        </text>
-        <text
-          x={W - PADDING_X + 6}
-          y={baselineY + 4}
-          textAnchor="start"
-          fontSize="11"
-          fontFamily="var(--font-mono)"
-          fill={AXIS_LABEL_COLOR}
-        >
-          0
-        </text>
+        {/* Gridlines + y-axis labels — three rows: yMax / yMax/2 / 0. */}
+        {gridValues.map((v) => {
+          const y = gridY(v);
+          return (
+            <g key={v}>
+              <line
+                x1={X_LEFT}
+                x2={X_RIGHT}
+                y1={y}
+                y2={y}
+                stroke="var(--color-line)"
+                strokeWidth={1}
+                strokeDasharray="3 3"
+              />
+              <text
+                x={0}
+                y={y + 4}
+                fill="var(--color-ink-muted)"
+                fontFamily="Heebo, sans-serif"
+                fontSize={11}
+              >
+                {v}
+              </text>
+            </g>
+          );
+        })}
 
-        {/* Polyline through the 7 points — straight segments. */}
+        {/* Area fill — drawn BEFORE the line so the polyline sits on top. */}
+        <path d={areaPath} fill={`url(#${AREA_GRADIENT_ID})`} />
+
+        {/* Line through the 7 points — straight segments. */}
         <path
           d={linePath}
           fill="none"
           stroke={LINE_COLOR}
-          strokeWidth={2}
+          strokeWidth={2.2}
           strokeLinejoin="round"
           strokeLinecap="round"
         />
 
-        {/* Uniform filled circle markers. */}
+        {/* Uniform circle markers — no peak/current/today variant. */}
         {coords.map(({ x, y, point }, i) => (
           <circle
             key={point.date + "-" + i}
             cx={x}
             cy={y}
-            r={3}
-            fill={LINE_COLOR}
+            r={3.5}
+            fill="var(--card)"
+            stroke={LINE_COLOR}
+            strokeWidth={2}
           />
         ))}
 
@@ -154,17 +176,17 @@ export function ActivityBox({ points }: { points: SparklinePoint[] }) {
           <text
             key={point.date + "-label-" + i}
             x={x}
-            y={H - 8}
+            y={155}
             textAnchor="middle"
-            fontSize="10.5"
-            fontFamily="var(--font-mono)"
-            fill={AXIS_LABEL_COLOR}
+            fontFamily="Heebo, sans-serif"
+            fontSize={11}
+            fill="var(--color-ink-muted)"
           >
             {formatDayLabel(point.date)}
           </text>
         ))}
       </svg>
-    </section>
+    </div>
   );
 }
 

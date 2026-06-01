@@ -1,7 +1,6 @@
 import { CheckCircle2 } from "lucide-react";
 import Link from "next/link";
 
-import { StreakCard } from "@/app/(app)/dashboard/_components/streak-card";
 import type { TrendData, TrendPoint } from "@/lib/dashboard/types";
 
 /**
@@ -22,8 +21,11 @@ import type { TrendData, TrendPoint } from "@/lib/dashboard/types";
  *     personal-high + delta; with <3 it nudges the user to keep
  *     practicing.
  *
- * The streak card is rendered as a sibling below the chart so the
- * outer column reads as `<TrendChart /> + <StreakCard />`.
+ * Slice 32 — the streak card moved OUT of TrendCard and up into
+ * `TrendCardAsync` so the right-column stack can be reordered
+ * (trend → activity → streak). TrendCard now renders only the
+ * gold accuracy chart (the `<CardShell>` block); the outer flex-col
+ * also moved up into TrendCardAsync.
  */
 
 const ACTIVE_WEEKS_FOR_HIGH_CALLOUT = 3;
@@ -113,7 +115,9 @@ function CardShell({ children }: { children: React.ReactNode }) {
 // =============================================================================
 
 export function TrendCard({ data }: Props) {
-  const { weeklyPoints, personalHigh, streakDays } = data;
+  // Slice 32 — `streakDays` + `personalHigh` no longer destructured;
+  // they are consumed by `<StreakCard>` rendered up in TrendCardAsync.
+  const { weeklyPoints } = data;
   // Always take the trailing 8 weeks. `weeklyPoints` is always 12
   // entries (see `getTrendData`), so this slice is stable.
   const last8 = weeklyPoints.slice(-SLOTS);
@@ -151,8 +155,7 @@ export function TrendCard({ data }: Props) {
     CHART_TOP_Y + (1 - (v - yMin) / (yMax - yMin)) * (CHART_BOTTOM_Y - CHART_TOP_Y);
 
   return (
-    <div className="flex flex-col gap-5">
-      <CardShell>
+    <CardShell>
         <div className="flex items-center justify-between mb-3.5">
           <h3
             className="font-heebo font-bold"
@@ -357,9 +360,6 @@ export function TrendCard({ data }: Props) {
             </span>
           </div>
         )}
-      </CardShell>
-
-      <StreakCard streakDays={streakDays} personalHigh={personalHigh} />
-    </div>
+    </CardShell>
   );
 }
