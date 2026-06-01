@@ -1,61 +1,76 @@
 "use client";
 
-import { Check } from "lucide-react";
+import { Check, ChevronDown, ChevronUp } from "lucide-react";
+import { useState } from "react";
 
 import { ChapterIcon } from "@/app/(app)/dashboard/_components/chapter-icon";
 import type {
   ChapterRow,
-  SubtopicRow,
 } from "@/app/(app)/practice/_lib/use-practice-builder";
 import { cn } from "@/lib/utils";
 
 /**
  * Slice 5 Phase P3 — Chapter panel.
+ * Slice 34:
+ *   - The 16-card grid is now collapsed BEHIND a "הצג פרקים" toggle by
+ *     default. The grid itself + each <ChapterCard> stay untouched — we
+ *     just gate visibility behind a local `chaptersOpen` UI state.
+ *     When collapsed, the panel surfaces a one-line summary of the
+ *     selected chapter titles so the user still sees their choice
+ *     without scrolling through the grid.
+ *   - Header gets a small text button "בחר הכל" / "נקה בחירה" wired
+ *     to `selectAllChapters` / `clearAllChapters` on the builder hook.
+ *     Tap once → all selectable chapters selected; tap again → clear.
+ *     Subtopics-panel gating ("exactly one chapter selected") is
+ *     unchanged — select-all collapses it deliberately.
+ *   - The sub-topics chip block previously rendered INSIDE this panel
+ *     under a dashed border has moved OUT into
+ *     `<SubtopicsPanel>` (mounted in the left aside under <TimerPanel>
+ *     by `practice-setup-form.tsx`). The hook's outputs feed the new
+ *     location directly — no hook signature changes.
  *
- * Hosts the dynamic N-chapter card grid plus the inline subtopics chips. The
- * subtopics block lives INSIDE the same panel (separated by a dashed
- * border) so the "narrow the practice scope" flow reads as one
- * step — matches the prototype's `PracticeBuilder.html` structure.
- *
- * State + actions come from `usePracticeBuilder` and are passed in;
- * this panel is purely presentational so the rebuilt visuals never
- * fight the existing state machine.
- *
- * Single-select-subtopic note: the design hints multi-select chips,
- * but the underlying builder state is single (`rawSubtopicId: string |
- * null`). For Phase P3 we honour that contract — only one chip can be
- * active at a time, plus the "הכל" toggle which clears the selection.
- * If multi-select is wanted, that's a separate refactor across hook +
- * server action + DB write.
+ * Layout: chapter cards laid out in a 1-col → 2-col @md grid.
+ * Single-select-subtopic note continues to live with SubtopicsPanel.
  */
 
 type Props = {
   chapters: ChapterRow[];
   selectedChapterIds: string[];
   onToggleChapter: (id: string) => void;
-
-  subtopicsForSelected: SubtopicRow[];
-  effectiveSubtopicId: string | null;
-  onSelectSubtopic: (id: string | null) => void;
+  onSelectAllChapters: () => void;
+  onClearAllChapters: () => void;
 };
 
 export function ChapterPanel({
   chapters,
   selectedChapterIds,
   onToggleChapter,
-  subtopicsForSelected,
-  effectiveSubtopicId,
-  onSelectSubtopic,
+  onSelectAllChapters,
+  onClearAllChapters,
 }: Props) {
-  // Subtopic strip only renders when EXACTLY one chapter is selected
-  // (per the §C8 clarification — multi-chapter sessions can't scope
-  // to a subtopic because subtopics belong to a single chapter).
-  const showSubtopics =
-    selectedChapterIds.length === 1 && subtopicsForSelected.length > 0;
-  const singleSelectedChapter =
-    selectedChapterIds.length === 1
-      ? chapters.find((c) => c.id === selectedChapterIds[0]) ?? null
-      : null;
+  // Slice 34 — local collapse state. Default closed so a long taxonomy
+  // doesn't dominate the page on first paint. Pure UI; the hook is
+  // not involved (no need to persist across remounts).
+  const [chaptersOpen, setChaptersOpen] = useState(false);
+
+  // Slice 34 — "select all" toggle semantics: if every selectable
+  // chapter is currently selected, the button switches to "נקה בחירה".
+  // Disabled ("בקרוב") chapters are excluded from both the target set
+  // and the "all selected" check, matching `selectAllChapters` in the
+  // hook so the two states stay aligned.
+  const selectableChapters = chapters.filter(
+    (c) => c.activeQuestionCount > 0
+  );
+  const allSelectableSelected =
+    selectableChapters.length > 0 &&
+    selectableChapters.every((c) => selectedChapterIds.includes(c.id));
+
+  // One-line summary string for the collapsed state. Joined by " · "
+  // so the divider is recognisable from the rest of the cream copy on
+  // the page. `truncate` on the wrapper handles overflow.
+  const selectedTitles = chapters
+    .filter((c) => selectedChapterIds.includes(c.id))
+    .map((c) => c.title);
 
   return (
     <section
@@ -95,76 +110,93 @@ export function ChapterPanel({
             בחר אחד או יותר. נושאים בלי שאלות זמינות יוצגו כמעומעמים.
           </p>
         </div>
+        {/* Slice 34 — "בחר הכל" / "נקה בחירה" small text button. Styled
+            like the existing gold-deep affordance language (איפוס in
+            the subtopics block) — small font, semibold, underline on
+            hover. */}
+        <button
+          type="button"
+          onClick={
+            allSelectableSelected ? onClearAllChapters : onSelectAllChapters
+          }
+          className="font-heebo font-semibold transition-colors hover:underline shrink-0"
+          style={{ fontSize: 13, color: "var(--color-gold-deep)" }}
+        >
+          {allSelectableSelected ? "נקה בחירה" : "בחר הכל"}
+        </button>
       </header>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
-        {chapters.map((chapter) => {
-          const selected = selectedChapterIds.includes(chapter.id);
-          const empty = chapter.activeQuestionCount === 0;
-          return (
-            <ChapterCard
-              key={chapter.id}
-              chapter={chapter}
-              selected={selected}
-              disabled={empty}
-              onToggle={() => {
-                if (empty) return;
-                onToggleChapter(chapter.id);
-              }}
-            />
-          );
-        })}
-      </div>
-
-      {showSubtopics && (
-        <div
-          className="mt-[22px] pt-[18px]"
-          style={{ borderTop: "1px dashed var(--color-line)" }}
-        >
-          <div className="flex justify-between items-center mb-3">
-            <span
-              className="font-heebo font-semibold"
-              style={{ fontSize: 14, color: "var(--color-ink-dim)" }}
-            >
-              תת-נושאים
-              {singleSelectedChapter && (
-                <>
-                  {" · "}
-                  <span style={{ color: "var(--color-navy-ink)" }}>
-                    {singleSelectedChapter.title}
-                  </span>
-                </>
-              )}
-            </span>
-            {effectiveSubtopicId !== null && (
-              <button
-                type="button"
-                onClick={() => onSelectSubtopic(null)}
-                className="font-heebo font-semibold transition-colors hover:underline"
-                style={{ fontSize: 12.5, color: "var(--color-gold-deep)" }}
-              >
-                איפוס
-              </button>
+      {/* Slice 34 — Toggle between collapsed (summary line) and open
+          (the existing 16-card grid). The toggle button itself mirrors
+          the "הצג עוד" pattern in `mastery-rows-client.tsx` — dashed
+          border, full-width, gold-deep label, chevron flip on state. */}
+      {chaptersOpen ? (
+        <>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
+            {chapters.map((chapter) => {
+              const selected = selectedChapterIds.includes(chapter.id);
+              const empty = chapter.activeQuestionCount === 0;
+              return (
+                <ChapterCard
+                  key={chapter.id}
+                  chapter={chapter}
+                  selected={selected}
+                  disabled={empty}
+                  onToggle={() => {
+                    if (empty) return;
+                    onToggleChapter(chapter.id);
+                  }}
+                />
+              );
+            })}
+          </div>
+          <button
+            type="button"
+            onClick={() => setChaptersOpen(false)}
+            aria-expanded={true}
+            className={cn(
+              "mt-3 flex w-full items-center justify-center gap-1.5 rounded-[14px] border border-dashed border-border px-5 py-2.5 text-sm font-medium transition-colors",
+              "hover:bg-muted/40",
+              "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
             )}
+            style={{ color: "var(--color-gold-deep)" }}
+          >
+            <ChevronUp className="size-4" aria-hidden />
+            הסתר פרקים
+          </button>
+        </>
+      ) : (
+        <>
+          <div
+            className="mb-3 truncate font-heebo"
+            style={{
+              fontSize: 13.5,
+              color:
+                selectedTitles.length > 0
+                  ? "var(--color-navy-ink)"
+                  : "var(--color-ink-muted)",
+            }}
+            aria-live="polite"
+          >
+            {selectedTitles.length > 0
+              ? selectedTitles.join(" · ")
+              : "לא נבחרו פרקים"}
           </div>
-          <div className="flex flex-wrap gap-1.5">
-            <SubtopicChip
-              label="הכל"
-              variant="all"
-              active={effectiveSubtopicId === null}
-              onClick={() => onSelectSubtopic(null)}
-            />
-            {subtopicsForSelected.map((s) => (
-              <SubtopicChip
-                key={s.id}
-                label={s.title}
-                variant="default"
-                active={effectiveSubtopicId === s.id}
-                onClick={() => onSelectSubtopic(s.id)}
-              />
-            ))}
-          </div>
-        </div>
+          <button
+            type="button"
+            onClick={() => setChaptersOpen(true)}
+            aria-expanded={false}
+            className={cn(
+              "flex w-full items-center justify-center gap-1.5 rounded-[14px] border border-dashed border-border px-5 py-2.5 text-sm font-medium transition-colors",
+              "hover:bg-muted/40",
+              "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
+            )}
+            style={{ color: "var(--color-gold-deep)" }}
+          >
+            <ChevronDown className="size-4" aria-hidden />
+            הצג פרקים ({selectedChapterIds.length}/{chapters.length})
+          </button>
+        </>
       )}
     </section>
   );
@@ -291,72 +323,6 @@ function ChapterCard({
           strokeWidth={2}
         />
       </span>
-    </button>
-  );
-}
-
-// =============================================================================
-// SubtopicChip
-// =============================================================================
-
-function SubtopicChip({
-  label,
-  variant,
-  active,
-  onClick,
-}: {
-  label: string;
-  variant: "default" | "all";
-  active: boolean;
-  onClick: () => void;
-}) {
-  if (variant === "all") {
-    return (
-      <button
-        type="button"
-        onClick={onClick}
-        aria-pressed={active}
-        className={cn(
-          "font-heebo font-bold transition-all",
-          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
-        )}
-        style={{
-          padding: "7px 14px",
-          borderRadius: 999,
-          fontSize: 13,
-          background: active ? "var(--color-gold)" : "var(--color-gold-tint)",
-          color: "var(--color-navy-ink)",
-          border: active
-            ? "1px solid var(--color-gold)"
-            : "1px solid rgba(201, 161, 73, 0.45)",
-        }}
-      >
-        {label}
-      </button>
-    );
-  }
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-pressed={active}
-      className={cn(
-        "font-heebo font-medium transition-all",
-        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40",
-        !active && "hover:border-[var(--color-navy)] hover:text-[var(--color-navy-ink)]"
-      )}
-      style={{
-        padding: "7px 14px",
-        borderRadius: 999,
-        fontSize: 13,
-        background: active ? "var(--color-navy-ink)" : "var(--color-paper)",
-        color: active ? "var(--color-white, #FFFFFF)" : "var(--color-ink-dim)",
-        border: active
-          ? "1px solid var(--color-navy-ink)"
-          : "1px solid var(--color-line)",
-      }}
-    >
-      {label}
     </button>
   );
 }

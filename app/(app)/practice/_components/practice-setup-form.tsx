@@ -2,6 +2,7 @@
 
 import { ChapterPanel } from "@/app/(app)/practice/_components/chapter-panel";
 import { CountsPanel } from "@/app/(app)/practice/_components/counts-panel";
+import { SubtopicsPanel } from "@/app/(app)/practice/_components/subtopics-panel";
 import { SummaryFooter } from "@/app/(app)/practice/_components/summary-footer";
 import { TimerPanel } from "@/app/(app)/practice/_components/timer-panel";
 import {
@@ -13,14 +14,22 @@ import type { PrefillInput } from "@/lib/urls";
 
 /**
  * Slice 5 Phase P4 — PracticeSetupForm shell.
+ * Slice 34 — sub-topics panel relocated out of `<ChapterPanel>` and
+ *   placed at the BOTTOM of the left aside, under `<TimerPanel>`. New
+ *   order (desktop right column → chapters; left column → counts →
+ *   timer → sub-topics; mobile single column → chapters → counts →
+ *   timer → sub-topics). The "exactly one chapter selected" gating
+ *   that used to live in ChapterPanel now lives here, so the panel
+ *   simply doesn't render in the multi-chapter / no-chapter cases.
  *
  * Pure layout. All state + actions come from `usePracticeBuilder`
- * (Phase P1 lift) and get threaded into 4 presentational panels:
+ * (Phase P1 lift) and get threaded into 5 presentational panels:
  *
- *   - `<ChapterPanel />`   — chapters grid + subtopic chips (P3)
- *   - `<CountsPanel />`    — source + angle pickers (P4)
- *   - `<TimerPanel />`     — preset + slider (P4)
- *   - `<SummaryFooter />`  — sticky bottom equation + gold CTA (P4)
+ *   - `<ChapterPanel />`    — chapters grid (collapsible)
+ *   - `<CountsPanel />`     — question-count picker
+ *   - `<TimerPanel />`      — preset + slider
+ *   - `<SubtopicsPanel />`  — chips, gated on single-chapter
+ *   - `<SummaryFooter />`   — sticky bottom equation + gold CTA
  *
  * The form adds `pb-32` to its outer container so scrollable content
  * has clearance from the fixed footer; the footer itself is rendered
@@ -40,6 +49,8 @@ export function PracticeSetupForm({
   const {
     selectedChapterIds,
     toggleChapter,
+    selectAllChapters,
+    clearAllChapters,
     setRawSubtopicId,
     effectiveSubtopicId,
     subtopicsForSelected,
@@ -68,20 +79,29 @@ export function PracticeSetupForm({
     submitDisabled,
   } = builder;
 
+  // Slice 34 — sub-topics panel gating. Renders only when exactly one
+  // chapter is selected AND that chapter has sub-topics (the same
+  // contract that lived inside ChapterPanel pre-Slice-34).
+  const singleSelectedChapter =
+    selectedChapterIds.length === 1
+      ? chapters.find((c) => c.id === selectedChapterIds[0]) ?? null
+      : null;
+  const showSubtopics =
+    singleSelectedChapter !== null && subtopicsForSelected.length > 0;
+
   return (
     <>
       <div className="grid grid-cols-1 lg:grid-cols-[1.4fr_1fr] gap-5 items-start pb-32">
-        {/* Right column (RTL visual right): chapters + subtopics. */}
+        {/* Right column (RTL visual right): chapters. */}
         <ChapterPanel
           chapters={chapters}
           selectedChapterIds={selectedChapterIds}
           onToggleChapter={toggleChapter}
-          subtopicsForSelected={subtopicsForSelected}
-          effectiveSubtopicId={effectiveSubtopicId}
-          onSelectSubtopic={setRawSubtopicId}
+          onSelectAllChapters={selectAllChapters}
+          onClearAllChapters={clearAllChapters}
         />
 
-        {/* Left column (RTL visual left): counts + timer stacked. */}
+        {/* Left column (RTL visual left): counts → timer → sub-topics. */}
         <aside className="flex flex-col gap-5">
           <CountsPanel
             rawTotal={rawTotal}
@@ -95,6 +115,14 @@ export function PracticeSetupForm({
             sessionDurationSeconds={sessionDurationSeconds}
             onSet={setSessionDurationSeconds}
           />
+          {showSubtopics && (
+            <SubtopicsPanel
+              subtopicsForSelected={subtopicsForSelected}
+              effectiveSubtopicId={effectiveSubtopicId}
+              onSelectSubtopic={setRawSubtopicId}
+              singleSelectedChapter={singleSelectedChapter}
+            />
+          )}
         </aside>
       </div>
 

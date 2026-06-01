@@ -190,6 +190,12 @@ export type UsePracticeBuilderResult = {
   // Raw + derived selection
   selectedChapterIds: string[];
   toggleChapter: (id: string) => void;
+  /** Slice 34 — bulk select-all (only selectable chapters with
+   *  `activeQuestionCount > 0`; "בקרוב" chapters are skipped). */
+  selectAllChapters: () => void;
+  /** Slice 34 — clears the chapter selection. Companion to
+   *  `selectAllChapters` for the header toggle button. */
+  clearAllChapters: () => void;
   rawSubtopicId: string | null;
   setRawSubtopicId: (id: string | null) => void;
   effectiveSubtopicId: string | null;
@@ -429,6 +435,30 @@ export function usePracticeBuilder({
     );
   }
 
+  /**
+   * Slice 34 — select every non-disabled chapter at once. Mirrors what
+   * a user would get by manually toggling all the populated cards.
+   * Disabled ("בקרוב") chapters stay out because they can't yield
+   * questions; including them would break the submit gate.
+   *
+   * Interaction note: subtopic gating uses `selectedChapterIds.length
+   * === 1`, so calling this with more than one populated chapter
+   * collapses the subtopic panel — same semantics as if the user
+   * had toggled chapters one-by-one past the single-chapter mark.
+   */
+  function selectAllChapters() {
+    setSelectedChapterIds(
+      chapters.filter((c) => c.activeQuestionCount > 0).map((c) => c.id)
+    );
+  }
+
+  /** Slice 34 — companion to `selectAllChapters`. Empties the
+   *  selection so the header button can toggle between the two
+   *  states based on whether all-selectable are currently selected. */
+  function clearAllChapters() {
+    setSelectedChapterIds([]);
+  }
+
   // `total` equals `effectiveTotal` by construction. We compute it
   // from the engine-bound source count instead of returning
   // effectiveTotal directly so that any drift between display and
@@ -476,6 +506,8 @@ export function usePracticeBuilder({
   return {
     selectedChapterIds,
     toggleChapter,
+    selectAllChapters,
+    clearAllChapters,
     rawSubtopicId,
     setRawSubtopicId,
     effectiveSubtopicId,
