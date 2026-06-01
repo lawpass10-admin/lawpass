@@ -2,41 +2,35 @@ import type { SparklinePoint } from "@/lib/dashboard/types";
 
 /**
  * Slice 29 — small "מדד פעילות" daily-activity box.
- * Slice 30 — joined the right-column trend/streak cluster:
- *   - radius 14 → 22 and padding "20px 24px 16px" → "22px 24px" to
- *     match `<StreakCard>` and the trend `<CardShell>` next to it.
- *   - line/path chart replaced with 7 vertical bars (one per day).
- *     Bars use navy/primary fill (#1E3A8A) with rounded tops; the
- *     last bar (today, IL-local) is highlighted in gold (#C9A149).
- *     The floating peak number was dropped — bar height itself is
- *     now the visual cue.
+ * Slice 30 — joined the right-column trend/streak cluster (radius
+ *   22, padding 22×24).
+ * Slice 31 — chart body swapped from vertical bars back to a minimal
+ *   line chart matching Sharon's proposal:
+ *     - single thin polyline through the 7 daily points (no
+ *       smoothing, no area fill)
+ *     - uniform small filled circle marker at each point
+ *     - navy (#0F1F4F) line + markers
+ *     - y-axis labels show only `0` (baseline) and `max` (top), at
+ *       the visual-start (right) edge of the chart
+ *     - no gridlines beyond a single very faint baseline
+ *     - zero-attempt days sit at the baseline like any other point,
+ *       no special stub
+ *     - no peak callout text, no "today" highlight
  *
  * Pure Server Component. The 7-day payload comes from
  * `dailyAccuracy[].attempts` on the already-cached `getKpiData()`
  * payload (see `activity-box-async.tsx`), so this slice introduces
  * NO new DB read.
- *
- * Visual:
- *   - eyebrow "מדד פעילות" (gold-deep, top-end)
- *   - eyebrow "7 ימים אחרונים" (ink-muted, top-start)
- *   - 7 bars, equal-width with small gaps, navy by default
- *   - today's bar gold
- *   - DD.MM labels under each bar
- *   - zero-attempt days render a thin baseline stub so the bar
- *     position is still legible
  */
 
 const W = 360;
 const H = 140;
-const PADDING_X = 18;
-const PADDING_TOP = 10;
+const PADDING_X = 32; // room for the y-axis labels on the visual-start edge
+const PADDING_TOP = 14;
 const PADDING_BOTTOM = 26;
-const BAR_GAP = 8;
-const BAR_RADIUS = 4;
-const MIN_BAR_HEIGHT = 3;
 
-const BAR_COLOR = "#1E3A8A"; // navy / primary
-const BAR_COLOR_TODAY = "#C9A149"; // gold
+const LINE_COLOR = "#0F1F4F";
+const BASELINE_COLOR = "rgba(15, 31, 79, 0.10)";
 const AXIS_LABEL_COLOR = "var(--color-ink-muted)";
 
 export function ActivityBox({ points }: { points: SparklinePoint[] }) {
@@ -53,7 +47,19 @@ export function ActivityBox({ points }: { points: SparklinePoint[] }) {
 
   const innerW = W - PADDING_X * 2;
   const innerH = H - PADDING_TOP - PADDING_BOTTOM;
-  const slotW = (innerW - BAR_GAP * (series.length - 1)) / series.length;
+  const stepX = series.length > 1 ? innerW / (series.length - 1) : 0;
+  const baselineY = PADDING_TOP + innerH;
+
+  const coords = series.map((p, i) => {
+    const x = PADDING_X + i * stepX;
+    // Zero-attempt days land on the baseline (y = baselineY).
+    const y = PADDING_TOP + (1 - p.attempts / yMax) * innerH;
+    return { x, y, point: p };
+  });
+
+  const linePath = coords
+    .map(({ x, y }, i) => `${i === 0 ? "M" : "L"}${x.toFixed(1)},${y.toFixed(1)}`)
+    .join(" ");
 
   return (
     <section
@@ -88,51 +94,75 @@ export function ActivityBox({ points }: { points: SparklinePoint[] }) {
         aria-label={`שיא יומי ${peak} שאלות`}
         style={{ width: "100%", height: H, display: "block", direction: "ltr" }}
       >
-        {series.map((p, i) => {
-          const ratio = p.attempts / yMax;
-          const fullHeight = ratio * innerH;
-          // Even zero-attempt days get a 3px stub so the bar position
-          // (and the day label below it) is still visually anchored.
-          const barH = p.attempts === 0 ? MIN_BAR_HEIGHT : Math.max(fullHeight, MIN_BAR_HEIGHT);
-          const x = PADDING_X + i * (slotW + BAR_GAP);
-          const y = PADDING_TOP + (innerH - barH);
-          const isToday = i === series.length - 1;
-          const fill = isToday ? BAR_COLOR_TODAY : BAR_COLOR;
-          // Zero-attempt non-today days render at low opacity so they
-          // read as "no activity" rather than an artificial floor.
-          const opacity = p.attempts === 0 && !isToday ? 0.25 : 1;
-          return (
-            <rect
-              key={p.date + i}
-              x={x}
-              y={y}
-              width={slotW}
-              height={barH}
-              rx={BAR_RADIUS}
-              ry={BAR_RADIUS}
-              fill={fill}
-              opacity={opacity}
-            />
-          );
-        })}
+        {/* Single very faint baseline — the only horizontal guide. */}
+        <line
+          x1={PADDING_X}
+          x2={W - PADDING_X}
+          y1={baselineY}
+          y2={baselineY}
+          stroke={BASELINE_COLOR}
+          strokeWidth={1}
+        />
 
-        {/* Day-of-month labels under each bar (IL local, DD.MM). */}
-        {series.map((p, i) => {
-          const cx = PADDING_X + i * (slotW + BAR_GAP) + slotW / 2;
-          return (
-            <text
-              key={p.date + "-label-" + i}
-              x={cx}
-              y={H - 8}
-              textAnchor="middle"
-              fontSize="10.5"
-              fontFamily="var(--font-mono)"
-              fill={AXIS_LABEL_COLOR}
-            >
-              {formatDayLabel(p.date)}
-            </text>
-          );
-        })}
+        {/* Y-axis labels — only `max` at the top and `0` at the
+            baseline, anchored at the visual-start (right) edge so
+            the RTL card reads them as the leading edge. */}
+        <text
+          x={W - PADDING_X + 6}
+          y={PADDING_TOP + 4}
+          textAnchor="start"
+          fontSize="11"
+          fontFamily="var(--font-mono)"
+          fill={AXIS_LABEL_COLOR}
+        >
+          {peak}
+        </text>
+        <text
+          x={W - PADDING_X + 6}
+          y={baselineY + 4}
+          textAnchor="start"
+          fontSize="11"
+          fontFamily="var(--font-mono)"
+          fill={AXIS_LABEL_COLOR}
+        >
+          0
+        </text>
+
+        {/* Polyline through the 7 points — straight segments. */}
+        <path
+          d={linePath}
+          fill="none"
+          stroke={LINE_COLOR}
+          strokeWidth={2}
+          strokeLinejoin="round"
+          strokeLinecap="round"
+        />
+
+        {/* Uniform filled circle markers. */}
+        {coords.map(({ x, y, point }, i) => (
+          <circle
+            key={point.date + "-" + i}
+            cx={x}
+            cy={y}
+            r={3}
+            fill={LINE_COLOR}
+          />
+        ))}
+
+        {/* Day-of-month labels under each point (IL local, DD.MM). */}
+        {coords.map(({ x, point }, i) => (
+          <text
+            key={point.date + "-label-" + i}
+            x={x}
+            y={H - 8}
+            textAnchor="middle"
+            fontSize="10.5"
+            fontFamily="var(--font-mono)"
+            fill={AXIS_LABEL_COLOR}
+          >
+            {formatDayLabel(point.date)}
+          </text>
+        ))}
       </svg>
     </section>
   );
