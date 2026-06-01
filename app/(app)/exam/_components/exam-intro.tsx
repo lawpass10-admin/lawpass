@@ -73,10 +73,19 @@ export function ExamIntro() {
           that frame, then sees the KPI breakdown. Picker keeps its
           radiogroup semantics and grid-cols-1 sm:grid-cols-3 layout. */}
       <IntroHero mode={mode} />
-      <div className="mx-auto w-full max-w-3xl space-y-4">
+      {/* Slice 33.1 — comfortable gap between the hero subline and the
+          ModePicker (~24px). Mobile is already tight enough; keep mt-6
+          across breakpoints. */}
+      <div className="mx-auto mt-6 w-full max-w-3xl space-y-4">
         <ModePicker mode={mode} onChange={setMode} disabled={submitting} />
       </div>
-      <IntroStatsAndBox />
+      {/* Slice 33.1 — notably larger gap on md+ between the picker and
+          the KPI grid so the two card rows don't crowd each other on
+          desktop. Mobile keeps the smaller mt-6 since the single-column
+          stack already feels relaxed at narrow widths. */}
+      <div className="mt-6 md:mt-10">
+        <IntroStatsAndBox />
+      </div>
       <div className="mx-auto flex w-full max-w-3xl flex-col-reverse gap-2 pb-10 sm:flex-row sm:justify-end">
         <Link
           href="/dashboard"
