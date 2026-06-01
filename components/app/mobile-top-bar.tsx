@@ -14,6 +14,12 @@ import { useSidebar } from "@/components/ui/sidebar";
  * top of every (app) route. Hidden on md+ where the sidebar is
  * permanently visible.
  *
+ * Slice 30 — pinned to the top of the viewport on mobile scroll
+ * (`sticky top-0 z-40`). The viewport (not `<SidebarInset>`) is the
+ * scroll context, so sticky resolves against the document. The bar's
+ * background is already opaque navy, so content scrolling underneath
+ * does not bleed through.
+ *
  * Stays in client land because `useSidebar()` needs the provider's
  * context, which is only reachable through a Client Component.
  */
@@ -21,7 +27,7 @@ export function MobileTopBar() {
   const { toggleSidebar } = useSidebar();
   return (
     <header
-      className="flex md:hidden items-center justify-between gap-3 px-4 py-3"
+      className="sticky top-0 z-40 flex md:hidden items-center justify-between gap-3 px-4 py-3"
       style={{
         background: "var(--color-navy-ink)",
         borderBottom: "1px solid rgba(255, 255, 255, 0.08)",

@@ -1,9 +1,15 @@
+import { ActivityBoxSkeleton } from "@/app/(app)/dashboard/_components/skeletons/activity-box-skeleton";
 import { Skeleton } from "@/components/ui/skeleton";
 
 /**
  * Slice 4.X Phase 13 — Skeleton for the stacked Trend + Streak column.
  * Two placeholders mirroring the eventual heights so the mastery card
  * to the start doesn't reflow when the data resolves.
+ *
+ * Slice 30 — added a THIRD placeholder for the "מדד פעילות" activity
+ * box that now lives in the same right-column Suspense boundary
+ * (rendered by `TrendCardAsync` under StreakCard). Without this the
+ * stream would resolve into a taller column and shift the layout.
  */
 export function TrendCardSkeleton() {
   return (
@@ -44,6 +50,10 @@ export function TrendCardSkeleton() {
           </div>
         </div>
       </div>
+      {/* Slice 30 — activity box placeholder. Reuses the standalone
+          `<ActivityBoxSkeleton>` so the placeholder stays in lockstep
+          with the live card's styling. */}
+      <ActivityBoxSkeleton />
     </div>
   );
 }

@@ -13,9 +13,16 @@ import { cn } from "@/lib/utils";
  * call sites in `kpi-row-async.tsx` need no change, but they are
  * ignored by the renderer.
  *
+ * Slice 30 — added optional `compact` prop. When true (mobile
+ * horizontal-scroll row), card padding shrinks 14×16 → 10×14 and
+ * the value font shrinks 40 → 30 so 4 cards can sit comfortably
+ * in a swipeable row at 375px without wrapping. Label + meta
+ * unchanged. Default false → desktop grid untouched.
+ *
  * Anatomy now:
  *   1. Label (centered, 13px ink-dim)
- *   2. Big value (Heebo 800, 40px, navy-ink, centered, tabular-nums)
+ *   2. Big value (Heebo 800, 40px desktop / 30px compact,
+ *      navy-ink, centered, tabular-nums)
  *   3. Meta line (12.5px, ink-muted, centered)
  *   4. Full-width 2px bottom bar (gold / gold-soft / weak)
  */
@@ -50,16 +57,26 @@ export type StatCardProps = {
   /** When set, wraps the card in a Link for navigation. */
   href?: string;
   hrefLabel?: string;
+  /**
+   * Slice 30 — when true, render with tighter padding (10×14) and a
+   * smaller value font (30 vs 40). Used by the mobile horizontal-
+   * scroll row in `kpi-row-async.tsx`. Default false (desktop).
+   */
+  compact?: boolean;
 };
 
-const CARD_STYLE: CSSProperties = {
-  padding: "14px 16px",
+const CARD_STYLE_BASE: CSSProperties = {
   background: "var(--card)",
   border: "1px solid var(--color-line)",
   borderRadius: "12px",
   position: "relative",
   overflow: "hidden",
 };
+
+const CARD_PADDING_DEFAULT = "14px 16px";
+const CARD_PADDING_COMPACT = "10px 14px";
+const VALUE_FONT_DEFAULT = 40;
+const VALUE_FONT_COMPACT = 30;
 
 const BAR_TONE_BG: Record<NonNullable<StatCardProps["barTone"]>, string> = {
   gold: "var(--color-gold)",
@@ -72,9 +89,15 @@ function CardInner({
   value,
   meta,
   barTone = "gold",
+  compact = false,
 }: Omit<StatCardProps, "href" | "hrefLabel" | "icon" | "sparkline" | "trendPill">) {
   return (
-    <article style={CARD_STYLE}>
+    <article
+      style={{
+        ...CARD_STYLE_BASE,
+        padding: compact ? CARD_PADDING_COMPACT : CARD_PADDING_DEFAULT,
+      }}
+    >
       <div
         className="font-heebo font-medium"
         style={{
@@ -89,12 +112,12 @@ function CardInner({
       <div
         className="font-heebo font-extrabold tabular-nums"
         style={{
-          fontSize: 40,
+          fontSize: compact ? VALUE_FONT_COMPACT : VALUE_FONT_DEFAULT,
           lineHeight: 1,
           letterSpacing: "-0.01em",
           color: "var(--color-navy-ink)",
           textAlign: "center",
-          marginTop: 8,
+          marginTop: compact ? 6 : 8,
         }}
       >
         {value}

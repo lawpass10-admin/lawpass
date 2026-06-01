@@ -1,12 +1,10 @@
 import { redirect } from "next/navigation";
 import { Suspense } from "react";
 
-import { ActivityBoxAsync } from "@/app/(app)/dashboard/_components/activity-box-async";
 import { HeaderStripAsync } from "@/app/(app)/dashboard/_components/header-strip-async";
 import { HeroRowAsync } from "@/app/(app)/dashboard/_components/hero-row-async";
 import { KpiRowAsync } from "@/app/(app)/dashboard/_components/kpi-row-async";
 import { MasteryCardAsync } from "@/app/(app)/dashboard/_components/mastery-card-async";
-import { ActivityBoxSkeleton } from "@/app/(app)/dashboard/_components/skeletons/activity-box-skeleton";
 import { HeaderStripSkeleton } from "@/app/(app)/dashboard/_components/skeletons/header-strip-skeleton";
 import { HeroRowSkeleton } from "@/app/(app)/dashboard/_components/skeletons/hero-row-skeleton";
 import { KpiRowSkeleton } from "@/app/(app)/dashboard/_components/skeletons/kpi-row-skeleton";
@@ -110,7 +108,13 @@ export default async function DashboardPage() {
         <KpiRowAsync userId={user.id} />
       </Suspense>
 
-      {/* 4. Mastery + Trend — 2-column @ md+, mastery wider (1.6fr / 1fr) */}
+      {/* 4. Mastery + Trend — 2-column @ md+, mastery wider (1.6fr / 1fr).
+          Slice 30 — the right column now stacks THREE cards (trend
+          chart → streak → activity). `TrendCardAsync` owns the whole
+          right-column stack so the cards share one Suspense boundary
+          and stream together. `MasteryCardSkeleton` to its start does
+          not reflow because both columns' skeletons reserve the full
+          column height. */}
       <div
         className="grid grid-cols-1 gap-[18px] md:[grid-template-columns:1.6fr_1fr]"
       >
@@ -121,14 +125,6 @@ export default async function DashboardPage() {
           <TrendCardAsync userId={user.id} />
         </Suspense>
       </div>
-
-      {/* 5. Activity box — Slice 29: replaces the JourneyCard in
-          the bottom slot. Reads from the React.cache-deduped
-          `getKpiData()` payload, so it adds no new DB round-trip
-          on top of the KPI row above. */}
-      <Suspense fallback={<ActivityBoxSkeleton />}>
-        <ActivityBoxAsync userId={user.id} />
-      </Suspense>
     </div>
   );
 }

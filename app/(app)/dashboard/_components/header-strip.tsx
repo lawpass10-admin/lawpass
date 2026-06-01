@@ -72,22 +72,21 @@ function formatDateHeLong(d: Date): string {
   return `${weekday} · ${date}`;
 }
 
-/**
- * "{month} {year}" in full Hebrew — e.g. `דצמבר 2026`. Used in the
- * countdown sentence per the Phase 9b polish (replaces the previous
- * abbreviated form `דצמ' 26׳`).
- */
-function formatExamDateLong(d: Date): string {
-  return new Intl.DateTimeFormat("he-IL", {
-    month: "long",
-    year: "numeric",
-  }).format(d);
-}
+// Slice 30 — `formatExamDateLong` was previously used to format the
+// subtitle line ("נשארו N ימים לבחינת {month year}.") sitting under
+// the greeting. That sentence was duplicated by the gold "המבחן בעוד
+// N ימים" headline inside the hero ring, so the populated branch
+// below was removed. We keep the import-shaped helper deleted; the
+// no-exam-date fallback link does not need a formatted month/year.
 
 export function HeaderStrip({ fullName, examDate, daysToExam }: Props) {
   const greeting = getHebrewGreeting();
   const dateLine = formatDateHeLong(new Date());
-  const examLong = examDate ? formatExamDateLong(examDate) : null;
+  // Slice 30 — when an exam date IS set, render no subtitle (the
+  // countdown survives only inside the hero ring). When none is set,
+  // we still surface the "add exam date" CTA so the no-date case
+  // isn't dead in the dashboard.
+  const showAddExamDateLink = examDate === null || daysToExam === null;
 
   return (
     <div
@@ -117,35 +116,24 @@ export function HeaderStrip({ fullName, examDate, daysToExam }: Props) {
           <span className="hidden md:inline">, {fullName}.</span>
           <span className="md:hidden">,</span>
         </h1>
-        <p
-          style={{
-            color: "var(--ink-3)",
-            fontSize: 16,
-            marginTop: 6,
-            maxWidth: 540,
-            lineHeight: 1.5,
-          }}
-        >
-          {examDate !== null && daysToExam !== null && examLong !== null ? (
-            <>
-              נשארו{" "}
-              <strong
-                className="tabular-nums font-bold"
-                style={{ color: "var(--color-gold-deep)" }}
-              >
-                {daysToExam} ימים
-              </strong>{" "}
-              לבחינת {examLong}.
-            </>
-          ) : (
+        {showAddExamDateLink ? (
+          <p
+            style={{
+              color: "var(--ink-3)",
+              fontSize: 16,
+              marginTop: 6,
+              maxWidth: 540,
+              lineHeight: 1.5,
+            }}
+          >
             <Link
               href="/account"
               className="text-primary underline underline-offset-2 hover:no-underline rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
             >
               הוסף תאריך בחינה
             </Link>
-          )}
-        </p>
+          </p>
+        ) : null}
       </div>
       {/* Phase 16: split the two CTAs by destination —
          (1) outline "תרגול חופשי" → /practice (free-choice setup form),
