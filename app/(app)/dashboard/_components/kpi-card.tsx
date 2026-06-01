@@ -5,17 +5,19 @@ import { cn } from "@/lib/utils";
 
 /**
  * Slice 4.X Phase 12 — Stat card matching the handoff prototype.
+ * Slice 29 — flattened: dropped the head-row icon, the sparkline,
+ * and the trend-pill render paths. Label + value are now centered;
+ * the value enlarged from 32 → 40. Card padding tightened, radius
+ * 14 → 12, bottom bar 3px → 2px. The `icon` / `sparkline` /
+ * `trendPill` props remain on the type (marked DEPRECATED) so the
+ * call sites in `kpi-row-async.tsx` need no change, but they are
+ * ignored by the renderer.
  *
- * Anatomy (top → bottom):
- *   1. Head row: label (left) + gold-tinted icon square (right).
- *   2. Big value (Heebo 800, navy-ink).
- *   3. Meta line (12.5px, ink-muted).
- *   4. Optional accent — either a sparkline (80×28) OR a trend pill.
- *   5. Full-width 3px bottom bar (gold by default; status-weak for the
- *      "טעויות" card to act as a warning hint).
- *
- * The card is positioned `relative` so the sparkline + bar can absolute-
- * position without a wrapper div.
+ * Anatomy now:
+ *   1. Label (centered, 13px ink-dim)
+ *   2. Big value (Heebo 800, 40px, navy-ink, centered, tabular-nums)
+ *   3. Meta line (12.5px, ink-muted, centered)
+ *   4. Full-width 2px bottom bar (gold / gold-soft / weak)
  */
 
 export type StatCardProps = {
@@ -23,13 +25,20 @@ export type StatCardProps = {
   value: ReactNode;
   /** Sub-line under the value (e.g. "מקור 57 · זווית 160"). */
   meta?: ReactNode;
-  /** Icon shown in the 32×32 gold-tint square. */
-  icon: ReactNode;
-  /** Optional sparkline data — array of numbers, lowest at index 0. */
+  /**
+   * @deprecated Slice 29 — the head-row icon square was removed. Kept
+   * on the type for back-compat with `kpi-row-async.tsx` call sites;
+   * ignored by the renderer.
+   */
+  icon?: ReactNode;
+  /**
+   * @deprecated Slice 29 — the sparkline render path was removed.
+   * Kept on the type for back-compat; ignored by the renderer.
+   */
   sparkline?: number[];
   /**
-   * Optional trend pill (rendered in place of the sparkline when both
-   * are passed — the sparkline wins because that's the primary affordance).
+   * @deprecated Slice 29 — the trend-pill render path was removed.
+   * Kept on the type for back-compat; ignored by the renderer.
    */
   trendPill?: {
     label: string;
@@ -44,13 +53,12 @@ export type StatCardProps = {
 };
 
 const CARD_STYLE: CSSProperties = {
-  padding: "18px 20px",
+  padding: "14px 16px",
   background: "var(--card)",
   border: "1px solid var(--color-line)",
-  borderRadius: "14px",
+  borderRadius: "12px",
   position: "relative",
   overflow: "hidden",
-  transition: "transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease",
 };
 
 const BAR_TONE_BG: Record<NonNullable<StatCardProps["barTone"]>, string> = {
@@ -63,42 +71,30 @@ function CardInner({
   label,
   value,
   meta,
-  icon,
-  sparkline,
-  trendPill,
   barTone = "gold",
-}: Omit<StatCardProps, "href" | "hrefLabel">) {
+}: Omit<StatCardProps, "href" | "hrefLabel" | "icon" | "sparkline" | "trendPill">) {
   return (
-    <article style={CARD_STYLE} className="hover:-translate-y-0.5 hover:shadow-md">
-      <div className="flex items-center justify-between mb-2.5">
-        <span
-          className="font-heebo font-medium"
-          style={{ fontSize: 13, color: "var(--color-ink-dim)" }}
-        >
-          {label}
-        </span>
-        <span
-          className="inline-flex items-center justify-center"
-          style={{
-            width: 32,
-            height: 32,
-            borderRadius: 10,
-            background: "var(--color-gold-tint)",
-            color: "var(--color-gold-deep)",
-          }}
-          aria-hidden
-        >
-          {icon}
-        </span>
+    <article style={CARD_STYLE}>
+      <div
+        className="font-heebo font-medium"
+        style={{
+          fontSize: 13,
+          color: "var(--color-ink-dim)",
+          textAlign: "center",
+        }}
+      >
+        {label}
       </div>
 
       <div
         className="font-heebo font-extrabold tabular-nums"
         style={{
-          fontSize: 32,
+          fontSize: 40,
           lineHeight: 1,
           letterSpacing: "-0.01em",
           color: "var(--color-navy-ink)",
+          textAlign: "center",
+          marginTop: 8,
         }}
       >
         {value}
@@ -109,50 +105,45 @@ function CardInner({
           style={{
             fontSize: 12.5,
             color: "var(--color-ink-muted)",
-            marginTop: 6,
+            marginTop: 4,
+            textAlign: "center",
           }}
         >
           {meta}
         </div>
       ) : null}
 
-      {sparkline && sparkline.length > 1 ? (
-        <Sparkline values={sparkline} />
-      ) : trendPill ? (
-        <div
-          className="inline-flex items-center gap-1 font-heebo"
-          style={{
-            fontSize: 12,
-            fontWeight: 600,
-            marginTop: 6,
-            color:
-              trendPill.direction === "up"
-                ? "var(--color-status-strong)"
-                : "var(--color-status-weak)",
-          }}
-        >
-          <TrendArrow direction={trendPill.direction} />
-          {trendPill.label}
-        </div>
-      ) : null}
-
       <span
         aria-hidden
         className="absolute inset-x-0 bottom-0"
-        style={{ height: 3, background: BAR_TONE_BG[barTone] }}
+        style={{ height: 2, background: BAR_TONE_BG[barTone] }}
       />
     </article>
   );
 }
 
-export function StatCard({ href, hrefLabel, ...rest }: StatCardProps) {
+export function StatCard({
+  href,
+  hrefLabel,
+  // Slice 29 — `icon`, `sparkline`, `trendPill` are kept on the
+  // prop type for back-compat with the existing call sites in
+  // `kpi-row-async.tsx` but ignored by the renderer. Pull them out
+  // here so they don't reach `<CardInner>` as unknown JSX attrs.
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  icon: _icon,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  sparkline: _sparkline,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  trendPill: _trendPill,
+  ...rest
+}: StatCardProps) {
   if (href) {
     return (
       <Link
         href={href}
         aria-label={hrefLabel ?? rest.label}
         className={cn(
-          "block rounded-[14px] transition-colors",
+          "block rounded-[12px] transition-colors",
           "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
         )}
       >
@@ -163,66 +154,5 @@ export function StatCard({ href, hrefLabel, ...rest }: StatCardProps) {
   return <CardInner {...rest} />;
 }
 
-// =============================================================================
-// Sparkline
-// =============================================================================
-
-/**
- * 80×28 sparkline. Builds a polyline through the input values, scaled
- * to the box height with 2px top/bottom padding so peaks/troughs don't
- * touch the edges. The area fill closes the path to the baseline.
- *
- * `preserveAspectRatio="none"` stretches the path horizontally — the
- * box can be sized via CSS without re-drawing. Stroke is non-scaling.
- */
-function Sparkline({ values }: { values: number[] }) {
-  const w = 80;
-  const h = 28;
-  const padY = 2;
-  // When all values are equal (e.g. all-zero), draw a flat midline.
-  const min = Math.min(...values);
-  const max = Math.max(...values);
-  const range = max - min || 1;
-  const stepX = values.length > 1 ? w / (values.length - 1) : 0;
-
-  const points = values.map((v, i) => {
-    const x = i * stepX;
-    const y = h - padY - ((v - min) / range) * (h - padY * 2);
-    return [x, y] as const;
-  });
-  const linePath = points
-    .map(([x, y], i) => `${i === 0 ? "M" : "L"}${x.toFixed(1)},${y.toFixed(1)}`)
-    .join(" ");
-  const areaPath = `${linePath} L${w},${h} L0,${h} Z`;
-
-  return (
-    <svg
-      className="absolute"
-      style={{ insetInlineEnd: 16, bottom: 12, width: 80, height: 28, opacity: 0.9 }}
-      viewBox={`0 0 ${w} ${h}`}
-      preserveAspectRatio="none"
-      aria-hidden
-    >
-      <path d={areaPath} fill="rgba(201, 161, 73, 0.18)" />
-      <path
-        d={linePath}
-        fill="none"
-        stroke="var(--color-gold)"
-        strokeWidth={1.8}
-        vectorEffect="non-scaling-stroke"
-      />
-    </svg>
-  );
-}
-
-function TrendArrow({ direction }: { direction: "up" | "down" }) {
-  return (
-    <svg viewBox="0 0 11 11" className="size-2.5" fill="currentColor" aria-hidden>
-      {direction === "up" ? (
-        <path d="M5.5 2l3 4h-2v3h-2V6h-2z" />
-      ) : (
-        <path d="M5.5 9l3-4h-2V2h-2v3h-2z" />
-      )}
-    </svg>
-  );
-}
+// Slice 29 — file-local `Sparkline` and `TrendArrow` helpers
+// removed; nothing else in the file referenced them.

@@ -1,20 +1,20 @@
 import { Skeleton } from "@/components/ui/skeleton";
 
 function StatCardSkeleton() {
+  // Slice 29 — matches the flattened card: padding 14×16, radius
+  // 12, no icon block, label + value + meta all centered, 2px
+  // bottom bar.
   return (
     <div
-      className="relative overflow-hidden rounded-[14px] border bg-card"
-      style={{ padding: "18px 20px", borderColor: "var(--color-line)" }}
+      className="relative overflow-hidden rounded-[12px] border bg-card"
+      style={{ padding: "14px 16px", borderColor: "var(--color-line)" }}
     >
-      <div className="flex items-center justify-between mb-2.5">
-        <Skeleton className="h-3 w-24" />
-        <Skeleton className="size-8 rounded-[10px]" />
-      </div>
-      <Skeleton className="h-8 w-20" />
-      <Skeleton className="mt-2 h-3 w-32" />
+      <Skeleton className="mx-auto h-3 w-24" />
+      <Skeleton className="mx-auto mt-2 h-9 w-24" />
+      <Skeleton className="mx-auto mt-1 h-3 w-32" />
       <span
         aria-hidden
-        className="absolute inset-x-0 bottom-0 h-[3px]"
+        className="absolute inset-x-0 bottom-0 h-[2px]"
         style={{ background: "var(--color-line)" }}
       />
     </div>

@@ -1,11 +1,12 @@
 import { redirect } from "next/navigation";
 import { Suspense } from "react";
 
+import { ActivityBoxAsync } from "@/app/(app)/dashboard/_components/activity-box-async";
 import { HeaderStripAsync } from "@/app/(app)/dashboard/_components/header-strip-async";
 import { HeroRowAsync } from "@/app/(app)/dashboard/_components/hero-row-async";
-import { JourneyCard } from "@/app/(app)/dashboard/_components/journey-card";
 import { KpiRowAsync } from "@/app/(app)/dashboard/_components/kpi-row-async";
 import { MasteryCardAsync } from "@/app/(app)/dashboard/_components/mastery-card-async";
+import { ActivityBoxSkeleton } from "@/app/(app)/dashboard/_components/skeletons/activity-box-skeleton";
 import { HeaderStripSkeleton } from "@/app/(app)/dashboard/_components/skeletons/header-strip-skeleton";
 import { HeroRowSkeleton } from "@/app/(app)/dashboard/_components/skeletons/hero-row-skeleton";
 import { KpiRowSkeleton } from "@/app/(app)/dashboard/_components/skeletons/kpi-row-skeleton";
@@ -74,6 +75,11 @@ export default async function DashboardPage() {
   const subscriptionTotalDays =
     SUBSCRIPTION_PLAN_TOTAL_DAYS[subscription.plan_type] ?? 90;
   const subscriptionDaysRemaining = daysRemainingUntilISO(subscription.ends_at);
+  // `currentPlanDay` is still consumed by `<HeroRowAsync>` (rendered
+  // as "יום N מתוך 100" inside the hero ring). Slice 29 only stops
+  // using it for the bottom-slot JourneyCard — the hero binding
+  // stays. `journey-card.tsx` + `hero-helpers.ts` stay on disk
+  // untouched in case we want to bring the timeline back later.
   const currentPlanDay = computePlanDay(profile.created_at);
 
   return (
@@ -116,13 +122,13 @@ export default async function DashboardPage() {
         </Suspense>
       </div>
 
-      {/* 5. Journey timeline — Slice 11: relocated FROM the hero
-          (formerly side-by-side with the CTA card) to BELOW the
-          chapters list. The card depends only on `currentPlanDay`,
-          which is computed once at page-render time from
-          `profile.created_at` — so the move is a pure JSX change
-          with no extra fetch and no Suspense boundary. */}
-      <JourneyCard currentDay={currentPlanDay} />
+      {/* 5. Activity box — Slice 29: replaces the JourneyCard in
+          the bottom slot. Reads from the React.cache-deduped
+          `getKpiData()` payload, so it adds no new DB round-trip
+          on top of the KPI row above. */}
+      <Suspense fallback={<ActivityBoxSkeleton />}>
+        <ActivityBoxAsync userId={user.id} />
+      </Suspense>
     </div>
   );
 }
