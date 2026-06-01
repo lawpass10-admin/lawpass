@@ -23,23 +23,24 @@ import { cn } from "@/lib/utils";
 type MasteryState = "weak" | "ok" | "strong" | "empty";
 
 /**
- * Slice 39 — uniform navy tile + gold glyph for EVERY state. The
- * per-state color-coding (weak=red, ok=blue, strong=green) is
- * intentionally dropped in favour of a cleaner navy/gold language;
- * weakness signaling still happens via the "חולשה" pill + the row
- * meta line, NOT the tile. Per-chapter icon diversity is preserved
- * — <ChapterIcon> stays as-is and inherits `currentColor` from this
- * tile's `color` style. The `MasteryState` type is kept because
- * other render logic (CTA label, pct label color, meta string) still
- * keys on it.
+ * Slice 39 — uniform tile for every state (drops per-state color
+ * coding); weakness signaling lives on the pill + meta line, not
+ * the tile. Per-chapter <ChapterIcon> stays as-is and inherits
+ * `currentColor` from this tile's `color` style.
+ *
+ * Slice 40 — final Claude Design spec: gold-tint tile (#FBF6E4),
+ * 42×42, radius 12, hairline gold border at 25% opacity. Icon glyph
+ * stays gold-deep (#A8862E) via currentColor. The dark navy tile
+ * from Slice 39 is gone — the row now reads as a single warm
+ * gold language at the start edge.
  */
 const ICON_TILE_STYLE: CSSProperties = {
-  background: "var(--color-navy-ink)",
+  background: "var(--color-gold-tint)",
   color: "var(--color-gold-deep)",
-  // Hairline navy border so the tile reads as a tile rather than a
-  // floating block at higher zooms / against the row's paper bg.
-  border: "1px solid var(--color-navy)",
+  border: "1px solid rgba(201, 161, 73, 0.25)",
 };
+const ICON_TILE_SIZE = 42;
+const ICON_TILE_RADIUS = 12;
 
 /** Weakness threshold — accuracy < 60% AND non-skipped attempts >= 5. */
 const WEAKNESS_ACCURACY_PCT = 60;
@@ -68,25 +69,45 @@ export function masteryState(row: MasteryRow): MasteryState {
 }
 
 /**
- * Slice 39 — bar fill collapses to a single brand color
- * (`var(--color-gold)`) for every NON-NULL row. Null rows keep the
- * track color so the bar still reads as empty (width = pct = 0%
- * downstream anyway, but matching color makes the empty state
- * unmistakable). The decider (null vs non-null) is the existing
- * `row.accuracy === null` gate — pure pct logic preserved.
+ * Slice 39 — bar fill collapses to a single brand color for every
+ * non-null row (drops per-state coding).
+ * Slice 40 — fill is now a gold→gold-deep linear gradient. Empty
+ * rows pass `null` to signal "draw a dashed empty track + no fill"
+ * — `<MasteryBar>` switches its track styling based on that. The
+ * decider (null vs non-null) is still the existing
+ * `row.accuracy === null` gate; pure pct logic preserved.
  */
-function barColor(row: MasteryRow): string {
-  if (row.accuracy === null) return "var(--bg-soft)";
-  return "var(--color-gold)";
+const BAR_FILL_GRADIENT = "linear-gradient(90deg, #C9A149, #A8862E)";
+
+function barFill(row: MasteryRow): string | null {
+  if (row.accuracy === null) return null;
+  return BAR_FILL_GRADIENT;
 }
 
-function MasteryBar({ pct, color }: { pct: number; color: string }) {
+function MasteryBar({
+  pct,
+  fill,
+}: {
+  pct: number;
+  /** `null` → empty state: track shows a dashed/striped pattern and
+   *  the fill div renders width 0%. Non-null → gold gradient. */
+  fill: string | null;
+}) {
+  const empty = fill === null;
   return (
     <div
       style={{
-        height: 6,
-        background: "var(--bg-soft)",
-        borderRadius: 999,
+        height: 8,
+        // Slice 40 — warm-paper track with a subtle line border.
+        // Empty rows overlay a repeating-gradient stripe so the track
+        // reads as "not yet practiced" rather than a hairline empty
+        // bar at 0%. The base paper bg shows through the stripes'
+        // transparent gaps.
+        background: empty
+          ? "repeating-linear-gradient(135deg, var(--color-paper) 0 6px, rgba(201, 161, 73, 0.18) 6px 8px)"
+          : "var(--color-paper)",
+        border: "1px solid var(--color-line)",
+        borderRadius: 5,
         overflow: "hidden",
       }}
       aria-hidden
@@ -94,9 +115,9 @@ function MasteryBar({ pct, color }: { pct: number; color: string }) {
       <div
         style={{
           height: "100%",
-          width: `${pct}%`,
-          background: color,
-          borderRadius: 999,
+          width: empty ? "0%" : `${pct}%`,
+          background: empty ? "transparent" : (fill as string),
+          borderRadius: 5,
         }}
       />
     </div>
@@ -173,13 +194,19 @@ export function MasteryRowItem({
       <div
         className="hidden md:grid items-center"
         style={{
-          gridTemplateColumns: "38px 28px 1fr 120px auto auto",
+          /* Slice 40 — icon tile widened 38 → 42; track the column. */
+          gridTemplateColumns: "42px 28px 1fr 120px auto auto",
           gap: 14,
         }}
       >
         <span
           className="inline-flex items-center justify-center transition-transform group-hover:scale-105"
-          style={{ width: 38, height: 38, borderRadius: 10, ...ICON_TILE_STYLE }}
+          style={{
+            width: ICON_TILE_SIZE,
+            height: ICON_TILE_SIZE,
+            borderRadius: ICON_TILE_RADIUS,
+            ...ICON_TILE_STYLE,
+          }}
           aria-hidden
         >
           <ChapterIcon code={row.chapterCode} />
@@ -204,15 +231,15 @@ export function MasteryRowItem({
           >
             {row.chapterTitle}
             {weak ? (
-              /* Slice 39 — soft, low-contrast weakness pill. Drops
-                 the loud orange in favour of a gold-tint background
-                 + navy-ink text; presence-only signal that doesn't
-                 fight the rest of the row's navy/gold language. */
+              /* Slice 40 — weakness pill back to amber: the signal
+                 must read clearly against the row's gold-everywhere
+                 language. Slice 39's soft gold-tint pill blended in
+                 with the icon tile. `isWeakness` gate is unchanged. */
               <span
                 className="inline-flex items-center rounded-full px-2 py-0.5 text-[10.5px] font-semibold align-middle font-heebo"
                 style={{
-                  background: "var(--color-gold-tint)",
-                  color: "var(--color-navy-ink)",
+                  background: "var(--color-status-weak-bg)",
+                  color: "var(--color-status-weak)",
                   marginInlineStart: 8,
                 }}
               >
@@ -224,7 +251,7 @@ export function MasteryRowItem({
             {metaText}
           </div>
         </div>
-        <MasteryBar pct={pct} color={barColor(row)} />
+        <MasteryBar pct={pct} fill={barFill(row)} />
         {pctNode}
         {/* Slice 39 — empty rows show "התחל ←" (start), practiced rows
             show "תרגל ←" (practice more). The parent <Link>'s href is
@@ -249,7 +276,12 @@ export function MasteryRowItem({
         <div className="flex items-start gap-3">
           <span
             className="inline-flex shrink-0 items-center justify-center"
-            style={{ width: 38, height: 38, borderRadius: 10, ...ICON_TILE_STYLE }}
+            style={{
+            width: ICON_TILE_SIZE,
+            height: ICON_TILE_SIZE,
+            borderRadius: ICON_TILE_RADIUS,
+            ...ICON_TILE_STYLE,
+          }}
             aria-hidden
           >
             <ChapterIcon code={row.chapterCode} />
@@ -267,12 +299,12 @@ export function MasteryRowItem({
                 {row.chapterTitle}
               </h3>
               {weak ? (
-                /* Slice 39 — mobile mirror of the soft pill above. */
+                /* Slice 40 — mobile mirror of the amber pill above. */
                 <span
                   className="inline-flex items-center rounded-full px-2 py-0.5 text-[10.5px] font-semibold font-heebo"
                   style={{
-                    background: "var(--color-gold-tint)",
-                    color: "var(--color-navy-ink)",
+                    background: "var(--color-status-weak-bg)",
+                    color: "var(--color-status-weak)",
                   }}
                 >
                   חולשה
@@ -284,9 +316,11 @@ export function MasteryRowItem({
             </div>
           </div>
         </div>
-        <div className="flex items-center gap-3 ps-[50px]">
+        {/* Slice 40 — icon tile widened to 42 + gap-3 (12px) = 54px
+            for the bar/pct row to align under the title text. */}
+        <div className="flex items-center gap-3 ps-[54px]">
           <div className="flex-1">
-            <MasteryBar pct={pct} color={barColor(row)} />
+            <MasteryBar pct={pct} fill={barFill(row)} />
           </div>
           {pctNode}
         </div>

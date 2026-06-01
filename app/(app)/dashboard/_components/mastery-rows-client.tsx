@@ -82,12 +82,15 @@ export function MasteryRowsClient({ rows }: { rows: MasteryRow[] }) {
 
   return (
     <div className="space-y-3">
-      {/* Track filter — radiogroup of 3 cards. Same visual language as
-          the QA widget's report-type picker. */}
+      {/* Slice 40 — single pill container with a white "thumb" on
+          the active tab + a gold underline strike at the bottom.
+          Replaces the per-tab gold-tint/border treatment from Slice
+          39 with one cohesive control. Tab state logic untouched —
+          only the styling moves. */}
       <div
         role="radiogroup"
         aria-label="סינון פרקים לפי מסלול"
-        className="flex flex-wrap gap-2"
+        className="inline-flex gap-1 p-1 rounded-full bg-[var(--color-paper)] border border-[var(--color-line)]"
       >
         {TRACK_CARDS.map((card) => {
           const selected = card.value === track;
@@ -98,18 +101,18 @@ export function MasteryRowsClient({ rows }: { rows: MasteryRow[] }) {
               role="radio"
               aria-checked={selected}
               onClick={() => handleTrackChange(card.value)}
-              /* Slice 39 — filter tab restyle: harmonize size with
-                 the 16px "שליטה לפי פרק" header (13px instead of
-                 text-xs ≈ 12px) and swap the legacy amber treatment
-                 for the brand gold/navy language used by the rest of
-                 the dashboard. Active = gold tint + gold border +
-                 navy-ink text; inactive = neutral. Logic unchanged. */
               className={cn(
-                "rounded-lg border px-3 py-1.5 text-[13px] font-heebo font-medium transition-colors",
+                "relative rounded-full px-4 py-[7px] text-[13px] font-heebo font-semibold transition-colors",
                 "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-gold)]/60",
                 selected
-                  ? "border-[var(--color-gold)] bg-[var(--color-gold-tint)] text-[var(--color-navy-ink)]"
-                  : "border-border bg-card hover:bg-muted/40"
+                  ? cn(
+                      "bg-white text-[var(--color-navy-ink)]",
+                      // Gold underline strike beneath the active tab —
+                      // 2px thin, inset by px-3 worth of horizontal
+                      // padding so it doesn't reach the pill edges.
+                      "after:absolute after:inset-x-3 after:bottom-[3px] after:h-[2px] after:rounded after:bg-[var(--color-gold-deep)]"
+                    )
+                  : "text-[var(--color-ink-dim)] hover:text-[var(--color-navy-ink)]"
               )}
             >
               {card.label}
