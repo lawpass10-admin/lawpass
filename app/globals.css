@@ -434,3 +434,15 @@
   color: var(--color-ink-muted, var(--muted-foreground));
   pointer-events: none;
 }
+
+/* Slice 37 — copy/paste deterrent for question-content surfaces.
+   Applied by `<NoCopyText>` and at three shared seams
+   (`ChoiceAnalysisRow`, `Learning360Panel`, `Choice`'s text span).
+   Blocks text-selection on desktop + mobile, plus iOS Safari's
+   long-press magnifier/callout. Deterrent only — does not prevent
+   screenshots / devtools / OCR by design. */
+.no-copy-content {
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+}

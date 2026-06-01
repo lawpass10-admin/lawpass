@@ -12,6 +12,7 @@ import { useState, useTransition } from "react";
 import { toast } from "sonner";
 
 import { ChoiceAnalysisRow } from "@/app/(app)/_components/choice-analysis-row";
+import { NoCopyText } from "@/app/(app)/_components/no-copy-text";
 import { createExamSession } from "@/app/(app)/exam/_actions";
 import { Learning360Panel } from "@/app/(app)/practice/play/_components/learning-360-panel";
 import { Button } from "@/components/ui/button";
@@ -424,12 +425,13 @@ function QuestionExpansion({ row }: { row: ExamReviewRow }) {
   return (
     <div className="border-t border-border/70 bg-muted/20 px-5 py-4">
       {row.questionText ? (
-        <p
+        /* Slice 37 — question stem wrapped in <NoCopyText>. */
+        <NoCopyText
           dir="auto"
           className="mb-3 whitespace-pre-wrap text-sm leading-relaxed text-foreground/90"
         >
           {row.questionText}
-        </p>
+        </NoCopyText>
       ) : null}
       {row.choices.length > 0 ? (
         <ul className="space-y-2">

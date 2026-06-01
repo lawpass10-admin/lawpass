@@ -4,6 +4,7 @@ import { ChevronLeft, Loader2, X } from "lucide-react";
 import { useState, useTransition } from "react";
 import { toast } from "sonner";
 
+import { NoCopyText } from "@/app/(app)/_components/no-copy-text";
 import { RowNotePencil } from "@/app/(app)/_components/row-note-pencil";
 import { createReviewSession } from "@/app/(app)/practice/_actions";
 import type { MistakeListRow } from "@/lib/db/practice";
@@ -129,7 +130,9 @@ export function MistakeRow({
             the visible badge is removed. */}
       </div>
 
-      <p
+      {/* Slice 37 — preview wrapped in <NoCopyText>. */}
+      <NoCopyText
+        as="p"
         className={cn(
           "min-w-0 flex-1 truncate text-sm",
           isArchived ? "" : "text-foreground/85"
@@ -141,7 +144,7 @@ export function MistakeRow({
         ) : (
           preview
         )}
-      </p>
+      </NoCopyText>
 
       <div className="flex shrink-0 items-center gap-2">
         {/* Slice 27 — note pencil. Same derivation rules as the

@@ -13,6 +13,7 @@ import { useRouter } from "next/navigation";
 import { useRef, useState } from "react";
 import { toast } from "sonner";
 
+import { NoCopyText } from "@/app/(app)/_components/no-copy-text";
 import { NoteTriggerButton } from "@/app/(app)/_components/note-trigger-button";
 import {
   advanceToNext,
@@ -467,12 +468,15 @@ export function PracticeQuestion({
       {/* Section B — Question card (Phase 9d hotfix): own white card.
           Holds the question text + (pre-reveal) timer-start row. */}
       <div className="space-y-4 rounded-lg border bg-card p-6">
-        <p
+        {/* Slice 37 — question stem wrapped in <NoCopyText> so the
+            copy/paste deterrent applies here (the stem isn't covered
+            by the choice / 360° shared seams). */}
+        <NoCopyText
           dir="auto"
           className="whitespace-pre-wrap text-[17px] leading-relaxed"
         >
           {view.question.question_text}
-        </p>
+        </NoCopyText>
 
         {/* Slice 24 — the per-question "התחל טיימר" opt-in is gone.
             The session timer runs automatically when configured;

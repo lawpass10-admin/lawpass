@@ -57,11 +57,22 @@ export function ChoiceAnalysisRow({
   }
 
   return (
+    /* Slice 37 — copy/paste deterrent. The row's choice text + the
+       distractor analysis at the bottom are blocked here at the
+       shared seam, covering exam-results / practice-summary / notes
+       bank in one place. The "סימנת" pill + icon (UI metadata) ride
+       the same container, which is fine — they have no copy-worthy
+       text payload. */
     <div
       className={cn(
+        "no-copy-content",
         "rounded-md border p-3 text-sm leading-relaxed",
         toneClasses
       )}
+      onCopy={(e) => e.preventDefault()}
+      onCut={(e) => e.preventDefault()}
+      onContextMenu={(e) => e.preventDefault()}
+      onDragStart={(e) => e.preventDefault()}
     >
       <div className="flex items-start gap-2">
         <span

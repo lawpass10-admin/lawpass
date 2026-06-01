@@ -81,9 +81,17 @@ export function Choice({
       >
         {letter}
       </span>
+      {/* Slice 37 — copy/paste deterrent on the choice text label
+          ONLY. The button element above keeps its click/focus
+          handlers intact; user-select/onContextMenu on the inner
+          span doesn't interfere with button activation. */}
       <span
         dir="auto"
-        className="text-[15px] leading-relaxed"
+        className="no-copy-content text-[15px] leading-relaxed"
+        onCopy={(e) => e.preventDefault()}
+        onCut={(e) => e.preventDefault()}
+        onContextMenu={(e) => e.preventDefault()}
+        onDragStart={(e) => e.preventDefault()}
       >
         {text}
       </span>

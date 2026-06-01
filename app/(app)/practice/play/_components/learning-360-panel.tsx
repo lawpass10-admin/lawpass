@@ -101,7 +101,22 @@ export function Learning360Panel({
   correctChoice,
 }: Learning360PanelProps) {
   return (
-    <div className="rounded-xl border border-border bg-card p-6 shadow-sm">
+    /* Slice 37 — copy/paste deterrent applied at the panel's outer
+       root so all 360° body text (correct-answer banner,
+       legal_topic_analysis, full_explanation, distractor table,
+       common_pitfall, quick_thinking_360, summary_for_memory,
+       concepts/skills, references) is blocked in one place. Covers
+       practice play + exam-results + practice-summary + notes bank
+       (every consumer of this component). The header label stays
+       under the block too — that's intentional (it's chrome, not
+       copy-worthy). */
+    <div
+      className="no-copy-content rounded-xl border border-border bg-card p-6 shadow-sm"
+      onCopy={(e) => e.preventDefault()}
+      onCut={(e) => e.preventDefault()}
+      onContextMenu={(e) => e.preventDefault()}
+      onDragStart={(e) => e.preventDefault()}
+    >
       <header className="mb-6 flex items-center gap-2.5 border-b border-border pb-4">
         <Compass className="size-5 text-primary" aria-hidden />
         <h3 className="text-lg font-semibold">פירוט מלא — שיטת ה־360°</h3>

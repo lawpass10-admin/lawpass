@@ -4,6 +4,7 @@ import { Bookmark, ChevronLeft, Loader2 } from "lucide-react";
 import { useState, useTransition } from "react";
 import { toast } from "sonner";
 
+import { NoCopyText } from "@/app/(app)/_components/no-copy-text";
 import { RowNotePencil } from "@/app/(app)/_components/row-note-pencil";
 import { createReviewSession } from "@/app/(app)/practice/_actions";
 import type { BookmarkListRow } from "@/lib/db/practice";
@@ -136,8 +137,9 @@ export function BookmarkRow({
             the visible badge is removed. */}
       </div>
 
-      {/* CENTER: preview */}
-      <p
+      {/* CENTER: preview. Slice 37 — wrapped in <NoCopyText>. */}
+      <NoCopyText
+        as="p"
         className={cn(
           "min-w-0 flex-1 truncate text-sm",
           isArchived ? "" : "text-foreground/85"
@@ -149,7 +151,7 @@ export function BookmarkRow({
         ) : (
           preview
         )}
-      </p>
+      </NoCopyText>
 
       {/* RTL-end cluster: pencil, bookmark-remove, date, chevron */}
       <div className="flex shrink-0 items-center gap-2">

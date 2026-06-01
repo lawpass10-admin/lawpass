@@ -13,6 +13,7 @@ import {
   submitFinalExam,
   toggleExamBookmark,
 } from "@/app/(app)/exam/_actions";
+import { NoCopyText } from "@/app/(app)/_components/no-copy-text";
 import { Choice } from "@/app/(app)/practice/play/_components/choice";
 import { Button } from "@/components/ui/button";
 import type {
@@ -554,12 +555,13 @@ export function ExamQuestion({
         </div>
 
         <div className="mb-4 rounded-xl border border-border bg-card p-7 shadow-sm">
-          <p
+          {/* Slice 37 — question stem wrapped in <NoCopyText>. */}
+          <NoCopyText
             dir="auto"
             className="text-[19px] leading-relaxed whitespace-pre-wrap"
           >
             {questionText}
-          </p>
+          </NoCopyText>
         </div>
 
         <div className="mb-6 flex flex-col gap-2">

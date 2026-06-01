@@ -18,6 +18,7 @@ import dynamic from "next/dynamic";
 import { useState } from "react";
 
 import { ChoiceAnalysisRow } from "@/app/(app)/_components/choice-analysis-row";
+import { NoCopyText } from "@/app/(app)/_components/no-copy-text";
 import { saveNoteFromBank } from "@/app/(app)/notes/_actions";
 import { Learning360Panel } from "@/app/(app)/practice/play/_components/learning-360-panel";
 import { Button } from "@/components/ui/button";
@@ -139,14 +140,21 @@ export function NoteRow({ note, choices, learning360 }: NoteRowProps) {
 
       {expanded ? (
         <div className="border-t border-border/70 bg-muted/20 px-5 py-4">
-          {/* Question text */}
+          {/* Question text. Slice 37 — wrapped in <NoCopyText> so the
+              question content is blocked here. The user's own note
+              HTML (rendered below in the `<section>` containing
+              `.note-editor-content` via dangerouslySetInnerHTML) is a
+              SIBLING of this `<NoCopyText>`, NOT a descendant — so
+              it stays fully selectable. The TipTap NoteEditorSheet
+              opens in a separate portal (`{editorOpen && <NoteEditorSheet/>}`
+              at the bottom of this component) and is unaffected. */}
           {note.questionText ? (
-            <p
+            <NoCopyText
               dir="auto"
               className="mb-3 whitespace-pre-wrap text-sm leading-relaxed text-foreground/90"
             >
               {note.questionText}
-            </p>
+            </NoCopyText>
           ) : note.isArchived ? (
             <p className="mb-3 text-sm text-muted-foreground">
               השאלה הוסרה זמנית מהמערכת.
