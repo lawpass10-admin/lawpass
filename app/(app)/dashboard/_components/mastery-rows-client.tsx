@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 
 import { MasteryRowItem } from "@/app/(app)/dashboard/_components/mastery-row-item";
 import type { MasteryRow } from "@/lib/dashboard/types";
@@ -49,7 +49,17 @@ const TRACK_CARDS: readonly { value: Track; label: string }[] = [
   { value: "substantive", label: "מהותי" },
 ];
 
-export function MasteryRowsClient({ rows }: { rows: MasteryRow[] }) {
+export function MasteryRowsClient({
+  rows,
+  titleSlot,
+}: {
+  rows: MasteryRow[];
+  /** Slice 41 — server-rendered title block passed in from
+   *  `<MasteryCard>`. This client component renders it inline with
+   *  the filter tabs so the pill sits on the opposite side of the
+   *  title (visual-end / left in RTL) on one flex header row. */
+  titleSlot?: ReactNode;
+}) {
   const [track, setTrack] = useState<Track>("all");
   const [showAll, setShowAll] = useState(false);
 
@@ -80,18 +90,17 @@ export function MasteryRowsClient({ rows }: { rows: MasteryRow[] }) {
     setShowAll(false);
   }
 
-  return (
-    <div className="space-y-3">
-      {/* Slice 40 — single pill container with a white "thumb" on
-          the active tab + a gold underline strike at the bottom.
-          Replaces the per-tab gold-tint/border treatment from Slice
-          39 with one cohesive control. Tab state logic untouched —
-          only the styling moves. */}
-      <div
-        role="radiogroup"
-        aria-label="סינון פרקים לפי מסלול"
-        className="inline-flex gap-1 p-1 rounded-full bg-[var(--color-paper)] border border-[var(--color-line)]"
-      >
+  // Slice 41 — the filter pill (state/styling unchanged from Slice 40)
+  // is now rendered alongside the title in a single flex header row
+  // when `titleSlot` is provided. Mobile: `flex-wrap` lets the pill
+  // drop below the title if there isn't room. State, ARIA, and tab
+  // behavior are untouched.
+  const filterTabs = (
+    <div
+      role="radiogroup"
+      aria-label="סינון פרקים לפי מסלול"
+      className="inline-flex gap-1 p-1 rounded-full bg-[var(--color-paper)] border border-[var(--color-line)] self-start"
+    >
         {TRACK_CARDS.map((card) => {
           const selected = card.value === track;
           return (
@@ -119,7 +128,27 @@ export function MasteryRowsClient({ rows }: { rows: MasteryRow[] }) {
             </button>
           );
         })}
-      </div>
+    </div>
+  );
+
+  return (
+    <div className="space-y-3">
+      {/* Slice 41 — header row. Title on the visual-start (right in
+          RTL), filter pill on the visual-end (left). `items-start` so
+          the pill aligns with the top of the title line rather than
+          dropping below; `flex-wrap` so the pill drops below cleanly
+          on narrow viewports where there's no room beside the title. */}
+      {titleSlot ? (
+        <header
+          className="flex items-start justify-between gap-4 flex-wrap"
+          style={{ marginBottom: 18 }}
+        >
+          <div className="min-w-0">{titleSlot}</div>
+          {filterTabs}
+        </header>
+      ) : (
+        filterTabs
+      )}
 
       {visibleHead.length === 0 ? (
         <div className="rounded-[14px] border border-dashed border-border bg-card/40 px-6 py-8 text-center">

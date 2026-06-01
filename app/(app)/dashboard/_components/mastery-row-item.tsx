@@ -182,11 +182,16 @@ export function MasteryRowItem({
       href={href}
       aria-label={`תרגל את הפרק ${row.chapterTitle}`}
       /* Slice 39 — radius bumped 14 → 16 to match the navy/gold
-         card family rhythm. Padding + hover behavior unchanged. */
+         card family rhythm.
+         Slice 41 — row surface flipped from warm paper (read as
+         grey against the parent card) to clean white (`var(--card)`)
+         so the gold tile + gold bar gradient pop against the row.
+         Hover keeps the existing bg-card/border-navy treatment;
+         border + padding unchanged. */
       className="group block rounded-[16px] border transition-colors hover:bg-card hover:border-[var(--color-navy)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
       style={{
         padding: "10px 14px",
-        background: "var(--color-paper)",
+        background: "var(--card)",
         borderColor: "var(--color-line)",
       }}
     >

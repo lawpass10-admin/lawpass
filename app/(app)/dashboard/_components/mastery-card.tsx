@@ -56,6 +56,38 @@ export function MasteryCard({ rows }: Props) {
   const chaptersPhrase =
     rows.length === 1 ? "פרק אחד" : `${rows.length} הפרקים`;
 
+  // Slice 41 — title block is passed as `titleSlot` into
+  // `<MasteryRowsClient>`, which composes it with the filter pill in
+  // a single flex header row (title visual-start, pill visual-end).
+  // The server still owns title + sub-paragraph (data-derived); the
+  // client owns layout + interactive pill.
+  const titleSlot = (
+    <div>
+      <h3
+        className="font-heebo font-bold"
+        style={{
+          fontSize: 16,
+          color: "var(--color-navy-ink)",
+        }}
+      >
+        שליטה לפי פרק
+      </h3>
+      <p
+        style={{
+          color: "var(--color-ink-dim)",
+          fontSize: 13,
+          marginTop: 4,
+        }}
+      >
+        {weaknessCount === 1
+          ? `חולשה אחת מסומנת — תמונת המצב שלך על פני ${chaptersPhrase}`
+          : weaknessCount > 0
+            ? `${weaknessCount} חולשות מסומנות — תמונת המצב שלך על פני ${chaptersPhrase}`
+            : `תמונת המצב שלך על פני ${chaptersPhrase} — לפי אחוז שליטה`}
+      </p>
+    </div>
+  );
+
   return (
     <div
       className="rounded-[22px] border bg-card"
@@ -65,36 +97,7 @@ export function MasteryCard({ rows }: Props) {
         boxShadow: "var(--shadow-sm)",
       }}
     >
-      <div
-        className="flex items-end justify-between"
-        style={{ marginBottom: 18, gap: 16 }}
-      >
-        <div>
-          <h3
-            className="font-heebo font-bold"
-            style={{
-              fontSize: 16,
-              color: "var(--color-navy-ink)",
-            }}
-          >
-            שליטה לפי פרק
-          </h3>
-          <p
-            style={{
-              color: "var(--color-ink-dim)",
-              fontSize: 13,
-              marginTop: 4,
-            }}
-          >
-            {weaknessCount === 1
-              ? `חולשה אחת מסומנת — תמונת המצב שלך על פני ${chaptersPhrase}`
-              : weaknessCount > 0
-                ? `${weaknessCount} חולשות מסומנות — תמונת המצב שלך על פני ${chaptersPhrase}`
-                : `תמונת המצב שלך על פני ${chaptersPhrase} — לפי אחוז שליטה`}
-          </p>
-        </div>
-      </div>
-      <MasteryRowsClient rows={rows} />
+      <MasteryRowsClient rows={rows} titleSlot={titleSlot} />
     </div>
   );
 }
