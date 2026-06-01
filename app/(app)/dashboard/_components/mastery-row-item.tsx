@@ -22,27 +22,23 @@ import { cn } from "@/lib/utils";
 
 type MasteryState = "weak" | "ok" | "strong" | "empty";
 
-const ICON_TINT: Record<MasteryState, CSSProperties> = {
-  weak: {
-    background: "var(--color-status-weak-bg)",
-    color: "var(--color-status-weak)",
-    border: "1px solid rgba(194, 65, 12, 0.20)",
-  },
-  ok: {
-    background: "var(--color-status-ok-bg)",
-    color: "var(--color-status-ok)",
-    border: "1px solid rgba(62, 91, 168, 0.22)",
-  },
-  strong: {
-    background: "var(--color-status-strong-bg)",
-    color: "var(--color-status-strong)",
-    border: "1px solid rgba(31, 138, 91, 0.25)",
-  },
-  empty: {
-    background: "var(--card)",
-    color: "var(--color-ink-dim)",
-    border: "1px solid var(--color-line)",
-  },
+/**
+ * Slice 39 — uniform navy tile + gold glyph for EVERY state. The
+ * per-state color-coding (weak=red, ok=blue, strong=green) is
+ * intentionally dropped in favour of a cleaner navy/gold language;
+ * weakness signaling still happens via the "חולשה" pill + the row
+ * meta line, NOT the tile. Per-chapter icon diversity is preserved
+ * — <ChapterIcon> stays as-is and inherits `currentColor` from this
+ * tile's `color` style. The `MasteryState` type is kept because
+ * other render logic (CTA label, pct label color, meta string) still
+ * keys on it.
+ */
+const ICON_TILE_STYLE: CSSProperties = {
+  background: "var(--color-navy-ink)",
+  color: "var(--color-gold-deep)",
+  // Hairline navy border so the tile reads as a tile rather than a
+  // floating block at higher zooms / against the row's paper bg.
+  border: "1px solid var(--color-navy)",
 };
 
 /** Weakness threshold — accuracy < 60% AND non-skipped attempts >= 5. */
@@ -71,11 +67,17 @@ export function masteryState(row: MasteryRow): MasteryState {
   return "ok";
 }
 
+/**
+ * Slice 39 — bar fill collapses to a single brand color
+ * (`var(--color-gold)`) for every NON-NULL row. Null rows keep the
+ * track color so the bar still reads as empty (width = pct = 0%
+ * downstream anyway, but matching color makes the empty state
+ * unmistakable). The decider (null vs non-null) is the existing
+ * `row.accuracy === null` gate — pure pct logic preserved.
+ */
 function barColor(row: MasteryRow): string {
   if (row.accuracy === null) return "var(--bg-soft)";
-  if (isWeakness(row)) return "var(--color-status-weak)";
-  if (row.accuracy >= STRONG_ACCURACY_PCT) return "var(--color-status-strong)";
-  return "var(--color-status-ok)";
+  return "var(--color-gold)";
 }
 
 function MasteryBar({ pct, color }: { pct: number; color: string }) {
@@ -114,6 +116,7 @@ export function MasteryRowItem({
 }) {
   const state = masteryState(row);
   const weak = state === "weak";
+  const empty = state === "empty";
   const href = practiceSetupUrl({
     chapters: [row.chapterId],
     sourceCount: PRACTICE_DEEPLINK_DEFAULTS.sourceCount,
@@ -122,14 +125,12 @@ export function MasteryRowItem({
   });
   const numberPrefix = String(rowIndex + 1).padStart(2, "0");
   const pct = row.accuracy ?? 0;
-  const pctColor =
-    state === "weak"
-      ? "var(--color-status-weak)"
-      : state === "ok"
-        ? "var(--color-status-ok)"
-        : state === "strong"
-          ? "var(--color-status-strong)"
-          : "var(--color-ink-muted)";
+  // Slice 39 — percentage label uses ONE neutral brand color for all
+  // non-null rows (navy-ink) now that the bar fill is uniform gold.
+  // Null rows still render the em dash in ink-muted.
+  const pctColor = empty
+    ? "var(--color-ink-muted)"
+    : "var(--color-navy-ink)";
 
   const metaText =
     row.total === 0
@@ -159,7 +160,9 @@ export function MasteryRowItem({
     <Link
       href={href}
       aria-label={`תרגל את הפרק ${row.chapterTitle}`}
-      className="group block rounded-[14px] border transition-colors hover:bg-card hover:border-[var(--color-navy)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
+      /* Slice 39 — radius bumped 14 → 16 to match the navy/gold
+         card family rhythm. Padding + hover behavior unchanged. */
+      className="group block rounded-[16px] border transition-colors hover:bg-card hover:border-[var(--color-navy)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
       style={{
         padding: "10px 14px",
         background: "var(--color-paper)",
@@ -176,7 +179,7 @@ export function MasteryRowItem({
       >
         <span
           className="inline-flex items-center justify-center transition-transform group-hover:scale-105"
-          style={{ width: 38, height: 38, borderRadius: 10, ...ICON_TINT[state] }}
+          style={{ width: 38, height: 38, borderRadius: 10, ...ICON_TILE_STYLE }}
           aria-hidden
         >
           <ChapterIcon code={row.chapterCode} />
@@ -201,11 +204,15 @@ export function MasteryRowItem({
           >
             {row.chapterTitle}
             {weak ? (
+              /* Slice 39 — soft, low-contrast weakness pill. Drops
+                 the loud orange in favour of a gold-tint background
+                 + navy-ink text; presence-only signal that doesn't
+                 fight the rest of the row's navy/gold language. */
               <span
                 className="inline-flex items-center rounded-full px-2 py-0.5 text-[10.5px] font-semibold align-middle font-heebo"
                 style={{
-                  background: "var(--color-status-weak-bg)",
-                  color: "var(--color-status-weak)",
+                  background: "var(--color-gold-tint)",
+                  color: "var(--color-navy-ink)",
                   marginInlineStart: 8,
                 }}
               >
@@ -219,6 +226,10 @@ export function MasteryRowItem({
         </div>
         <MasteryBar pct={pct} color={barColor(row)} />
         {pctNode}
+        {/* Slice 39 — empty rows show "התחל ←" (start), practiced rows
+            show "תרגל ←" (practice more). The parent <Link>'s href is
+            unchanged in either case — the row stays navigable for
+            fresh users to start practicing the chapter. */}
         <span
           className={cn(
             buttonVariants({ variant: "ghost", size: "sm" }),
@@ -227,7 +238,7 @@ export function MasteryRowItem({
           style={{ color: "var(--color-navy)" }}
           aria-hidden
         >
-          תרגל ←
+          {empty ? "התחל ←" : "תרגל ←"}
         </span>
       </div>
 
@@ -238,7 +249,7 @@ export function MasteryRowItem({
         <div className="flex items-start gap-3">
           <span
             className="inline-flex shrink-0 items-center justify-center"
-            style={{ width: 38, height: 38, borderRadius: 10, ...ICON_TINT[state] }}
+            style={{ width: 38, height: 38, borderRadius: 10, ...ICON_TILE_STYLE }}
             aria-hidden
           >
             <ChapterIcon code={row.chapterCode} />
@@ -256,11 +267,12 @@ export function MasteryRowItem({
                 {row.chapterTitle}
               </h3>
               {weak ? (
+                /* Slice 39 — mobile mirror of the soft pill above. */
                 <span
                   className="inline-flex items-center rounded-full px-2 py-0.5 text-[10.5px] font-semibold font-heebo"
                   style={{
-                    background: "var(--color-status-weak-bg)",
-                    color: "var(--color-status-weak)",
+                    background: "var(--color-gold-tint)",
+                    color: "var(--color-navy-ink)",
                   }}
                 >
                   חולשה

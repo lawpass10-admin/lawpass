@@ -98,11 +98,17 @@ export function MasteryRowsClient({ rows }: { rows: MasteryRow[] }) {
               role="radio"
               aria-checked={selected}
               onClick={() => handleTrackChange(card.value)}
+              /* Slice 39 — filter tab restyle: harmonize size with
+                 the 16px "שליטה לפי פרק" header (13px instead of
+                 text-xs ≈ 12px) and swap the legacy amber treatment
+                 for the brand gold/navy language used by the rest of
+                 the dashboard. Active = gold tint + gold border +
+                 navy-ink text; inactive = neutral. Logic unchanged. */
               className={cn(
-                "rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors",
-                "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500/60",
+                "rounded-lg border px-3 py-1.5 text-[13px] font-heebo font-medium transition-colors",
+                "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-gold)]/60",
                 selected
-                  ? "border-amber-500 bg-amber-50 dark:bg-amber-950/20"
+                  ? "border-[var(--color-gold)] bg-[var(--color-gold-tint)] text-[var(--color-navy-ink)]"
                   : "border-border bg-card hover:bg-muted/40"
               )}
             >
