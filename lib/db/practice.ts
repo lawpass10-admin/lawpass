@@ -16,6 +16,10 @@ import {
   resolveChoicesForList,
   resolveLearning360ForList,
 } from "@/lib/db/learning360";
+import {
+  type NoteWriteIdentity,
+  resolveNoteIdentitiesForList,
+} from "@/lib/db/notes";
 import type { createClient } from "@/lib/supabase/server";
 
 // Mirrors the SSR client type used everywhere in Slice 1 + Phase 2.
@@ -165,6 +169,13 @@ export type PracticeReviewRow = {
   /** Pulled from attempts row. Null when no attempt was recorded. */
   attemptedAt: string | null;
   learning: Learning360Payload | null;
+  /** Slice 38 — `(question_type, source_question_group_id,
+   *  angle_position)` triple needed to attach a personal note to
+   *  this question via the existing by-identity write/load path.
+   *  Null when the row's question (or its parent for angles) is
+   *  archived / RLS-hidden — the review surface renders a
+   *  disabled pencil in that case. */
+  noteIdentity: NoteWriteIdentity | null;
 };
 
 export type SummaryAggregate = {
@@ -825,6 +836,10 @@ export async function getSummary(
     choicesByItem,
     learning360ByItem,
     textsByItem,
+    // Slice 38 — batch identity resolver for the row-level pencils.
+    // Runs in parallel with the existing text/choice/learning fetches
+    // — no extra round-trip in series.
+    noteIdentitiesByItem,
   ] = await Promise.all([
     supabase
       .from("attempts")
@@ -836,6 +851,7 @@ export async function getSummary(
     resolveChoicesForList(supabase, reviewItems),
     resolveLearning360ForList(supabase, reviewItems),
     resolveQuestionTextsForList(supabase, reviewItems),
+    resolveNoteIdentitiesForList(supabase, reviewItems),
   ]);
 
   const { data: attemptRows, error: attemptsError } = attemptsRes;
@@ -1040,6 +1056,11 @@ export async function getSummary(
       wasSkipped: att?.was_skipped ?? false,
       attemptedAt: att?.attempted_at ?? null,
       learning,
+      // Slice 38 — Map lookups return `undefined` for un-seeded keys
+      // (no row at all) and the explicit `null` we seeded for
+      // archived parents. Both branches collapse to `null` here so
+      // the call site has one falsy check.
+      noteIdentity: noteIdentitiesByItem.get(key) ?? null,
     };
   });
 

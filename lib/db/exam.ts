@@ -455,6 +455,10 @@ import {
   resolveChoicesForList,
   resolveLearning360ForList,
 } from "@/lib/db/learning360";
+import {
+  type NoteWriteIdentity,
+  resolveNoteIdentitiesForList,
+} from "@/lib/db/notes";
 
 export {
   ANGLE_SELECT_FULL,
@@ -790,6 +794,11 @@ export type ExamReviewRow = ExamByPosition & {
   questionText: string;
   choices: Choice[];
   learning: Learning360Payload | null;
+  /** Slice 38 — `(question_type, source_question_group_id,
+   *  angle_position)` triple needed to attach a personal note via
+   *  the existing by-identity write/load path. Null when the row's
+   *  question (or its parent for angles) is archived / RLS-hidden. */
+  noteIdentity: NoteWriteIdentity | null;
 };
 
 export type ExamResultsAggregate = {
@@ -1092,12 +1101,17 @@ export async function getExamResultsAggregate(
     textByItem,
     choicesByItem,
     learningByItem,
+    // Slice 38 — batch identity resolver for the row-level pencils.
+    // Runs in parallel with the other per-question resolvers — no
+    // extra round-trip in series.
+    noteIdentitiesByItem,
   ] = await Promise.all([
     getExamPositionStatuses(supabase, sessionId, session.question_list),
     resolveChapterCodesForList(supabase, session.question_list),
     resolveQuestionTextsForList(supabase, session.question_list),
     resolveChoicesForList(supabase, session.question_list),
     resolveLearning360ForList(supabase, session.question_list),
+    resolveNoteIdentitiesForList(supabase, session.question_list),
   ]);
 
   // Enrich the status array with excerpts + full question text +
@@ -1125,6 +1139,10 @@ export async function getExamResultsAggregate(
       questionText: text ?? "",
       choices,
       learning,
+      // Slice 38 — `noteIdentity` collapses both "no row in the
+      // resolver Map" (undefined) and the explicit "archived parent"
+      // (null) cases to `null` so the call site has one falsy check.
+      noteIdentity: noteIdentitiesByItem.get(key) ?? null,
     };
   });
 

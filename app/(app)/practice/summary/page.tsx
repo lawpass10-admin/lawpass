@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 
 import { requireActiveSubscription } from "@/lib/auth/subscription-gate";
+import { getNotedIdentities } from "@/lib/db/notes";
 import { getSummary } from "@/lib/db/practice";
 import { createClient } from "@/lib/supabase/server";
 import { practicePlayUrl } from "@/lib/urls";
@@ -37,7 +38,13 @@ export default async function PracticeSummaryPage({
   if (!sessionId || !UUID_RE.test(sessionId)) redirect("/practice");
 
   const supabase = await createClient();
-  const summary = await getSummary(supabase, user.id, sessionId);
+  // Slice 38 — fetch the user's notes-identity set alongside the
+  // summary aggregate so the row pencils can pre-fill their
+  // has-note indicator without a per-row round-trip.
+  const [summary, notedIdentities] = await Promise.all([
+    getSummary(supabase, user.id, sessionId),
+    getNotedIdentities(supabase, user.id),
+  ]);
   if (!summary) redirect("/practice");
 
   if (summary.session.status === "active") {
@@ -47,5 +54,7 @@ export default async function PracticeSummaryPage({
     redirect("/practice");
   }
 
-  return <PracticeSummary summary={summary} />;
+  return (
+    <PracticeSummary summary={summary} notedIdentities={notedIdentities} />
+  );
 }

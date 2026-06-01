@@ -13,15 +13,20 @@ import { useState } from "react";
 
 import { ChoiceAnalysisRow } from "@/app/(app)/_components/choice-analysis-row";
 import { NoCopyText } from "@/app/(app)/_components/no-copy-text";
+import { RowNotePencil } from "@/app/(app)/_components/row-note-pencil";
 import { Learning360Panel } from "@/app/(app)/practice/play/_components/learning-360-panel";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { notedIdentityKey } from "@/lib/db/notes";
 import type { PracticeReviewRow, SummaryAggregate } from "@/lib/db/practice";
 import { practiceSetupUrl } from "@/lib/urls";
 import { cn } from "@/lib/utils";
 
 type PracticeSummaryProps = {
   summary: SummaryAggregate;
+  /** Slice 38 — set of identity keys for which the user already has
+   *  a note. Drives the pencil's filled state on each row. */
+  notedIdentities: Set<string>;
 };
 
 function pct(numerator: number, denominator: number): number {
@@ -65,7 +70,10 @@ function deriveStatusKey(row: PracticeReviewRow): keyof typeof REVIEW_STATUS_COP
 
 const REVIEW_INITIAL_ROWS = 5;
 
-export function PracticeSummary({ summary }: PracticeSummaryProps) {
+export function PracticeSummary({
+  summary,
+  notedIdentities,
+}: PracticeSummaryProps) {
   // Slice 18 — only the aggregate totals are surfaced now. The
   // SummaryAggregate type still carries sourceAnswered / sourceCorrect
   // / angleAnswered / angleCorrect (lib/db/practice.ts); we just stop
@@ -346,7 +354,12 @@ export function PracticeSummary({ summary }: PracticeSummaryProps) {
                       />
                     )}
                   </button>
-                  {isOpen ? <PracticeQuestionExpansion row={row} /> : null}
+                  {isOpen ? (
+                    <PracticeQuestionExpansion
+                      row={row}
+                      notedIdentities={notedIdentities}
+                    />
+                  ) : null}
                 </li>
               );
             })}
@@ -407,10 +420,25 @@ export function PracticeSummary({ summary }: PracticeSummaryProps) {
  * `row.learning.correctChoice` are both present (archived rows skip
  * the toggle entirely).
  */
-function PracticeQuestionExpansion({ row }: { row: PracticeReviewRow }) {
+function PracticeQuestionExpansion({
+  row,
+  notedIdentities,
+}: {
+  row: PracticeReviewRow;
+  notedIdentities: Set<string>;
+}) {
   const [panel360Open, setPanel360Open] = useState(false);
   const canShowPanel =
     row.learning !== null && row.learning.correctChoice !== null;
+
+  // Slice 38 — note pencil. Mirrors the exam-results layout: 360°
+  // toggle on the visual-start side, pencil on the visual-end side
+  // of a flex justify-between row. Disabled when the row has no
+  // resolvable identity (archived parent for an angle).
+  const noteIdentity = row.noteIdentity;
+  const hasNote =
+    noteIdentity !== null && notedIdentities.has(notedIdentityKey(noteIdentity));
+  const noteContextLabel = `שאלה ${row.position + 1}`;
 
   return (
     <div className="border-t border-border/70 bg-muted/20 px-5 py-4">
@@ -439,8 +467,10 @@ function PracticeQuestionExpansion({ row }: { row: PracticeReviewRow }) {
           אין נתוני בחירות זמינים לשאלה זו.
         </p>
       )}
-      {canShowPanel ? (
-        <div className="mt-4">
+      {/* Slice 38 — bottom action row: 360° toggle (when available)
+          + note pencil. Same pattern as exam-results. */}
+      <div className="mt-4 flex items-center justify-between gap-3">
+        {canShowPanel ? (
           <Button
             type="button"
             variant="secondary"
@@ -460,14 +490,35 @@ function PracticeQuestionExpansion({ row }: { row: PracticeReviewRow }) {
               </>
             )}
           </Button>
-          {panel360Open ? (
-            <div className="mt-3">
-              <Learning360Panel
-                question={{ ...row.learning!, choices: row.choices }}
-                correctChoice={row.learning!.correctChoice!}
-              />
-            </div>
-          ) : null}
+        ) : (
+          <span aria-hidden />
+        )}
+        <RowNotePencil
+          identity={
+            noteIdentity
+              ? {
+                  questionType: noteIdentity.question_type,
+                  sourceQuestionGroupId:
+                    noteIdentity.source_question_group_id,
+                  anglePosition: noteIdentity.angle_position,
+                }
+              : {
+                  questionType: "source",
+                  sourceQuestionGroupId: "",
+                  anglePosition: null,
+                }
+          }
+          initiallyHasNote={hasNote}
+          disabled={noteIdentity === null}
+          questionContextLabel={noteContextLabel}
+        />
+      </div>
+      {canShowPanel && panel360Open ? (
+        <div className="mt-3">
+          <Learning360Panel
+            question={{ ...row.learning!, choices: row.choices }}
+            correctChoice={row.learning!.correctChoice!}
+          />
         </div>
       ) : null}
     </div>

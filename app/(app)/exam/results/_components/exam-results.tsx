@@ -13,6 +13,8 @@ import { toast } from "sonner";
 
 import { ChoiceAnalysisRow } from "@/app/(app)/_components/choice-analysis-row";
 import { NoCopyText } from "@/app/(app)/_components/no-copy-text";
+import { RowNotePencil } from "@/app/(app)/_components/row-note-pencil";
+import { notedIdentityKey } from "@/lib/db/notes";
 import { createExamSession } from "@/app/(app)/exam/_actions";
 import { Learning360Panel } from "@/app/(app)/practice/play/_components/learning-360-panel";
 import { Button } from "@/components/ui/button";
@@ -30,6 +32,10 @@ const REVIEW_INITIAL_ROWS = 5;
 
 type Props = {
   aggregate: ExamResultsAggregate;
+  /** Slice 38 — set of identity keys (`source:${id}` /
+   *  `angle:${id}:${pos}`) for which the user already has a note.
+   *  Drives the pencil's filled state. */
+  notedIdentities: Set<string>;
 };
 
 const STATUS_COPY: Record<string, { label: string; classes: string }> = {
@@ -81,7 +87,7 @@ const HERO_EYEBROW_BY_MODE: Record<ExamMode, string> = {
   combined: "סימולציה משולבת",
 };
 
-export function ExamResults({ aggregate }: Props) {
+export function ExamResults({ aggregate, notedIdentities }: Props) {
   const { session, byPosition, byChapter } = aggregate;
   const score = session.final_score ?? 0;
   const total = EXAM_TOTAL_QUESTIONS;
@@ -332,7 +338,12 @@ export function ExamResults({ aggregate }: Props) {
                     />
                   )}
                 </button>
-                {isOpen ? <QuestionExpansion row={row} /> : null}
+                {isOpen ? (
+                  <QuestionExpansion
+                    row={row}
+                    notedIdentities={notedIdentities}
+                  />
+                ) : null}
               </li>
             );
           })}
@@ -411,7 +422,13 @@ export function ExamResults({ aggregate }: Props) {
  * payload OR couldn't derive a correctChoice — in either case the
  * choice list above still renders, the 360° panel just sits out.
  */
-function QuestionExpansion({ row }: { row: ExamReviewRow }) {
+function QuestionExpansion({
+  row,
+  notedIdentities,
+}: {
+  row: ExamReviewRow;
+  notedIdentities: Set<string>;
+}) {
   // Slice 17 polish — the 360° panel is collapsed by default behind a
   // toggle button, mirroring the practice-page pattern at
   // practice-question.tsx:455 (panel360Expanded + ChevronDown/Up).
@@ -421,6 +438,15 @@ function QuestionExpansion({ row }: { row: ExamReviewRow }) {
   const [panel360Open, setPanel360Open] = useState(false);
   const canShowPanel =
     row.learning !== null && row.learning.correctChoice !== null;
+
+  // Slice 38 — note pencil mounts alongside the 360° toggle. When the
+  // row has no resolvable identity (archived parent), `RowNotePencil`
+  // still renders but in disabled state — gives the user a consistent
+  // affordance without misleading interaction.
+  const noteIdentity = row.noteIdentity;
+  const hasNote =
+    noteIdentity !== null && notedIdentities.has(notedIdentityKey(noteIdentity));
+  const noteContextLabel = `שאלה ${row.position + 1}`;
 
   return (
     <div className="border-t border-border/70 bg-muted/20 px-5 py-4">
@@ -449,8 +475,16 @@ function QuestionExpansion({ row }: { row: ExamReviewRow }) {
           אין נתוני בחירות זמינים לשאלה זו.
         </p>
       )}
-      {canShowPanel ? (
-        <div className="mt-4">
+      {/* Slice 38 — bottom action row: 360° toggle (when available)
+          on the visual-start side, the note pencil on the visual-end
+          side. The pencil renders even when the 360° panel is not
+          available so the note affordance is still reachable on
+          archived/no-learning rows; it just lands without a
+          companion toggle. The flex container's items-center +
+          justify-between ensures stable alignment whether or not
+          the 360° button is present. */}
+      <div className="mt-4 flex items-center justify-between gap-3">
+        {canShowPanel ? (
           <Button
             type="button"
             variant="secondary"
@@ -470,14 +504,42 @@ function QuestionExpansion({ row }: { row: ExamReviewRow }) {
               </>
             )}
           </Button>
-          {panel360Open ? (
-            <div className="mt-3">
-              <Learning360Panel
-                question={{ ...row.learning!, choices: row.choices }}
-                correctChoice={row.learning!.correctChoice!}
-              />
-            </div>
-          ) : null}
+        ) : (
+          /* Empty start-side spacer so the pencil stays end-aligned
+             via justify-between even when the 360° toggle hides. */
+          <span aria-hidden />
+        )}
+        <RowNotePencil
+          /* Convert the snake_case DB triple to the camelCase shape
+             RowNotePencil expects (NoteIdentityPayload). When
+             noteIdentity is null (archived) the pencil renders
+             disabled — the dummy identity stays out of the click
+             path because RowNotePencil short-circuits on `disabled`. */
+          identity={
+            noteIdentity
+              ? {
+                  questionType: noteIdentity.question_type,
+                  sourceQuestionGroupId:
+                    noteIdentity.source_question_group_id,
+                  anglePosition: noteIdentity.angle_position,
+                }
+              : {
+                  questionType: "source",
+                  sourceQuestionGroupId: "",
+                  anglePosition: null,
+                }
+          }
+          initiallyHasNote={hasNote}
+          disabled={noteIdentity === null}
+          questionContextLabel={noteContextLabel}
+        />
+      </div>
+      {canShowPanel && panel360Open ? (
+        <div className="mt-3">
+          <Learning360Panel
+            question={{ ...row.learning!, choices: row.choices }}
+            correctChoice={row.learning!.correctChoice!}
+          />
         </div>
       ) : null}
     </div>

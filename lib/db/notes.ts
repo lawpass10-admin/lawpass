@@ -25,6 +25,7 @@
  * UI gate.
  */
 
+import type { Learning360Item } from "@/lib/db/learning360";
 import type { ResolvedQuestion } from "@/lib/db/practice";
 import type { createClient } from "@/lib/supabase/server";
 
@@ -654,4 +655,125 @@ export async function getNoteForPosition(
     created_at: row.created_at as string,
     updated_at: row.updated_at as string,
   };
+}
+
+// =============================================================================
+// Slice 38 — batch identity resolver for review surfaces
+// =============================================================================
+
+/**
+ * Slice 38 — resolve the `NoteWriteIdentity` triple for every item in
+ * a review surface's `question_list`. Returns a Map keyed
+ * `"${question_type}:${question_id}"`, with `null` for rows whose
+ * parent source is archived / RLS-hidden / missing (the call site
+ * renders a disabled pencil — same rule as the bookmarks/mistakes
+ * list pages in Slice 27).
+ *
+ * Construction MUST stay byte-for-byte identical to `deriveNoteIdentity`
+ * (line ~562 above):
+ *
+ *   SOURCE: { question_type: "source",
+ *             source_question_group_id: source_questions.question_group_id,
+ *             angle_position: null }
+ *
+ *   ANGLE:  { question_type: "angle",
+ *             source_question_group_id: parent source_questions.question_group_id,
+ *             angle_position: angle_questions.display_order }
+ *
+ * The angle SELECT mirrors `ANGLE_PREVIEW_SELECT` /
+ * `mapAnglePreview` from `lib/db/practice.ts` (Slice 27) — same
+ * `source_question:source_questions!angle_questions_source_question_id_fkey(question_group_id)`
+ * join + `pickOne` parent-unwrap. Where Slice 27 surfaces the parent
+ * group + display_order onto a UI preview type, we surface them onto
+ * a notes identity here.
+ *
+ * Used in parallel inside `getSummary` (practice) and
+ * `getExamResultsAggregate` (exam) so the review surfaces can mount
+ * the existing `<RowNotePencil>` without extra round-trips per row.
+ */
+export async function resolveNoteIdentitiesForList(
+  supabase: SupabaseSsrClient,
+  items: Learning360Item[]
+): Promise<Map<string, NoteWriteIdentity | null>> {
+  const sourceIds: string[] = [];
+  const angleIds: string[] = [];
+  for (const it of items) {
+    if (it.question_type === "source") sourceIds.push(it.question_id);
+    else angleIds.push(it.question_id);
+  }
+
+  const map = new Map<string, NoteWriteIdentity | null>();
+  const [srcRes, angRes] = await Promise.all([
+    sourceIds.length > 0
+      ? supabase
+          .from("source_questions")
+          .select("id, question_group_id")
+          .in("id", sourceIds)
+      : Promise.resolve({ data: null as unknown }),
+    angleIds.length > 0
+      ? supabase
+          .from("angle_questions")
+          .select(
+            "id, display_order, source_question:source_questions!angle_questions_source_question_id_fkey(question_group_id)"
+          )
+          .in("id", angleIds)
+      : Promise.resolve({ data: null as unknown }),
+  ]);
+
+  // SOURCE → seed `"source:${id}"` keys. Rows missing from the SELECT
+  // (archived / RLS-hidden) stay un-seeded → callers get `undefined`
+  // and treat the row as having no identity, same as `null`.
+  for (const row of (srcRes.data ?? []) as Array<{
+    id: string;
+    question_group_id: string | null;
+  }>) {
+    if (!row.question_group_id) {
+      map.set(`source:${row.id}`, null);
+      continue;
+    }
+    map.set(`source:${row.id}`, {
+      question_type: "source",
+      source_question_group_id: row.question_group_id,
+      angle_position: null,
+    });
+  }
+
+  // ANGLE → seed `"angle:${id}"` keys. The Postgres-REST join
+  // returns either a single object or a one-element array depending
+  // on the FK shape; mirror the Slice-27 `pickOne` semantics inline
+  // so this file stays self-contained.
+  type AngleParent = { question_group_id: string | null };
+  type AngleRow = {
+    id: string;
+    display_order: number | null;
+    source_question: AngleParent | AngleParent[] | null;
+  };
+  for (const row of (angRes.data ?? []) as AngleRow[]) {
+    const parent = Array.isArray(row.source_question)
+      ? (row.source_question[0] ?? null)
+      : row.source_question;
+    const parentGroupId = parent?.question_group_id ?? null;
+    const position = row.display_order;
+    // Defensive: angle without resolvable parent OR with out-of-range
+    // display_order → null identity. Mirrors `deriveNoteIdentity`'s
+    // 1..5 integer guard at line ~574.
+    if (
+      !parentGroupId ||
+      position === null ||
+      !Number.isFinite(position) ||
+      !Number.isInteger(position) ||
+      position < 1 ||
+      position > 5
+    ) {
+      map.set(`angle:${row.id}`, null);
+      continue;
+    }
+    map.set(`angle:${row.id}`, {
+      question_type: "angle",
+      source_question_group_id: parentGroupId,
+      angle_position: position,
+    });
+  }
+
+  return map;
 }

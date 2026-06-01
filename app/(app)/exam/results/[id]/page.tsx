@@ -5,6 +5,7 @@ import {
   getExamResultsAggregate,
   getExamSessionById,
 } from "@/lib/db/exam";
+import { getNotedIdentities } from "@/lib/db/notes";
 import { createClient } from "@/lib/supabase/server";
 import { examPlayUrl } from "@/lib/urls";
 
@@ -45,8 +46,15 @@ export default async function ExamResultsPage({
     redirect("/exam");
   }
 
-  const aggregate = await getExamResultsAggregate(supabase, user.id, sessionId);
+  // Slice 38 — run the aggregate fetch alongside the user's full
+  // notes-identity set so the pencil indicator can pre-fill without a
+  // per-row round-trip. `getNotedIdentities` reads at most a tens-of-
+  // rows table for this user.
+  const [aggregate, notedIdentities] = await Promise.all([
+    getExamResultsAggregate(supabase, user.id, sessionId),
+    getNotedIdentities(supabase, user.id),
+  ]);
   if (!aggregate) redirect("/exam");
 
-  return <ExamResults aggregate={aggregate} />;
+  return <ExamResults aggregate={aggregate} notedIdentities={notedIdentities} />;
 }
