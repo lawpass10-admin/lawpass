@@ -242,8 +242,16 @@ function ResumeRegion({ lastSession }: { lastSession: HeroLastSession }) {
     <Link
       href="/practice"
       className={cn(
-        "btn-gold inline-flex shrink-0 items-center gap-2 self-start rounded-full px-5 py-2 font-heebo font-semibold whitespace-nowrap",
-        "text-sm focus-visible:outline-none sm:self-auto"
+        // Slice 36 — mobile-only stretch. `w-full justify-center` makes
+        // the gold CTA fill the blue container's content width on
+        // mobile with its icon + label optically centered; `sm:w-auto
+        // sm:justify-start` reverts to the original content-sized,
+        // start-aligned layout at sm+. `self-start` was dropped — it
+        // forced cross-axis content sizing which would fight `w-full`.
+        // At sm+ the parent flex flips to `flex-row sm:items-center
+        // sm:justify-between`, so this button anchors via the parent.
+        "btn-gold inline-flex shrink-0 items-center gap-2 w-full justify-center sm:w-auto sm:justify-start rounded-full px-5 py-2 font-heebo font-semibold whitespace-nowrap",
+        "text-sm focus-visible:outline-none"
       )}
     >
       <Play className="size-4 fill-current" aria-hidden />

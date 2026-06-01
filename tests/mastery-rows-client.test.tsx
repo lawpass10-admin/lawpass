@@ -77,24 +77,36 @@ function getVisibleTitles(): string[] {
     .map((el) => el.getAttribute("aria-label") ?? "");
 }
 
+// Slice 36 — the implementation renders TWO toggle buttons (mobile +
+// desktop) with `md:hidden` / `hidden md:inline-flex` so the right
+// one is visible per breakpoint. jsdom can't apply Tailwind's `md:`
+// utilities, so both live in the DOM. To preserve the existing
+// desktop-effective assertions at full strength, we target the
+// desktop toggle by `data-testid` rather than the original ambiguous
+// `getByRole("button", { name: /הצג עוד/ })`. Mobile toggle behaviour
+// is verified visually post-merge — out of scope for jsdom.
+const DESKTOP_TOGGLE = "mastery-toggle-desktop";
+
+function clickDesktopToggle(): void {
+  fireEvent.click(screen.getByTestId(DESKTOP_TOGGLE));
+}
+
 describe("MasteryRowsClient", () => {
   afterEach(() => cleanup());
 
   it("renders the first CAP rows by default and shows the 'הצג עוד' affordance", () => {
     render(<MasteryRowsClient rows={ROWS} />);
     expect(screen.getAllByRole("link").length).toBe(CAP);
-    expect(
-      screen.getByRole("button", { name: /הצג עוד/ })
-    ).toBeInTheDocument();
+    expect(screen.getByTestId(DESKTOP_TOGGLE)).toBeInTheDocument();
   });
 
   it("'הצג עוד' expands to the full set; 'הצג פחות' collapses back to CAP", () => {
     render(<MasteryRowsClient rows={ROWS} />);
 
-    fireEvent.click(screen.getByRole("button", { name: /הצג עוד/ }));
+    clickDesktopToggle();
     expect(screen.getAllByRole("link").length).toBe(TOTAL_ROWS);
 
-    fireEvent.click(screen.getByRole("button", { name: "הצג פחות" }));
+    clickDesktopToggle();
     expect(screen.getAllByRole("link").length).toBe(CAP);
   });
 
@@ -102,11 +114,11 @@ describe("MasteryRowsClient", () => {
     render(<MasteryRowsClient rows={ROWS} />);
 
     fireEvent.click(screen.getByRole("radio", { name: "דיוני" }));
-    // 6 procedural rows — under CAP, so the show-more button doesn't appear.
+    // 6 procedural rows — under CAP_DESKTOP, so the desktop show-more
+    // doesn't appear. (Mobile cap is 3, so the mobile-only toggle DOES
+    // render in the DOM — that's intentional and not tested here.)
     expect(screen.getAllByRole("link").length).toBe(PROCEDURAL_COUNT);
-    expect(
-      screen.queryByRole("button", { name: /הצג/ })
-    ).not.toBeInTheDocument();
+    expect(screen.queryByTestId(DESKTOP_TOGGLE)).not.toBeInTheDocument();
 
     for (const aria of getVisibleTitles()) {
       expect(aria).toContain("פרק דיוני");
@@ -119,9 +131,9 @@ describe("MasteryRowsClient", () => {
 
     fireEvent.click(screen.getByRole("radio", { name: "מהותי" }));
     expect(screen.getAllByRole("link").length).toBe(CAP);
-    expect(screen.getByRole("button", { name: /הצג עוד/ })).toBeInTheDocument();
+    expect(screen.getByTestId(DESKTOP_TOGGLE)).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: /הצג עוד/ }));
+    clickDesktopToggle();
     expect(screen.getAllByRole("link").length).toBe(SUBSTANTIVE_COUNT);
     for (const aria of getVisibleTitles()) {
       expect(aria).toContain("פרק מהותי");
@@ -133,24 +145,24 @@ describe("MasteryRowsClient", () => {
     render(<MasteryRowsClient rows={ROWS} />);
 
     // Expand on the default 'all' filter first.
-    fireEvent.click(screen.getByRole("button", { name: /הצג עוד/ }));
+    clickDesktopToggle();
     expect(screen.getAllByRole("link").length).toBe(TOTAL_ROWS);
 
     // Switch filter to a set that still overflows CAP — should collapse
-    // back to CAP and show 'הצג עוד' again.
+    // back to CAP and show the desktop toggle again.
     fireEvent.click(screen.getByRole("radio", { name: "מהותי" }));
     expect(screen.getAllByRole("link").length).toBe(CAP);
-    expect(screen.getByRole("button", { name: /הצג עוד/ })).toBeInTheDocument();
+    expect(screen.getByTestId(DESKTOP_TOGGLE)).toBeInTheDocument();
   });
 
   it("hides the show-more button entirely when the filtered set fits the cap", () => {
     render(<MasteryRowsClient rows={ROWS} />);
 
-    // Procedural-only (6 rows) is under CAP → no button.
+    // Procedural-only (6 rows) is under CAP_DESKTOP → no desktop toggle.
+    // The mobile toggle still renders in the DOM (6 > CAP_MOBILE=3) —
+    // that's intentional and not asserted here.
     fireEvent.click(screen.getByRole("radio", { name: "דיוני" }));
-    expect(
-      screen.queryByRole("button", { name: /הצג/ })
-    ).not.toBeInTheDocument();
+    expect(screen.queryByTestId(DESKTOP_TOGGLE)).not.toBeInTheDocument();
   });
 
   it("renders the empty-state hint when the current filter has no rows", () => {

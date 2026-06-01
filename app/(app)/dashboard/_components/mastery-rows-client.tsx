@@ -15,10 +15,22 @@ import { cn } from "@/lib/utils";
  * State:
  *   - `track`   : 'all' | 'procedural' | 'substantive'. Drives the
  *                 segmented filter at the top of the row list.
- *   - `showAll` : when false (default), only the first
- *                 INITIAL_VISIBLE_ROWS of the FILTERED set render; when
- *                 true, the whole filtered set renders. Switching the
- *                 filter resets this back to false (collapsed view).
+ *   - `showAll` : when false (default), only the first CAP_DESKTOP
+ *                 rows of the FILTERED set are *in the DOM* (the first
+ *                 CAP_MOBILE of which are visible on mobile, the rest
+ *                 of those 11 are `hidden md:block`); when true, the
+ *                 whole filtered set renders. Switching the filter
+ *                 resets this back to false (collapsed view).
+ *
+ * Slice 32 — desktop cap raised 6 → 11 so the mastery panel roughly
+ *   fills the right-column height.
+ * Slice 36 — mobile cap split out. On mobile only 3 rows show by
+ *   default; desktop continues to show 11. Implementation is
+ *   SSR-safe: the first 11 rows are always rendered, and the rows at
+ *   indices 3–10 carry `hidden md:block` when collapsed so mobile
+ *   hides them via pure CSS. Two toggle buttons (mobile + desktop)
+ *   share one `setShowAll` state and label their counts from the
+ *   right per-breakpoint cap.
  *
  * Visuals mirror the QA widget's 3-card radiogroup picker
  * (app/(app)/_components/qa-floating-widget.tsx REPORT_TYPE_CARDS) +
@@ -26,11 +38,8 @@ import { cn } from "@/lib/utils";
  * selected option, neutral border on the rest.
  */
 
-// Slice 32 — raised from 6 → 11 so the mastery panel roughly fills
-// the right-column height (which now stacks trend chart + activity
-// box + streak card). "הצג עוד" still appears when the filtered set
-// exceeds this default; the toggle behavior is unchanged. Tunable.
-const INITIAL_VISIBLE_ROWS = 11;
+const CAP_MOBILE = 3;
+const CAP_DESKTOP = 11;
 
 type Track = "all" | "procedural" | "substantive";
 
@@ -44,13 +53,22 @@ export function MasteryRowsClient({ rows }: { rows: MasteryRow[] }) {
   const [track, setTrack] = useState<Track>("all");
   const [showAll, setShowAll] = useState(false);
 
-  // Filter first, THEN slice. This is load-bearing: the 6-row cap and
-  // the show-more affordance must reflect the CURRENT filtered set,
-  // not the full 16.
+  // Filter first, THEN slice. This is load-bearing: the cap and the
+  // show-more affordance must reflect the CURRENT filtered set, not
+  // the full 16.
   const filtered =
     track === "all" ? rows : rows.filter((r) => r.track === track);
-  const visible = showAll ? filtered : filtered.slice(0, INITIAL_VISIBLE_ROWS);
-  const hasOverflow = filtered.length > INITIAL_VISIBLE_ROWS;
+
+  // Slice 36 — always render the first CAP_DESKTOP rows. Rows past
+  // CAP_DESKTOP (the "true overflow") only enter the DOM when the
+  // user expands via either toggle. Within the first CAP_DESKTOP,
+  // mobile uses CSS to hide indices CAP_MOBILE..CAP_DESKTOP-1 unless
+  // expanded.
+  const visibleHead = filtered.slice(0, CAP_DESKTOP);
+  const overflowTail = showAll ? filtered.slice(CAP_DESKTOP) : [];
+
+  const hasMobileOverflow = filtered.length > CAP_MOBILE;
+  const hasDesktopOverflow = filtered.length > CAP_DESKTOP;
 
   function handleTrackChange(next: Track): void {
     if (next === track) return;
@@ -94,7 +112,7 @@ export function MasteryRowsClient({ rows }: { rows: MasteryRow[] }) {
         })}
       </div>
 
-      {visible.length === 0 ? (
+      {visibleHead.length === 0 ? (
         <div className="rounded-[14px] border border-dashed border-border bg-card/40 px-6 py-8 text-center">
           <p className="text-sm text-muted-foreground">
             אין פרקים להצגה בסינון הנוכחי.
@@ -102,21 +120,52 @@ export function MasteryRowsClient({ rows }: { rows: MasteryRow[] }) {
         </div>
       ) : (
         <div className="flex flex-col gap-2">
-          {visible.map((row, idx) => (
-            <MasteryRowItem key={row.chapterId} row={row} rowIndex={idx} />
+          {visibleHead.map((row, idx) => {
+            // Slice 36 — rows at idx 0..CAP_MOBILE-1 always visible.
+            // Rows at idx CAP_MOBILE..CAP_DESKTOP-1 hide on mobile
+            // when collapsed (`hidden md:block`). When `showAll` is
+            // true, all 11 head rows render with no responsive hide.
+            const hideClass =
+              !showAll && idx >= CAP_MOBILE && idx < CAP_DESKTOP
+                ? "hidden md:block"
+                : "";
+            return (
+              <div key={row.chapterId} className={hideClass}>
+                <MasteryRowItem row={row} rowIndex={idx} />
+              </div>
+            );
+          })}
+          {/* Tail rows past CAP_DESKTOP — only rendered when expanded.
+              No responsive hide on these (they belong to the toggle
+              on all viewports). */}
+          {overflowTail.map((row, i) => (
+            <MasteryRowItem
+              key={row.chapterId}
+              row={row}
+              rowIndex={CAP_DESKTOP + i}
+            />
           ))}
         </div>
       )}
 
-      {/* Show-more / show-less toggle. Only appears when the filtered
-          set actually has more than INITIAL_VISIBLE_ROWS rows —
-          otherwise the toggle would be a no-op. */}
-      {hasOverflow ? (
+      {/* Slice 36 — two toggle buttons, one per breakpoint. Both wired
+          to the same `setShowAll(v => !v)` so a click in either flips
+          the shared state and the next render shows the right rows
+          for that viewport. Each gated by its own overflow predicate
+          + its own Tailwind visibility (md:hidden / hidden md:inline-flex). */}
+      {/* `data-testid` lets the jsdom suite disambiguate the two
+          buttons without weakening any assertion — jsdom can't apply
+          Tailwind's md: utilities, so both buttons live in the DOM
+          and getByRole would otherwise match both. The desktop
+          variant is what the existing tests target. */}
+      {hasMobileOverflow ? (
         <button
           type="button"
           onClick={() => setShowAll((v) => !v)}
           aria-expanded={showAll}
+          data-testid="mastery-toggle-mobile"
           className={cn(
+            "md:hidden",
             "flex w-full items-center justify-center gap-1.5 rounded-[14px] border border-dashed border-border px-5 py-2.5 text-sm font-medium text-primary/80 transition-colors",
             "hover:bg-muted/40 hover:text-primary",
             "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
@@ -124,7 +173,25 @@ export function MasteryRowsClient({ rows }: { rows: MasteryRow[] }) {
         >
           {showAll
             ? "הצג פחות"
-            : `הצג עוד (${filtered.length - INITIAL_VISIBLE_ROWS})`}
+            : `הצג עוד (${filtered.length - CAP_MOBILE})`}
+        </button>
+      ) : null}
+      {hasDesktopOverflow ? (
+        <button
+          type="button"
+          onClick={() => setShowAll((v) => !v)}
+          aria-expanded={showAll}
+          data-testid="mastery-toggle-desktop"
+          className={cn(
+            "hidden md:inline-flex",
+            "w-full items-center justify-center gap-1.5 rounded-[14px] border border-dashed border-border px-5 py-2.5 text-sm font-medium text-primary/80 transition-colors",
+            "hover:bg-muted/40 hover:text-primary",
+            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
+          )}
+        >
+          {showAll
+            ? "הצג פחות"
+            : `הצג עוד (${filtered.length - CAP_DESKTOP})`}
         </button>
       ) : null}
     </div>

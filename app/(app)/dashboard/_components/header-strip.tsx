@@ -141,7 +141,16 @@ export function HeaderStrip({ fullName, examDate, daysToExam }: Props) {
          Both surfaces stay reachable from the sidebar; promoting the
          exam path here gives the dashboard a clear "go practice the
          real thing" affordance opposite the lower-pressure browse CTA. */}
-      <div className="flex shrink-0 gap-2.5">
+      {/* Slice 36 — mobile alignment fix. On mobile the cluster is a
+          full-width flex row (column-flex parent → cross-axis stretch),
+          so `justify-between` pushes the two buttons to opposite ends:
+          "תרגול חופשי" (DOM 1) → visual right edge; "התחל סימולציה"
+          (DOM 2) → visual left edge → aligned with the blue hero
+          container's left edge below. On desktop the parent flex flips
+          to row + items-end, the cluster becomes content-sized, so
+          `justify-between` has no visible effect (the two buttons sit
+          gap-2.5 apart as before). */}
+      <div className="flex shrink-0 gap-2.5 justify-between">
         <Link
           href="/practice"
           className={cn(
