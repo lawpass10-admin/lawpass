@@ -10,7 +10,7 @@ import { Button, buttonVariants } from "@/components/ui/button";
 import type { ExamMode } from "@/lib/exam/clusters";
 import { cn } from "@/lib/utils";
 
-import { IntroContent } from "./intro-content";
+import { IntroHero, IntroStatsAndBox } from "./intro-content";
 
 /**
  * Fresh-user entry point at `/exam`. Renders the mode picker, the shared
@@ -66,10 +66,17 @@ export function ExamIntro() {
 
   return (
     <>
-      <div className="mx-auto w-full max-w-3xl space-y-4 pt-6">
+      {/* Slice 33 — vertical order is hero → mode picker → stats+box →
+          footer buttons. The picker was previously above the hero;
+          PM wanted it to sit just under the title so the user reads
+          "40 שאלות. 100 דקות." first, then chooses the mode against
+          that frame, then sees the KPI breakdown. Picker keeps its
+          radiogroup semantics and grid-cols-1 sm:grid-cols-3 layout. */}
+      <IntroHero mode={mode} />
+      <div className="mx-auto w-full max-w-3xl space-y-4">
         <ModePicker mode={mode} onChange={setMode} disabled={submitting} />
       </div>
-      <IntroContent mode={mode} />
+      <IntroStatsAndBox />
       <div className="mx-auto flex w-full max-w-3xl flex-col-reverse gap-2 pb-10 sm:flex-row sm:justify-end">
         <Link
           href="/dashboard"

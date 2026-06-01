@@ -17,8 +17,14 @@ import type { ExamMode } from "@/lib/exam/clusters";
  * itself stays in <ExamIntro> — it's the Slice 9 feature, not a
  * cluster surface.
  *
- * No client interaction lives here, so the component is server-safe.
- * The matching client components ("use client") import it and append
+ * Slice 33 — `<IntroContent>` was split into `<IntroHero>` +
+ * `<IntroStatsAndBox>` so `<ExamIntro>` can slot the ModePicker BETWEEN
+ * the two halves (hero → picker → stats+box). `<IntroContent>` stays
+ * exported as a thin wrapper that composes both halves in sequence,
+ * so `<ResumePrompt>` keeps using the same single-element API.
+ *
+ * No client interaction lives here, so the components are server-safe.
+ * The matching client components ("use client") import them and append
  * their own footer.
  *
  * Visual mapping from the PM-supplied prototype:
@@ -28,12 +34,18 @@ import type { ExamMode } from "@/lib/exam/clusters";
  *   - `--bg-warm`     → bg-amber-50 + border-amber-200/60
  *   - `--gold-soft`   → border-amber-300/60
  */
-export function IntroContent({ mode = "procedural" }: { mode?: ExamMode } = {}) {
+
+/**
+ * Hero block — gold-clock icon, eyebrow, h1, subline. Sized
+ * `max-w-3xl` and centered to match the original IntroContent
+ * envelope. Slice 33 split.
+ */
+export function IntroHero({ mode = "procedural" }: { mode?: ExamMode } = {}) {
   const heroEyebrow = HERO_EYEBROW_BY_MODE[mode];
   const heroSubline = HERO_SUBLINE_BY_MODE[mode];
 
   return (
-    <div className="mx-auto w-full max-w-3xl space-y-8 py-6">
+    <div className="mx-auto w-full max-w-3xl pt-6">
       <header className="space-y-3 text-center">
         {/* Hero square: dark/ink background, gold clock icon */}
         <div className="mx-auto flex h-18 w-18 items-center justify-center rounded-2xl bg-primary text-amber-400">
@@ -49,7 +61,18 @@ export function IntroContent({ mode = "procedural" }: { mode?: ExamMode } = {}) 
           {heroSubline}
         </p>
       </header>
+    </div>
+  );
+}
 
+/**
+ * Stats + info-box block — 4-card KPI grid + the amber
+ * "לפני שמתחילים" card. Slice 33 split. Stays mode-agnostic
+ * (the numbers are mode-invariant).
+ */
+export function IntroStatsAndBox() {
+  return (
+    <div className="mx-auto w-full max-w-3xl space-y-8 pb-6">
       {/* 4 stat cards — 2x2 on mobile, 1x4 on desktop. Same numbers
           across all modes — the duration/total/threshold contract is
           mode-invariant. */}
@@ -76,6 +99,21 @@ export function IntroContent({ mode = "procedural" }: { mode?: ExamMode } = {}) 
         </ul>
       </section>
     </div>
+  );
+}
+
+/**
+ * Back-compat wrapper. `<ResumePrompt>` (the frozen-background usage)
+ * keeps consuming this single element. `<ExamIntro>` no longer uses
+ * this — it imports the two halves directly so it can place the
+ * ModePicker between them.
+ */
+export function IntroContent({ mode = "procedural" }: { mode?: ExamMode } = {}) {
+  return (
+    <>
+      <IntroHero mode={mode} />
+      <IntroStatsAndBox />
+    </>
   );
 }
 

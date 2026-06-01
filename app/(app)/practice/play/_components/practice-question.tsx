@@ -5,6 +5,7 @@ import {
   ChevronDown,
   ChevronLeft,
   ChevronUp,
+  LogOut,
 } from "lucide-react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
@@ -336,28 +337,38 @@ export function PracticeQuestion({
   return (
     <>
       {/* Section A — Header card (Phase 9d hotfix): full-width across the
-          page-content area, NOT constrained to the centered column. */}
+          page-content area, NOT constrained to the centered column.
+          Slice 33 — mobile compacting: tighter padding + gaps, breadcrumb
+          collapses to its leaf segment, and "סיים סשן" becomes an
+          icon-only button at <md. Desktop layout (md+) is unchanged. */}
       <div className="mb-4 overflow-hidden rounded-lg border bg-card">
-        <div className="flex items-center justify-between gap-3 px-5 py-3">
-          {/* RTL natural-start cluster: breadcrumb */}
+        <div className="flex items-center justify-between gap-3 px-3 py-2.5 md:px-5 md:py-3">
+          {/* RTL natural-start cluster: breadcrumb. Slice 33 — root +
+              chapter segments hide at <md so only the leaf remains;
+              the root stays reachable via the sidebar logo. */}
           <nav
             aria-label="ניווט"
             className="flex min-w-0 items-center gap-1.5 text-sm text-muted-foreground"
           >
-            <Link href="/dashboard" className="hover:text-foreground">
+            <Link
+              href="/dashboard"
+              className="hidden md:inline hover:text-foreground"
+            >
               תרגול
             </Link>
-            <ChevronLeft className="size-3.5 shrink-0" aria-hidden />
-            <span className="truncate" dir="auto">
+            <ChevronLeft className="hidden md:inline size-3.5 shrink-0" aria-hidden />
+            <span className="hidden md:inline truncate" dir="auto">
               {view.breadcrumbChapter}
             </span>
-            <ChevronLeft className="size-3.5 shrink-0" aria-hidden />
+            <ChevronLeft className="hidden md:inline size-3.5 shrink-0" aria-hidden />
             <span className="truncate font-medium text-foreground">
               {view.breadcrumbType}
             </span>
           </nav>
-          {/* RTL natural-end cluster: counter + bookmark + timer + exit */}
-          <div className="flex items-center gap-3">
+          {/* RTL natural-end cluster: counter + bookmark + timer + exit.
+              Slice 33 — gap-1.5 at <md so 4–5 controls fit at 320px;
+              md:gap-3 preserves the desktop rhythm. */}
+          <div className="flex items-center gap-1.5 md:gap-3">
             <PositionCounter current={position + 1} total={totalQuestions} />
             <button
               type="button"
@@ -394,7 +405,32 @@ export function PracticeQuestion({
                 onExpired={() => setSessionTimerExpired(true)}
               />
             )}
-            <Button variant="ghost" size="sm" onClick={handleExitClick}>
+            {/* Slice 33 — "סיים סשן" rendered TWO ways for back-compat
+                with the existing tests + visual treatment on desktop:
+                icon-only (LogOut) at <md to match the bookmark/note
+                button footprint, and the original ghost Button text
+                at md+. The icon button keeps the aria-label so SR users
+                still hear "סיים סשן". */}
+            <button
+              type="button"
+              onClick={handleExitClick}
+              aria-label="סיים סשן"
+              title="סיים סשן"
+              className={cn(
+                "md:hidden",
+                "flex h-8 w-8 items-center justify-center rounded-md border border-border bg-card transition-colors",
+                "hover:border-amber-400/60 hover:bg-amber-50",
+                "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+              )}
+            >
+              <LogOut className="size-4" aria-hidden />
+            </button>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={handleExitClick}
+              className="hidden md:inline-flex"
+            >
               סיים סשן
             </Button>
           </div>
