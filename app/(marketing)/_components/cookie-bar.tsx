@@ -3,7 +3,20 @@
 import Link from "next/link";
 import { useState, useSyncExternalStore } from "react";
 
+import { cookieBarCopy } from "@/app/(marketing)/_components/landing-copy";
+
 const STORAGE_KEY = "lawpass:cookie-bar-dismissed";
+
+// Shared style for the two inline legal links in the cookie-bar text. The
+// links inherit the bar's body color via `text-current` so the sentence
+// reads as one continuous line; underline + offset is the affordance,
+// `hover:opacity-80` covers hover, and the gold focus ring covers keyboard
+// focus per the slice-50 follow-up brief.
+const LEGAL_LINK_CLS =
+  "font-semibold text-current underline underline-offset-[3px] " +
+  "transition-opacity hover:opacity-80 " +
+  "focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 " +
+  "focus-visible:outline-[var(--color-gold-deep)] rounded-[2px]";
 
 function subscribe(callback: () => void) {
   // We only need to react to *other tabs* dismissing the bar. The
@@ -37,9 +50,14 @@ const getServerSnapshot = () => true;
  * setState-in-effect lint warning, and so cross-tab dismissals
  * propagate via the `storage` event.
  *
- * Decision 5 — "/privacy" link target stays "#" until the legal
- * pages land; the placeholder is wrapped in a comment so a future
- * Find shows it up.
+ * Slice 50 follow-up — the previously-inert "מדיניות הפרטיות" mention
+ * is now an inline `<Link href="/privacy">`, and a second inline
+ * `<Link href="/accessibility">הצהרת הנגישות</Link>` was added so the
+ * cookie notice references both new legal pages. Copy + link
+ * destinations live in `cookieBarCopy` (landing-copy.ts) so future
+ * legal-link wording changes touch one place. The 5-slot shape (pre /
+ * privacy link / between / accessibility link / post) keeps the JSX
+ * here readable and avoids any string templating in the bar.
  *
  * Styling mirrors prototype index.html L150–177 (#F4F1E8 wash,
  * 28×28 navy circle close button at inset-inline-end: 16px).
@@ -60,7 +78,7 @@ export function CookieBar() {
   return (
     <div
       role="region"
-      aria-label="הודעת עוגיות"
+      aria-label={cookieBarCopy.ariaLabel}
       // Mobile (<768px): asymmetric padding (12px start, 48px end) so
       // the text doesn't crash into the absolute-positioned close
       // button and so we don't waste 56px of space on the start side
@@ -69,20 +87,25 @@ export function CookieBar() {
       className="relative border-b border-[var(--color-line)] bg-[#F4F1E8] ps-3 pe-12 py-3 text-start text-[14px] font-normal text-[var(--ink)] md:px-14 md:py-[14px] md:text-center md:text-base"
     >
       <span>
-        אתר זה משתמש בעוגיות (Cookies) לשיפור חוויית הגלישה והתאמת תכנים.
-        למידע נוסף ראו{" "}
+        {cookieBarCopy.pre}
         <Link
-          // TODO(slice-16 L5/L6): point at /privacy once that page exists.
-          href="#"
-          className="font-semibold text-[var(--color-navy)] underline underline-offset-[3px]"
+          href={cookieBarCopy.privacyLink.href}
+          className={LEGAL_LINK_CLS}
         >
-          מדיניות הפרטיות
+          {cookieBarCopy.privacyLink.label}
         </Link>
-        .
+        {cookieBarCopy.between}
+        <Link
+          href={cookieBarCopy.accessibilityLink.href}
+          className={LEGAL_LINK_CLS}
+        >
+          {cookieBarCopy.accessibilityLink.label}
+        </Link>
+        {cookieBarCopy.post}
       </span>
       <button
         type="button"
-        aria-label="סגור"
+        aria-label={cookieBarCopy.closeLabel}
         onClick={() => {
           try {
             window.localStorage.setItem(STORAGE_KEY, "true");

@@ -30,12 +30,30 @@ export const headerCopy = {
   ctaHref: "/early-access?source=header",
 } as const;
 
+/** Slice 50 follow-up — cookie bar copy.
+ *
+ * The Hebrew sentence is split into 5 typed slots — `pre` / two link
+ * `{label, href}` pairs / `between` / `post` — so the JSX in
+ * `cookie-bar.tsx` renders it as a single line with two inline
+ * `<Link>` slots ([0] /privacy, [1] /accessibility) without any string
+ * templating, and future legal-link wording changes touch one place
+ * (this constant). RTL ordering: the source order pre → privacy →
+ * between → accessibility → post lands as the natural Hebrew reading
+ * order in the rendered bar. */
 export const cookieBarCopy = {
-  text: "אתר זה משתמש בעוגיות (Cookies) לשיפור חוויית הגלישה והתאמת תכנים.",
-  linkLabel: "מדיניות הפרטיות",
-  // TODO(PM): wire to the real privacy page once it exists. Inert "#" today.
-  linkHref: "#",
+  ariaLabel: "הודעת עוגיות",
   closeLabel: "סגור",
+  pre: "אתר זה משתמש בעוגיות (Cookies) לשיפור חוויית הגלישה והתאמת תכנים. למידע נוסף ראו את ",
+  privacyLink: {
+    label: "מדיניות הפרטיות",
+    href: "/privacy",
+  },
+  between: " ואת ",
+  accessibilityLink: {
+    label: "הצהרת הנגישות",
+    href: "/accessibility",
+  },
+  post: ".",
 } as const;
 
 export const heroCopy = {
