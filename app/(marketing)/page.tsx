@@ -9,6 +9,7 @@ import { LandingHero } from "@/app/(marketing)/_components/landing-hero";
 import { LandingMethod } from "@/app/(marketing)/_components/landing-method";
 import { LandingPlans } from "@/app/(marketing)/_components/landing-plans";
 import { LandingSourceNote } from "@/app/(marketing)/_components/landing-source-note";
+import { LandingTry } from "@/app/(marketing)/_components/landing-try";
 import styles from "@/app/(marketing)/_components/landing.module.css";
 import { createClient } from "@/lib/supabase/server";
 
@@ -27,17 +28,13 @@ import { createClient } from "@/lib/supabase/server";
  *   3. <LandingHero>       — h1 + typewriter subline + CTAs + character figure.
  *   4. <LandingSourceNote> — the source-note-360 strip below the hero.
  *   5. <LandingMethod>     — navy section, 6 pillars (hover-video).
- *   6. <div id="try" />    — 0-height invisible anchor reserving the slot for
- *                            the Slice-2 interactive simulator. The simulator
- *                            itself is NOT mounted here; this just keeps any
- *                            inbound `#try` link from 404-feeling and prevents
- *                            a layout reflow when Slice 2 drops the section in.
+ *   6. <LandingTry>        — Slice 48: 3-question interactive simulator
+ *                            (was a 0-height placeholder in Slice 46).
  *   7. <LandingPlans>      — 3-card plans grid (3mo / 6mo / 6mo+AI disabled).
  *   8. <LandingFaq>        — character + accordion.
  *   9. <LandingFooter>     — footer.
  *
  * NOT mounted in this slice (separate slices):
- *   - The full #try interactive simulator (Slice 2).
  *   - The accessibility-options panel `#lpA11yWidget` (Slice 3).
  *
  * CSS isolation: the whole landing is wrapped in `<div className={styles.landingRoot}>`
@@ -71,8 +68,7 @@ export default async function Home() {
           <LandingHero />
           <LandingSourceNote />
           <LandingMethod />
-          {/* Slice 2 anchor — see file doc-comment. */}
-          <div id="try" aria-hidden style={{ scrollMarginTop: "80px" }} />
+          <LandingTry />
           <LandingPlans />
           <LandingFaq />
         </main>

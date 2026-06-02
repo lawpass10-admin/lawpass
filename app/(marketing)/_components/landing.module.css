@@ -953,6 +953,122 @@
   .twCursor { animation: none !important; }
 }
 
+/* ─── Slice 48 — `#try` simulator (ts-* / t360-*) ────────────────────
+   Verbatim port of the design's ts-section block in
+   _design/landing-hifi-new.html lines 1418–1528. All class names are
+   re-spelled to module-local camelCase equivalents:
+     .ts-section → .tsSection, .ts-qtab → .tsQtab, .ts-card → .tsCard,
+     .ts-opt → .tsOpt, .ts-360 → .ts360, .ts-360toggle → .ts360Toggle,
+     .t360-tab → .t360Tab, .t360-pane → .t360Pane, etc.
+   State classes (`is-active`, `is-answered`, `is-correct`, `is-wrong`,
+   `is-good`, `is-bad`, `is-open`, `is-360open`, `is-locked`) become
+   `.isActive`, `.isAnswered`, ... module-local — Next.js + CSS Modules
+   hashes them at build time.
+   The design's `.ts-fb { display:none }` + `display:block` toggling is
+   collapsed: the client island renders only the relevant `.tsFb`
+   (good OR bad), so we map the title color to the parent
+   `.tsFeedback.isGood / .isBad` instead. */
+.tsSection { position: relative; background: var(--paper); overflow: hidden; padding: 64px 0 80px; border-top: 1px solid var(--line); }
+@media (min-width: 768px) { .tsSection { padding: 88px 0 104px; } }
+.tsSection::before {
+  content: ""; position: absolute; inset: 0; pointer-events: none;
+  background:
+    radial-gradient(760px 480px at 88% 6%, rgba(201,161,73,0.07), transparent 64%),
+    radial-gradient(640px 420px at 6% 94%, rgba(30,58,138,0.05), transparent 64%);
+}
+.tsSection .container { position: relative; }
+.tsQtabs { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; margin: 0 auto 30px; max-width: 920px; }
+.tsQtab {
+  display: inline-flex; align-items: center; gap: 9px; padding: 11px 18px;
+  border-radius: var(--radius-pill); border: 1px solid var(--line-strong); background: var(--white);
+  font-family: 'Heebo', Arial, sans-serif; font-weight: 600; font-size: 14px; color: var(--ink-3);
+  box-shadow: var(--shadow-xs); transition: border-color .18s ease, color .18s ease, background .18s ease, box-shadow .18s ease;
+}
+.tsQtab:hover { border-color: var(--navy); color: var(--navy-ink); }
+.tsQtab.isActive { background: var(--navy-ink); border-color: var(--navy-ink); color: #fff; box-shadow: var(--shadow-md); }
+.tsQtabNum { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; border-radius: 50%; background: rgba(0,0,0,.06); font-size: 12px; font-weight: 800; }
+.tsQtab.isActive .tsQtabNum { background: var(--gold); color: var(--navy-ink); }
+
+.tsCard { display: none; max-width: 880px; margin: 0 auto; background: var(--white); border: 1px solid var(--line); border-radius: var(--radius-card-lg); box-shadow: var(--shadow-md); overflow: hidden; }
+.tsCard.isActive { display: block; }
+.tsCardpad { padding: 24px 22px; }
+@media (min-width: 768px) { .tsCardpad { padding: 34px 38px; } }
+
+.tsTopicbar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding-bottom: 16px; border-bottom: 1px solid var(--line); margin-bottom: 22px; }
+.tsCrumb { font-family: 'Heebo', Arial, sans-serif; font-weight: 700; font-size: 13px; color: var(--navy); }
+.tsTag { margin-inline-start: auto; display: inline-flex; align-items: center; gap: 6px; padding: 5px 12px; border-radius: var(--radius-pill); background: var(--gold-tint); color: var(--gold-deep); font-family: 'Heebo', Arial, sans-serif; font-weight: 700; font-size: 12px; }
+
+.tsQuestion { font-family: 'Heebo', Arial, sans-serif; font-weight: 600; font-size: clamp(18px, 2.3vw, 22px); line-height: 1.6; color: var(--ink); margin: 0 0 22px; text-wrap: pretty; }
+.tsOptions { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 12px; }
+.tsOpt { width: 100%; display: flex; align-items: center; gap: 14px; padding: 15px 16px; border: 1.5px solid var(--line-strong); border-radius: 14px; background: var(--white); text-align: start; cursor: pointer; transition: border-color .16s ease, background .16s ease, box-shadow .16s ease, opacity .16s ease; }
+.tsOpt:hover { border-color: var(--navy); box-shadow: var(--shadow-sm); }
+.tsOptLetter { flex-shrink: 0; width: 34px; height: 34px; border-radius: 50%; background: #F1EFE8; color: var(--ink-3); display: flex; align-items: center; justify-content: center; font-family: 'Heebo', Arial, sans-serif; font-weight: 700; font-size: 15px; }
+.tsOptText { flex: 1; font-size: 16px; line-height: 1.45; color: var(--ink-2); }
+.tsOptMark { flex-shrink: 0; width: 22px; height: 22px; display: flex; align-items: center; justify-content: center; opacity: 0; color: #fff; }
+.tsCard.isAnswered .tsOpt { cursor: default; }
+.tsCard.isAnswered .tsOpt:hover { box-shadow: none; }
+.tsCard.isAnswered .tsOpt:not(.isCorrect):not(.isWrong) { opacity: .55; }
+.tsCard.isAnswered .tsOpt:not(.isCorrect):not(.isWrong):hover { border-color: var(--line-strong); }
+.tsOpt.isCorrect { border-color: #1E8E5A; background: #EAF7F0; }
+.tsOpt.isCorrect .tsOptLetter { background: #1E8E5A; color: #fff; }
+.tsOpt.isCorrect .tsOptText { color: #10623E; }
+.tsOpt.isCorrect .tsOptMark { opacity: 1; background: #1E8E5A; border-radius: 50%; }
+.tsOpt.isWrong { border-color: #C0392B; background: #FBEDEA; }
+.tsOpt.isWrong .tsOptLetter { background: #C0392B; color: #fff; }
+.tsOpt.isWrong .tsOptMark { opacity: 1; background: #C0392B; border-radius: 50%; }
+
+.tsFeedback { display: none; margin-top: 18px; border-radius: 14px; padding: 15px 18px; border: 1px solid; }
+.tsCard.isAnswered .tsFeedback { display: block; }
+.tsFeedback.isGood { background: #EAF7F0; border-color: #BFE6D1; }
+.tsFeedback.isBad { background: #FBEDEA; border-color: #F2C9C2; }
+.tsFeedbackTitle { font-family: 'Heebo', Arial, sans-serif; font-weight: 700; font-size: 15px; margin-bottom: 3px; }
+.tsFeedback.isGood .tsFeedbackTitle { color: #10623E; }
+.tsFeedback.isBad .tsFeedbackTitle { color: #9B2C1E; }
+.tsFeedbackSub { font-size: 14px; color: var(--ink-3); line-height: 1.5; }
+
+.ts360Toggle { display: none; margin-top: 18px; align-items: center; gap: 10px; padding: 13px 24px; border-radius: var(--radius-pill); background: linear-gradient(135deg,#E8C97A 0%,#D4AC57 55%,#C9A149 100%); color: var(--navy-ink); font-family: 'Heebo', Arial, sans-serif; font-weight: 700; font-size: 15px; border: none; cursor: pointer; box-shadow: 0 8px 22px -8px rgba(201,161,73,0.55), inset 0 1px 0 rgba(255,255,255,0.35); transition: filter .18s ease, transform .18s ease; }
+.tsCard.isAnswered .ts360Toggle { display: inline-flex; }
+.ts360Toggle:hover { filter: brightness(1.05); transform: translateY(-1px); }
+.ts360Toggle svg { transition: transform .2s ease; }
+.tsCard.is360open .ts360Toggle svg { transform: rotate(180deg); }
+
+.ts360 { display: none; margin-top: 24px; border-top: 1px dashed var(--line-strong); padding-top: 24px; }
+.ts360.isOpen { display: block; }
+.ts360Head { display: flex; align-items: center; gap: 10px; margin-bottom: 18px; }
+.ts360Badge { display: inline-flex; align-items: center; justify-content: center; padding: 4px 11px; border-radius: var(--radius-pill); background: var(--navy-ink); color: var(--gold); font-family: 'Heebo', Arial, sans-serif; font-weight: 800; font-size: 13px; }
+.ts360Title { font-family: 'Heebo', Arial, sans-serif; font-weight: 800; font-size: 18px; color: var(--navy-ink); }
+.ts360Correct { display: flex; align-items: flex-start; gap: 12px; background: #EAF7F0; border: 1px solid #BFE6D1; border-radius: 14px; padding: 14px 16px; margin-bottom: 20px; }
+.ts360CorrectIco { flex-shrink: 0; width: 26px; height: 26px; border-radius: 50%; background: #1E8E5A; color: #fff; display: flex; align-items: center; justify-content: center; margin-top: 1px; }
+.ts360CorrectTtl { font-family: 'Heebo', Arial, sans-serif; font-weight: 700; font-size: 14px; color: #10623E; margin-bottom: 2px; }
+.ts360CorrectTxt { font-size: 15px; color: var(--ink-2); line-height: 1.5; }
+
+.ts360Tabs { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 12px; margin-bottom: 18px; scrollbar-width: thin; }
+.t360Tab { flex-shrink: 0; display: inline-flex; align-items: center; gap: 7px; padding: 9px 14px; border-radius: 10px; border: 1px solid var(--line); background: #FAF8F2; font-family: 'Heebo', Arial, sans-serif; font-weight: 600; font-size: 13px; color: var(--ink-3); white-space: nowrap; cursor: pointer; transition: border-color .15s ease, color .15s ease, background .15s ease; }
+.t360Tab:hover { border-color: var(--navy); color: var(--navy-ink); }
+.t360Tab.isActive { background: var(--navy-ink); border-color: var(--navy-ink); color: #fff; }
+.t360Tab.isLocked { color: var(--gold-deep); border-color: rgba(201,161,73,.4); background: var(--gold-tint); }
+.t360Tab.isLocked.isActive { background: var(--gold-deep); border-color: var(--gold-deep); color: #fff; }
+.t360Tab svg { flex-shrink: 0; }
+
+.t360Pane { display: none; }
+.t360Pane.isActive { display: block; animation: tsFade .2s ease; }
+@keyframes tsFade { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+.t360SecTitle { display: flex; align-items: center; gap: 8px; font-family: 'Heebo', Arial, sans-serif; font-weight: 700; font-size: 16px; color: var(--navy-ink); margin: 0 0 10px; }
+.t360SecIco { color: var(--gold-deep); }
+.t360Text { font-size: 15.5px; line-height: 1.75; color: var(--ink-2); margin: 0; text-wrap: pretty; }
+.t360Refs { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 13px; }
+.t360Refs li { position: relative; padding-inline-start: 20px; font-size: 15px; line-height: 1.6; color: var(--ink-2); }
+.t360Refs li::before { content: ""; position: absolute; inset-inline-start: 0; top: 9px; width: 7px; height: 7px; border-radius: 50%; background: var(--gold); }
+
+.t360Locked { position: relative; border-radius: 14px; overflow: hidden; min-height: 220px; }
+.t360LockedContent { filter: blur(6px); user-select: none; pointer-events: none; opacity: .65; padding: 4px; }
+.t360LockedOverlay { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; gap: 12px; padding: 24px; background: linear-gradient(180deg, rgba(251,250,247,0.55), rgba(251,250,247,0.92)); }
+.t360LockBadge { width: 46px; height: 46px; border-radius: 50%; background: var(--gold-tint); border: 1px solid rgba(201,161,73,.4); display: flex; align-items: center; justify-content: center; color: var(--gold-deep); }
+.t360LockedTitle { font-family: 'Heebo', Arial, sans-serif; font-weight: 800; font-size: 17px; color: var(--navy-ink); }
+.t360LockedSub { font-size: 14px; color: var(--ink-3); max-width: 360px; line-height: 1.5; }
+.t360LockedCta { display: inline-flex; align-items: center; gap: 8px; margin-top: 4px; padding: 11px 22px; border-radius: var(--radius-pill); background: var(--navy-ink); color: #fff; font-family: 'Heebo', Arial, sans-serif; font-weight: 700; font-size: 14px; transition: filter .18s ease, transform .18s ease; }
+.t360LockedCta:hover { filter: brightness(1.12); transform: translateY(-1px); }
+
 /* ─── Mobile responsiveness (Slice 47 — port of design's
        @media (max-width:767px) block, lines 1170–1260 of
        _design/landing-hifi-new.html). Slice 46 omitted this block
@@ -964,7 +1080,10 @@
        .heroWave / .h2 / .lead / .sectionHead / .pillars / .pillar /
        .plans / .plan / .swipeHint). All values are byte-for-byte from
        the design except `.heroFigure { height }` and `.characterImg`
-       (Slice 47 figure-raise — see decision in the investigation). */
+       (Slice 47 figure-raise — see decision in the investigation).
+       Slice 48 — appended the design's .ts-* / .t360- mobile rules
+       inside this same @media block (lines 1242–1257 of the design)
+       so the simulator's spacing/typography track phone widths. */
 
 /* Swipe-hint base (hidden by default; revealed inside the mobile
    media query below for both carousels). */
@@ -1075,4 +1194,25 @@
   }
   .methodSection .swipeHint { color: rgba(255, 255, 255, 0.6); }
   .plansSection .swipeHint { color: var(--ink-muted); }
+
+  /* Slice 48 — `#try` mobile tuning (design lines 1242–1257, ts-* /
+     t360- rules inside `@media (max-width:767px)`). Tighter padding +
+     smaller type so the card fits comfortably on phone widths and the
+     option list isn't dominated by the letter pills. */
+  .tsSection { padding: 48px 0 60px; }
+  .tsCardpad { padding: 18px 14px; }
+  .tsQuestion { font-size: clamp(15px, 4.1vw, 17.5px); line-height: 1.55; }
+  .tsTopicbar { gap: 8px; }
+  .tsOpt { padding: 12px 12px; gap: 10px; border-radius: 12px; }
+  .tsOptLetter { width: 27px; height: 27px; font-size: 13px; }
+  .tsOptText { font-size: 13.5px; line-height: 1.45; }
+  .tsQtab { padding: 8px 12px; font-size: 12.5px; }
+  .tsQtabNum { width: 19px; height: 19px; font-size: 11px; }
+  .ts360Title { font-size: 15px; }
+  .ts360CorrectTxt { font-size: 13.5px; }
+  .t360Tab { font-size: 12px; padding: 8px 12px; }
+  .t360SecTitle { font-size: 14.5px; }
+  .t360Text { font-size: 13.5px; line-height: 1.65; }
+  .t360Refs li { font-size: 13px; }
+  .ts360Toggle { font-size: 13.5px; padding: 11px 18px; }
 }
