@@ -982,13 +982,28 @@
   .heroHeadline { font-size: clamp(26px, 7.4vw, 38px); margin-bottom: 14px; }
   .heroHeadline > span { white-space: normal; }
   .hero { padding-top: 12px; }
-  .heroGrid { padding: 10px 16px 40px; gap: 6px; }
-  .heroSub { min-height: 0; margin-bottom: 22px; font-size: clamp(15px, 3.9vw, 18px); }
-  .ctaRow { gap: 10px; margin-bottom: 18px; }
+  /* Slice 47 follow-up #2 — push the h1 down from the header by adding
+     ~32 px of extra top padding (10 → 42). Bottom + sides unchanged. */
+  .heroGrid { padding: 42px 16px 40px; gap: 6px; }
+  /* Slice 47 follow-up #2 — extra space between the h1 and the typewriter
+     subline via margin-top (the .heroHeadline still has margin-bottom: 14px). */
+  .heroSub {
+    min-height: 0;
+    margin-top: 20px;
+    margin-bottom: 22px;
+    font-size: clamp(15px, 3.9vw, 18px);
+  }
+  /* Slice 47 follow-up #2 — hide BOTH hero CTAs on mobile only. The CTAs
+     stay in the DOM (and the locked CTA routing is preserved); we just
+     display:none them on phones. Desktop is unaffected. */
+  .heroCopy .ctaRow { display: none; }
   .btnGold { padding: 14px 28px; font-size: 16px; }
   .btnGhost { font-size: 15px; padding: 11px 8px; }
-  /* Slice 47 — raised by 40px vs the design's mobile `height: 400px`. */
-  .heroFigure { height: 360px; margin-top: 4px; }
+  /* Slice 47 follow-up #2 — enlarged the figure (360 → 420) AND moved it
+     down via a bigger margin-top (4 → 32) so the character + wave sit
+     visually lower on the page. Wave-overlap with the character preserved
+     via .characterImg's negative bottom margin. */
+  .heroFigure { height: 420px; margin-top: 32px; }
   .characterSlot { max-width: 360px; z-index: 4; }
   .characterImg {
     height: calc(100% + 8px);
