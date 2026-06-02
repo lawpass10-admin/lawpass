@@ -22,9 +22,12 @@ export const headerCopy = {
     { href: "#faq", label: "שאלות נפוצות" },
     { href: "#contact", label: "צרו קשר" },
   ],
-  /** Header CTA goes to /login per the locked decision (testers reach the app). */
+  /** Slice 49 follow-up — PM-locked: during the private-testing phase the
+   *  entire landing funnels exclusively to the waitlist, so the header CTA
+   *  now routes to /early-access?source=header (was /login in Slice 46).
+   *  Direct `/login` is still reachable by URL for testers. */
   ctaLabel: "כניסה לאזור אישי",
-  ctaHref: "/login",
+  ctaHref: "/early-access?source=header",
 } as const;
 
 export const cookieBarCopy = {

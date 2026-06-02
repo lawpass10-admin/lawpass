@@ -10,7 +10,11 @@ import styles from "./landing.module.css";
  *
  * Sticky navy bar with nav (md+) + centered logo + gold-pill CTA. Mobile drops
  * the nav and squeezes to logo+CTA via the 2-column grid in the module CSS.
- * `כניסה לאזור אישי` routes to /login (testers reach the app).
+ * Slice 49 follow-up — `כניסה לאזור אישי` now routes to
+ * /early-access?source=header (PM-locked: entire landing funnels to the
+ * waitlist during private testing). Direct /login URL still works for
+ * testers. CSS unchanged — the Slice 47 follow-up #2 mobile rule that hides
+ * the header CTA at ≤767 px stays in place; only the href changed.
  */
 export function LandingHeader() {
   return (

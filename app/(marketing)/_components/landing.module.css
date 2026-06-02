@@ -1026,11 +1026,23 @@
 .tsFeedback.isBad .tsFeedbackTitle { color: #9B2C1E; }
 .tsFeedbackSub { font-size: 14px; color: var(--ink-3); line-height: 1.5; }
 
-.ts360Toggle { display: none; margin-top: 18px; align-items: center; gap: 10px; padding: 13px 24px; border-radius: var(--radius-pill); background: linear-gradient(135deg,#E8C97A 0%,#D4AC57 55%,#C9A149 100%); color: var(--navy-ink); font-family: 'Heebo', Arial, sans-serif; font-weight: 700; font-size: 15px; border: none; cursor: pointer; box-shadow: 0 8px 22px -8px rgba(201,161,73,0.55), inset 0 1px 0 rgba(255,255,255,0.35); transition: filter .18s ease, transform .18s ease; }
+.ts360Toggle { display: none; margin-top: 18px; align-items: center; gap: 10px; padding: 13px 24px; border-radius: var(--radius-pill); background: linear-gradient(135deg,#E8C97A 0%,#D4AC57 55%,#C9A149 100%); color: var(--navy-ink); font-family: 'Heebo', Arial, sans-serif; font-weight: 700; font-size: 15px; line-height: 1.2; border: none; cursor: pointer; box-shadow: 0 8px 22px -8px rgba(201,161,73,0.55), inset 0 1px 0 rgba(255,255,255,0.35); transition: filter .18s ease, transform .18s ease; }
 .tsCard.isAnswered .ts360Toggle { display: inline-flex; }
 .ts360Toggle:hover { filter: brightness(1.05); transform: translateY(-1px); }
 .ts360Toggle svg { transition: transform .2s ease; }
 .tsCard.is360open .ts360Toggle svg { transform: rotate(180deg); }
+/* Slice 49 follow-up — the `<span class="ts-360toggle-label">` in the design
+   was a script hook, never styled, so when the port renders the JSX as
+   `<span className={styles.ts360ToggleLabel}>` we accidentally referenced an
+   undefined CSS-module key, leaving the span without a class. As a flex
+   child it gets "blockified" to `display: block` (per the flex spec), and
+   under that path the mixed Hebrew + LTR "הצג ניתוח 360°" can pick up a
+   baseline shift different from the wider "הסתר ניתוח 360°", which the
+   PM read as "closed-state label invisible / cut off". This rule pins the
+   label to `display: inline-block`, `line-height: 1.2` and
+   `white-space: nowrap` so both states share the same baseline + layout
+   and the closed text is unambiguously visible on desktop and mobile. */
+.ts360ToggleLabel { display: inline-block; line-height: 1.2; white-space: nowrap; }
 
 .ts360 { display: none; margin-top: 24px; border-top: 1px dashed var(--line-strong); padding-top: 24px; }
 .ts360.isOpen { display: block; }
