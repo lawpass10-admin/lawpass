@@ -979,19 +979,28 @@
   /* Hero — let headline WRAP (design's `white-space: nowrap` was the
      overflow culprit at <768px), tighten the figure, bring the
      character forward & larger. */
-  .heroHeadline { font-size: clamp(26px, 7.4vw, 38px); margin-bottom: 14px; }
+  /* Slice 47 follow-up #3 — hero h1 bumped up one step
+     (26 / 7.4vw / 38 → 30 / 8.4vw / 44). Two-line wrap still balanced
+     at ~390 px. */
+  .heroHeadline { font-size: clamp(30px, 8.4vw, 44px); margin-bottom: 14px; }
   .heroHeadline > span { white-space: normal; }
   .hero { padding-top: 12px; }
   /* Slice 47 follow-up #2 — push the h1 down from the header by adding
      ~32 px of extra top padding (10 → 42). Bottom + sides unchanged. */
   .heroGrid { padding: 42px 16px 40px; gap: 6px; }
   /* Slice 47 follow-up #2 — extra space between the h1 and the typewriter
-     subline via margin-top (the .heroHeadline still has margin-bottom: 14px). */
+     subline via margin-top (the .heroHeadline still has margin-bottom: 14px).
+     Slice 47 follow-up #3 — typewriter subline (`.heroSub`) bumped a clear
+     step above its previous mobile size (15 / 3.9vw / 18 → 17 / 4.6vw / 20).
+     The brief described the target as "the .lead / subline carrier" but the
+     typewriter actually lives inside `.heroSub`; `.lead` is the
+     section-head lead under method / plans / FAQ. We adjust `.heroSub`
+     (the literal typewriter carrier) per the brief's stated intent. */
   .heroSub {
     min-height: 0;
     margin-top: 20px;
     margin-bottom: 22px;
-    font-size: clamp(15px, 3.9vw, 18px);
+    font-size: clamp(17px, 4.6vw, 20px);
   }
   /* Slice 47 follow-up #2 — hide BOTH hero CTAs on mobile only. The CTAs
      stay in the DOM (and the locked CTA routing is preserved); we just
