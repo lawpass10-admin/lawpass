@@ -6,20 +6,27 @@ import { EarlyAccessForm } from "./_components/early-access-form";
 /**
  * /early-access — Slice 43 waitlist email-capture page.
  *
- * Public, bare, indexable-NO. The landing CTAs (hero primary + plan 3mo + plan
- * 6mo, to be wired in the landing rebuild slice) point at this URL with
+ * Public, indexable-NO. The landing CTAs (hero primary + plan 3mo + plan 6mo,
+ * to be wired in the landing rebuild slice) point at this URL with
  * `?source=hero|plan-3mo|plan-6mo`. Direct visits have no source.
  *
- * Intentionally NOT wrapped in the marketing header/footer chrome — this is
- * the funnel destination, not a content page. The page renders just the logo,
- * a headline, a sub-line, and the form.
+ * Slice 44 polish — new copy + celebratory graduation photo. Layout flips to a
+ * responsive two-column split:
+ *   - Desktop (md+): right-column (RTL visual-start) navy panel holding the
+ *     logo + headline + sub + form, vertically centered. Left column = the
+ *     photo, full-bleed object-cover, full viewport height. `flex-row-reverse`
+ *     in RTL flips DOM-first (photo) to visual-LEFT and DOM-second (navy panel)
+ *     to visual-RIGHT — gives us the reading-start navy panel without
+ *     reordering the source.
+ *   - Mobile (<md): stacks. Photo as a ~38vh top banner (framed on the
+ *     celebratory faces via object-cover + center positioning), navy content
+ *     block below it.
+ *   - CONTRAST RULE: all text sits on the SOLID NAVY panel. No text overlaps
+ *     the bright photo anywhere — no scrim needed because there is zero
+ *     overlap.
  *
- * `searchParams.source` flows through to `<EarlyAccessForm>` as a hidden
- * payload sent to the server action, NOT placed on a URL or form-element
- * attribute that would round-trip back. Single-shot funnel attribution.
- *
- * No auth gate — public path. `noindex,nofollow` keeps it out of search so
- * `/early-access` doesn't compete with the landing for the same intent.
+ * Server action / source attribution / form behavior / noindex metadata are
+ * BYTE-FOR-BYTE UNCHANGED from Slice 43 — Slice 44 is layout + copy + image only.
  */
 export const metadata: Metadata = {
   title: "LawPass — הצטרפו לרשימת ההמתנה",
@@ -45,38 +52,66 @@ export default async function EarlyAccessPage({
   const source = firstString(resolved.source);
 
   return (
-    <main
-      className="flex min-h-screen flex-col items-center justify-center px-6 py-16 text-center"
-      style={{ backgroundColor: "var(--color-navy-ink)" }}
-    >
-      <Image
-        src="/landing/lawpass-logo-landing.png"
-        alt="LawPass"
-        width={195}
-        height={113}
-        priority
-        className="block h-[clamp(64px,8vw,96px)] w-auto"
-      />
-
-      <h1
-        className="font-heebo mt-10 text-3xl font-extrabold sm:text-4xl"
-        style={{ color: "rgba(255,255,255,0.96)" }}
+    <main className="flex min-h-screen flex-col md:flex-row-reverse">
+      {/* PHOTO — first in DOM so it lands at the top on mobile (flex-col).
+          On md+, `flex-row-reverse` in RTL routes DOM-first to visual-LEFT,
+          giving us the photo on the visual end (left in RTL) and the navy
+          panel at the reading start (right in RTL). */}
+      <div
+        className="relative h-[38vh] w-full overflow-hidden md:h-auto md:flex-1"
+        aria-hidden
       >
-        אנחנו פותחים גישה בהדרגה.
-      </h1>
+        <Image
+          src="/landing/early-access-hero.png"
+          alt=""
+          fill
+          priority
+          /* Mobile = full viewport width (banner); desktop md+ = half the
+             viewport width (column). */
+          sizes="(min-width: 768px) 50vw, 100vw"
+          /* `object-cover` keeps the celebratory faces framed even when the
+             container's aspect ratio differs from the source 3:2. The 1024-row
+             ground/feet area at the bottom crops gracefully on tall desktop
+             columns. */
+          className="object-cover"
+        />
+      </div>
 
-      <p
-        className="font-heebo mt-4 max-w-md text-base leading-relaxed sm:text-lg"
-        style={{ color: "rgba(255,255,255,0.72)" }}
+      {/* NAVY CONTENT PANEL — logo, headline, sub, form. Vertically centered
+          on desktop; padded comfortably on mobile. Solid navy background; all
+          text lives here exclusively (no overlap with the photo). */}
+      <div
+        className="flex w-full flex-col items-center justify-center px-6 py-12 text-center md:flex-1 md:py-16"
+        style={{ backgroundColor: "var(--color-navy-ink)" }}
       >
-        השאירו אימייל ונעדכן אתכם ראשונים.
-      </p>
+        <Image
+          src="/landing/lawpass-logo-landing.png"
+          alt="LawPass"
+          width={195}
+          height={113}
+          priority
+          className="block h-[clamp(64px,8vw,96px)] w-auto"
+        />
 
-      {/* The form takes its full width up to ~440px so the input + button row
-          stays comfortable on mobile and doesn't stretch beyond the headline
-          column on desktop. */}
-      <div className="mt-10 w-full max-w-md">
-        <EarlyAccessForm source={source} />
+        <h1
+          className="font-heebo mt-10 text-3xl font-extrabold sm:text-4xl"
+          style={{ color: "rgba(255,255,255,0.96)" }}
+        >
+          עוד קצת — ואנחנו באוויר.
+        </h1>
+
+        <p
+          className="font-heebo mt-4 max-w-md text-base leading-relaxed sm:text-lg"
+          style={{ color: "rgba(255,255,255,0.72)" }}
+        >
+          מוזמנים בינתיים להצטרף לרשימת ההמתנה שלנו, ונעדכן אתכם ראשונים.
+        </p>
+
+        {/* Form max-width keeps the input + button row comfortable on mobile
+            and on the half-viewport desktop column. */}
+        <div className="mt-10 w-full max-w-md">
+          <EarlyAccessForm source={source} />
+        </div>
       </div>
     </main>
   );
