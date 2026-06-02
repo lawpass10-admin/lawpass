@@ -15,6 +15,16 @@ const AUTH_BOUNCE_PATHS = new Set([
 
 // Routes that do not require auth. Anything else is treated as part of the
 // (app) group and redirects to /login when no session is present.
+//
+// Slice 49 — added "/early-access". The waitlist page was introduced in
+// Slice 43 (commit cfd90c9) but never added to this allowlist, so anonymous
+// GETs were silently 307'd to /login (NextResponse.redirect's default
+// status). The regression was invisible until Slice 46 wired the landing
+// CTAs (hero / plan-3mo / plan-6mo) and the Slice-48 #try unlock CTAs to
+// /early-access — at which point real unauthenticated traffic hit the route
+// for the first time and got bounced. Authenticated test traffic during
+// Slices 43-45 passed the `!user` check below and rendered fine, which is
+// how the latent bug went unnoticed.
 const PUBLIC_PATHS = new Set([
   "/",
   "/login",
@@ -23,6 +33,7 @@ const PUBLIC_PATHS = new Set([
   "/forgot-password",
   "/reset-password",
   "/onboarding/complete-profile",
+  "/early-access",
 ]);
 
 export async function proxy(request: NextRequest): Promise<NextResponse> {
