@@ -124,7 +124,12 @@ export default async function AppLayout({
   if (isExamRoute) {
     return (
       <>
-        <main className="page-fade-in flex-1 p-6">{children}</main>
+        {/* Slice 51 — id="main-content" added so the universal skip-link
+            (set up by the a11y widget) lands on the actual main element.
+            Previously only the landing + legal pages had this id. */}
+        <main id="main-content" className="page-fade-in flex-1 p-6">
+          {children}
+        </main>
         <QaFloatingWidget isQaTester={isQaTester} />
       </>
     );
@@ -156,7 +161,11 @@ export default async function AppLayout({
       />
       <SidebarInset>
         <MobileTopBar />
-        <main className="page-fade-in flex-1 p-4 md:p-6">{children}</main>
+        {/* Slice 51 — id="main-content" added (see exam-branch comment
+            above for context). */}
+        <main id="main-content" className="page-fade-in flex-1 p-4 md:p-6">
+          {children}
+        </main>
       </SidebarInset>
       <QaFloatingWidget isQaTester={isQaTester} />
     </SidebarProvider>

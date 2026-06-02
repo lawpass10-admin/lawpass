@@ -57,7 +57,10 @@ export default async function EarlyAccessPage({
   const source = firstString(resolved.source);
 
   return (
-    <main className="flex min-h-screen flex-col md:flex-row">
+    /* Slice 51 — id="main-content" added so the a11y widget's universal
+       skip-link target exists on /early-access too. The class +
+       responsive layout are unchanged from Slice 45. */
+    <main id="main-content" className="flex min-h-screen flex-col md:flex-row">
       {/* PHOTO — first in DOM. On mobile (flex-col) it sits at the top as a
           ~38vh banner. On md+ (`md:flex-row` in RTL), DOM-first lands at
           visual-RIGHT (reading start), which is where Slice 45 wants the
