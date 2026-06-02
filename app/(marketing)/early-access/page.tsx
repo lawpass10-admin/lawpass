@@ -10,23 +10,28 @@ import { EarlyAccessForm } from "./_components/early-access-form";
  * to be wired in the landing rebuild slice) point at this URL with
  * `?source=hero|plan-3mo|plan-6mo`. Direct visits have no source.
  *
- * Slice 44 polish — new copy + celebratory graduation photo. Layout flips to a
- * responsive two-column split:
- *   - Desktop (md+): right-column (RTL visual-start) navy panel holding the
- *     logo + headline + sub + form, vertically centered. Left column = the
- *     photo, full-bleed object-cover, full viewport height. `flex-row-reverse`
- *     in RTL flips DOM-first (photo) to visual-LEFT and DOM-second (navy panel)
- *     to visual-RIGHT — gives us the reading-start navy panel without
- *     reordering the source.
- *   - Mobile (<md): stacks. Photo as a ~38vh top banner (framed on the
- *     celebratory faces via object-cover + center positioning), navy content
- *     block below it.
- *   - CONTRAST RULE: all text sits on the SOLID NAVY panel. No text overlaps
- *     the bright photo anywhere — no scrim needed because there is zero
- *     overlap.
+ * Slice 44 — added the celebratory graduation photo + new copy.
+ * Slice 45 — orientation swap + feathered seam:
+ *   - Desktop (md+): photo lives on the visual-RIGHT (reading start in RTL),
+ *     navy panel on the visual-LEFT. Achieved by using a plain `md:flex-row`
+ *     (NOT row-reverse): DOM-first photo lands at visual-right in RTL,
+ *     DOM-second navy panel lands at visual-left.
+ *   - Mobile (<md): photo stays as the top banner (~38vh) above the navy
+ *     content block (unchanged stack from Slice 44).
+ *   - Feathered seam: the photo's edge adjacent to the navy panel dissolves
+ *     into the navy via a CSS `mask-image` linear-gradient. Desktop fades the
+ *     photo's LEFT edge (the seam with the visual-left navy panel); mobile
+ *     fades the photo's BOTTOM edge (the seam with the navy block below).
+ *     Fade band ≈22% of the seam-axis dimension — wide enough to read as a
+ *     dissolve, narrow enough to leave the centered subjects (the graduates'
+ *     faces) fully opaque. The `-webkit-mask-image` prefix is duplicated so
+ *     pre-15.4 Safari falls back to the same effect rather than a hard edge.
+ *   - CONTRAST RULE preserved: all text lives on the solid navy panel; the
+ *     photo and the navy panel are siblings and never overlap (the fade is
+ *     the photo dissolving into navy, not text appearing over the photo).
  *
  * Server action / source attribution / form behavior / noindex metadata are
- * BYTE-FOR-BYTE UNCHANGED from Slice 43 — Slice 44 is layout + copy + image only.
+ * BYTE-FOR-BYTE UNCHANGED from Slice 43/44 — Slice 45 is layout + seam only.
  */
 export const metadata: Metadata = {
   title: "LawPass — הצטרפו לרשימת ההמתנה",
@@ -52,13 +57,22 @@ export default async function EarlyAccessPage({
   const source = firstString(resolved.source);
 
   return (
-    <main className="flex min-h-screen flex-col md:flex-row-reverse">
-      {/* PHOTO — first in DOM so it lands at the top on mobile (flex-col).
-          On md+, `flex-row-reverse` in RTL routes DOM-first to visual-LEFT,
-          giving us the photo on the visual end (left in RTL) and the navy
-          panel at the reading start (right in RTL). */}
+    <main className="flex min-h-screen flex-col md:flex-row">
+      {/* PHOTO — first in DOM. On mobile (flex-col) it sits at the top as a
+          ~38vh banner. On md+ (`md:flex-row` in RTL), DOM-first lands at
+          visual-RIGHT (reading start), which is where Slice 45 wants the
+          photo. Mask-image dissolves the seam-side edge into the adjacent
+          navy panel — bottom on mobile, left on desktop. */}
       <div
-        className="relative h-[38vh] w-full overflow-hidden md:h-auto md:flex-1"
+        className={[
+          "relative h-[38vh] w-full overflow-hidden md:h-auto md:flex-1",
+          // Mobile: fade the bottom edge into the navy block below.
+          "[mask-image:linear-gradient(to_top,transparent_0%,#000_22%)]",
+          "[-webkit-mask-image:linear-gradient(to_top,transparent_0%,#000_22%)]",
+          // Desktop: fade the LEFT edge into the navy panel at the visual-left.
+          "md:[mask-image:linear-gradient(to_right,transparent_0%,#000_22%)]",
+          "md:[-webkit-mask-image:linear-gradient(to_right,transparent_0%,#000_22%)]",
+        ].join(" ")}
         aria-hidden
       >
         <Image
@@ -70,9 +84,7 @@ export default async function EarlyAccessPage({
              viewport width (column). */
           sizes="(min-width: 768px) 50vw, 100vw"
           /* `object-cover` keeps the celebratory faces framed even when the
-             container's aspect ratio differs from the source 3:2. The 1024-row
-             ground/feet area at the bottom crops gracefully on tall desktop
-             columns. */
+             container's aspect ratio differs from the source 3:2. */
           className="object-cover"
         />
       </div>
