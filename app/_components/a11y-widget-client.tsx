@@ -49,6 +49,7 @@ import styles from "./a11y-widget.module.css";
  */
 
 const HEBREW_LABEL: Record<A11yKey, string> = {
+  // Phase A
   "text-l": "טקסט גדול",
   "text-xl": "טקסט גדול מאוד",
   "contrast-high": "ניגודיות גבוהה",
@@ -56,6 +57,19 @@ const HEBREW_LABEL: Record<A11yKey, string> = {
   "readable-font": "גופן קריא יותר",
   "line-height-lg": "ריווח שורות",
   "stop-motion": "עצירת אנימציות",
+  // Phase B (Slice 52)
+  invert: "היפוך צבעים",
+  grayscale: "גווני אפור",
+  "saturate-high": "רוויה גבוהה",
+  "saturate-low": "רוויה נמוכה",
+  "highlight-links": "הדגשת קישורים",
+  "larger-focus-rings": "פוקוס מוגדל",
+  "big-cursor": "סמן גדול",
+  "tooltips-on-hover": "חלוניות מידע",
+  "reading-guide": "סרגל קריאה",
+  "focus-mask": "מסכת קריאה",
+  "pause-autoplay": "השהיית וידאו",
+  "hide-images": "הסתרת תמונות",
 };
 
 const SR_LABEL_OPEN = "פתח תפריט נגישות";
@@ -68,6 +82,7 @@ const SECTIONS: ReadonlyArray<{
   title: string;
   controls: ReadonlyArray<A11yKey>;
 }> = [
+  // Phase A sections
   {
     title: "טקסט וקריאה",
     controls: ["text-l", "text-xl", "readable-font", "line-height-lg"],
@@ -80,7 +95,66 @@ const SECTIONS: ReadonlyArray<{
     title: "תנועה",
     controls: ["stop-motion"],
   },
+  // Phase B sections — order chosen to match user mental model
+  // ("filters" near "contrast", "links + focus" together, "cursor +
+  // reading tools" together, "video + images" together).
+  {
+    title: "פילטרים ויזואליים",
+    controls: ["invert", "grayscale", "saturate-high", "saturate-low"],
+  },
+  {
+    title: "קישורים ופוקוס",
+    controls: ["highlight-links", "larger-focus-rings"],
+  },
+  {
+    title: "סמן וכלי קריאה",
+    controls: ["big-cursor", "tooltips-on-hover", "reading-guide", "focus-mask"],
+  },
+  {
+    title: "וידאו ותמונות",
+    controls: ["pause-autoplay", "hide-images"],
+  },
 ];
+
+/**
+ * Slice 52 Phase B — mutex groups enforced in `handleToggle` before the
+ * cookie write. When the user activates a member of a mutex group, every
+ * other member of the same group is silently disabled.
+ *
+ *   - FILTER_MUTEX: `filter:` rules collide visually (last applied wins);
+ *     exposing both invert + grayscale would surprise the user. Keep one
+ *     active at a time.
+ *   - GUIDE_MUTEX:  reading-guide + focus-mask both track mouseY and
+ *     overlap visually — only one makes sense.
+ *
+ * Phase A's `text-l` ↔ `text-xl` mutex is also enforced in `handleToggle`
+ * but lives inline there for historical readability; the two patterns
+ * are equivalent.
+ */
+const FILTER_MUTEX_KEYS: ReadonlyArray<A11yKey> = [
+  "invert",
+  "grayscale",
+  "saturate-high",
+  "saturate-low",
+];
+const GUIDE_MUTEX_KEYS: ReadonlyArray<A11yKey> = [
+  "reading-guide",
+  "focus-mask",
+];
+
+/** Selectors used by `tooltips-on-hover` to find elements that should
+ *  show a custom tooltip. Anything with a `title` OR `aria-label` is
+ *  fair game; the widget's own descendants are excluded via the closest
+ *  `.a11yWidget` ancestor check in the handler. */
+const TOOLTIP_TARGET_SELECTOR = "[title], [aria-label]";
+
+/** Focus-mask geometry: a transparent slit of this height follows the
+ *  cursor. ~120 px lines up with a comfortable two-line reading band. */
+const FOCUS_MASK_SLIT_HEIGHT = 120;
+
+/** Reading-guide overlay height, mirrors `.readingGuide { height: 40px }`
+ *  in the CSS module. Kept in sync so the JS can centre it on the cursor. */
+const READING_GUIDE_HEIGHT = 40;
 
 // ── External-store glue ──────────────────────────────────────────────────
 // `subscribe` listens for cross-tab cookie writes via the `storage` event.
@@ -160,6 +234,14 @@ export function A11yWidgetClient({
   const panelRef = useRef<HTMLDivElement | null>(null);
   const closeBtnRef = useRef<HTMLButtonElement | null>(null);
 
+  // Slice 52 Phase B overlay refs — used by the cursor-tracking + tooltip
+  // effects below. The refs let the JS handlers update transform / style
+  // directly (sidestepping a re-render for every mousemove tick).
+  const readingGuideRef = useRef<HTMLDivElement | null>(null);
+  const focusMaskTopRef = useRef<HTMLDivElement | null>(null);
+  const focusMaskBottomRef = useRef<HTMLDivElement | null>(null);
+  const tooltipRef = useRef<HTMLDivElement | null>(null);
+
   // 4) Live-region state — bumped by a counter so the same announcement
   //    text (e.g., toggle-on then toggle-off) re-announces on each change.
   const [announcement, setAnnouncement] = useState({ text: "", seq: 0 });
@@ -219,24 +301,38 @@ export function A11yWidgetClient({
   const handleToggle = useCallback(
     (key: A11yKey) => {
       const nextValue = !prefs[key];
-      // Mutual-exclusion: text-l and text-xl can't both be on.
-      // Build a fully-mutable record then re-narrow to the readonly
-      // A11yPrefs at the call site (TS refuses to mutate `prefs[K]`
-      // through the readonly type even via spread).
-      const draft: { [K in A11yKey]: boolean } = {
-        "text-l": prefs["text-l"],
-        "text-xl": prefs["text-xl"],
-        "contrast-high": prefs["contrast-high"],
-        "contrast-dark": prefs["contrast-dark"],
-        "readable-font": prefs["readable-font"],
-        "line-height-lg": prefs["line-height-lg"],
-        "stop-motion": prefs["stop-motion"],
-      };
+      // Build a fully-mutable record from the readonly A11yPrefs (TS
+      // refuses to mutate `prefs[K]` through the readonly type even via
+      // spread). The `A11Y_KEYS` whitelist drives the construction so a
+      // future Phase-C addition only requires updating the whitelist.
+      const draft = Object.fromEntries(
+        A11Y_KEYS.map((k) => [k, prefs[k]])
+      ) as { [K in A11yKey]: boolean };
       draft[key] = nextValue;
+
+      // Mutex 1 (Phase A): text-l ↔ text-xl.
       if (nextValue) {
         if (key === "text-l") draft["text-xl"] = false;
         if (key === "text-xl") draft["text-l"] = false;
       }
+
+      // Mutex 2 (Phase B): filter group — invert / grayscale /
+      // saturate-high / saturate-low. Enabling one silently disables
+      // the others (visual rules collide; only one can win).
+      if (nextValue && FILTER_MUTEX_KEYS.includes(key)) {
+        for (const k of FILTER_MUTEX_KEYS) {
+          if (k !== key) draft[k] = false;
+        }
+      }
+
+      // Mutex 3 (Phase B): reading-guide ↔ focus-mask. Both track mouseY
+      // and would overlap visually; only one can be active.
+      if (nextValue && GUIDE_MUTEX_KEYS.includes(key)) {
+        for (const k of GUIDE_MUTEX_KEYS) {
+          if (k !== key) draft[k] = false;
+        }
+      }
+
       const next: A11yPrefs = draft;
       applyPrefs(next, key, nextValue);
       announce(
@@ -366,6 +462,186 @@ export function A11yWidgetClient({
     }
   }, [cookieParsed]);
 
+  // 11) Slice 52 Phase B — cursor-tracking overlays (reading-guide and
+  //     focus-mask). A single mousemove listener positions whichever
+  //     overlay is active; both overlays are mounted in the JSX below
+  //     but `display: none`'d via inline style when their pref is off.
+  //
+  //     Touch-device guard: `matchMedia("(pointer: coarse)")` detects
+  //     phones / tablets where mousemove is unreliable. On a coarse
+  //     pointer the effect short-circuits and the CSS rule for these
+  //     overlays at the end of the module hides them outright.
+  //
+  //     Throttling: requestAnimationFrame coalesces a burst of
+  //     mousemove events down to one DOM update per paint, which keeps
+  //     scroll perf clean even on a fast trackpad.
+  const guideActive = prefs["reading-guide"];
+  const maskActive = prefs["focus-mask"];
+  useEffect(() => {
+    if (!guideActive && !maskActive) return;
+    if (
+      typeof window !== "undefined" &&
+      typeof window.matchMedia === "function" &&
+      window.matchMedia("(pointer: coarse)").matches
+    ) {
+      return;
+    }
+
+    let rafId: number | null = null;
+    let pendingY: number | null = null;
+    const update = () => {
+      rafId = null;
+      const y = pendingY;
+      if (y === null) return;
+      pendingY = null;
+      if (guideActive && readingGuideRef.current) {
+        const targetY = Math.max(0, y - READING_GUIDE_HEIGHT / 2);
+        readingGuideRef.current.style.transform = `translateY(${targetY}px)`;
+      }
+      if (maskActive && focusMaskTopRef.current && focusMaskBottomRef.current) {
+        const slitTop = Math.max(0, y - FOCUS_MASK_SLIT_HEIGHT / 2);
+        const slitBottom = slitTop + FOCUS_MASK_SLIT_HEIGHT;
+        focusMaskTopRef.current.style.height = `${slitTop}px`;
+        focusMaskBottomRef.current.style.top = `${slitBottom}px`;
+        focusMaskBottomRef.current.style.height = `${Math.max(
+          0,
+          window.innerHeight - slitBottom
+        )}px`;
+      }
+    };
+    const onMove = (e: MouseEvent) => {
+      pendingY = e.clientY;
+      if (rafId === null) rafId = requestAnimationFrame(update);
+    };
+    document.addEventListener("mousemove", onMove, { passive: true });
+    return () => {
+      document.removeEventListener("mousemove", onMove);
+      if (rafId !== null) cancelAnimationFrame(rafId);
+    };
+  }, [guideActive, maskActive]);
+
+  // 12) Slice 52 Phase B — tooltips-on-hover. Delegated focusin +
+  //     mouseenter listeners on `document.body` show the custom
+  //     tooltip element (`.tooltip` inside the widget portal) on any
+  //     element with `title` or `aria-label`, EXCLUDING the widget
+  //     itself (via a `closest(".a11yWidget")` guard).
+  //
+  //     Positioning: tooltip floats above the target by default; flips
+  //     below if the target is too close to the viewport top.
+  //     Hidden by setting `display: none` inline; revealed on each
+  //     show via `display: block`.
+  const tooltipsActive = prefs["tooltips-on-hover"];
+  useEffect(() => {
+    if (!tooltipsActive) return;
+
+    const showFor = (el: Element) => {
+      if (!(el instanceof HTMLElement)) return;
+      if (el.closest(".a11yWidget")) return;
+      const label =
+        el.getAttribute("aria-label") || el.getAttribute("title") || "";
+      const text = label.trim();
+      const tip = tooltipRef.current;
+      if (!tip || !text) return;
+      tip.textContent = text;
+      tip.style.display = "block";
+      // Measure then position. Default: above target with 8 px gap.
+      // Flip below if the target sits in the top 80 px of the viewport.
+      const rect = el.getBoundingClientRect();
+      const tipRect = tip.getBoundingClientRect();
+      const PAD = 8;
+      const wantsBelow = rect.top < tipRect.height + PAD + 16;
+      const top = wantsBelow
+        ? rect.bottom + PAD
+        : rect.top - tipRect.height - PAD;
+      // Horizontally clamp to the viewport so a tooltip near the edge
+      // doesn't render off-screen.
+      const left = Math.max(
+        8,
+        Math.min(
+          window.innerWidth - tipRect.width - 8,
+          rect.left + rect.width / 2 - tipRect.width / 2
+        )
+      );
+      tip.style.top = `${Math.max(8, top)}px`;
+      tip.style.left = `${left}px`;
+    };
+    const hideTip = () => {
+      const tip = tooltipRef.current;
+      if (tip) tip.style.display = "none";
+    };
+    const onMouseEnter = (e: Event) => {
+      const target = e.target as Element | null;
+      if (!target) return;
+      const labeled = target.closest?.(TOOLTIP_TARGET_SELECTOR);
+      if (labeled) showFor(labeled);
+    };
+    const onMouseLeave = (e: Event) => {
+      const target = e.target as Element | null;
+      const next = (e as MouseEvent).relatedTarget as Element | null;
+      if (
+        target instanceof Element &&
+        target.closest?.(TOOLTIP_TARGET_SELECTOR) &&
+        (!next || !next.closest?.(TOOLTIP_TARGET_SELECTOR))
+      ) {
+        hideTip();
+      }
+    };
+    const onFocusIn = (e: Event) => {
+      const target = e.target as Element | null;
+      const labeled = target?.closest?.(TOOLTIP_TARGET_SELECTOR);
+      if (labeled) showFor(labeled);
+    };
+    const onFocusOut = () => hideTip();
+
+    document.body.addEventListener("mouseenter", onMouseEnter, true);
+    document.body.addEventListener("mouseleave", onMouseLeave, true);
+    document.body.addEventListener("focusin", onFocusIn);
+    document.body.addEventListener("focusout", onFocusOut);
+    return () => {
+      document.body.removeEventListener("mouseenter", onMouseEnter, true);
+      document.body.removeEventListener("mouseleave", onMouseLeave, true);
+      document.body.removeEventListener("focusin", onFocusIn);
+      document.body.removeEventListener("focusout", onFocusOut);
+      hideTip();
+    };
+  }, [tooltipsActive]);
+
+  // 13) Slice 52 Phase B — pause-autoplay. On activate, pause every
+  //     existing `<video>` once and attach a MutationObserver to keep
+  //     pausing newly-inserted videos. Different from Phase A's
+  //     `stop-motion` (which pauses once at toggle time only).
+  const pauseAutoplayActive = prefs["pause-autoplay"];
+  useEffect(() => {
+    if (!pauseAutoplayActive) return;
+
+    const safePause = (v: HTMLVideoElement) => {
+      try {
+        v.pause();
+      } catch {
+        // No-op — see stop-motion handler.
+      }
+    };
+    document
+      .querySelectorAll<HTMLVideoElement>("video")
+      .forEach(safePause);
+
+    const observer = new MutationObserver((mutations) => {
+      for (const m of mutations) {
+        m.addedNodes.forEach((node) => {
+          if (node instanceof HTMLVideoElement) {
+            safePause(node);
+          } else if (node instanceof Element) {
+            node
+              .querySelectorAll?.<HTMLVideoElement>("video")
+              .forEach(safePause);
+          }
+        });
+      }
+    });
+    observer.observe(document.body, { childList: true, subtree: true });
+    return () => observer.disconnect();
+  }, [pauseAutoplayActive]);
+
   if (!mounted) return null;
 
   const node = (
@@ -444,6 +720,44 @@ export function A11yWidgetClient({
       >
         {announcement.text}
       </div>
+
+      {/* Slice 52 Phase B — overlay elements. Mounted inside the widget
+          portal (i.e. inside `.a11yWidget`) so the no-override
+          `:not(.a11yWidget *)` exclusions keep them legible under every
+          active control. JS effects above update the `style.transform`
+          / `style.top` / `style.display` directly via refs. */}
+      {prefs["reading-guide"] ? (
+        <div
+          ref={readingGuideRef}
+          className={styles.readingGuide}
+          aria-hidden="true"
+        />
+      ) : null}
+      {prefs["focus-mask"] ? (
+        <>
+          <div
+            ref={focusMaskTopRef}
+            className={styles.focusMaskTop}
+            aria-hidden="true"
+            style={{ height: 0 }}
+          />
+          <div
+            ref={focusMaskBottomRef}
+            className={styles.focusMaskBottom}
+            aria-hidden="true"
+            style={{ top: 0, height: 0 }}
+          />
+        </>
+      ) : null}
+      {prefs["tooltips-on-hover"] ? (
+        <div
+          ref={tooltipRef}
+          className={styles.tooltip}
+          role="tooltip"
+          aria-hidden="true"
+          style={{ display: "none" }}
+        />
+      ) : null}
     </div>
   );
 

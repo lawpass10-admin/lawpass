@@ -222,11 +222,72 @@
   border: 0;
 }
 
+/* ─── Slice 52 Phase B — overlay elements mounted inside the portal
+       (custom tooltip / reading guide / focus mask). They live as
+       siblings of the launcher + panel so the no-override exclusions
+       (`:not(.a11yWidget *)`) keep them legible under every override.
+       Position is updated imperatively in the client island via
+       requestAnimationFrame-throttled mousemove / focusin handlers. */
+
+.tooltip {
+  position: fixed;
+  z-index: 10000;
+  max-width: 280px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: #0F1F4F;
+  color: #FFFFFF;
+  font-family: "Heebo", Arial, "Noto Sans Hebrew", sans-serif;
+  font-size: 13px;
+  line-height: 1.4;
+  box-shadow: 0 6px 22px rgba(15, 31, 79, 0.32);
+  pointer-events: none;
+  /* Default hidden via inline `display: none` on the element; the client
+     island flips it to `block` only when a target is present. */
+}
+
+.readingGuide {
+  position: fixed;
+  left: 0;
+  right: 0;
+  height: 40px;
+  z-index: 9998;
+  pointer-events: none;
+  background: rgba(255, 235, 0, 0.18);
+  border-top: 2px solid #B8860B;
+  border-bottom: 2px solid #B8860B;
+  /* Y position is driven by `transform: translateY(...)` in the JS
+     handler so we hit the GPU compositor instead of layout. */
+  will-change: transform;
+}
+
+.focusMaskTop,
+.focusMaskBottom {
+  position: fixed;
+  left: 0;
+  right: 0;
+  z-index: 9997;
+  background: rgba(0, 0, 0, 0.55);
+  pointer-events: none;
+  will-change: transform, height;
+}
+.focusMaskTop { top: 0; }
+.focusMaskBottom { bottom: 0; }
+
 /* ─── Mobile ─── */
 @media (max-width: 600px) {
   .widgetRoot { bottom: 16px; left: 16px; }
   .launcher { width: 54px; height: 54px; }
   .panel { bottom: 68px; }
+}
+/* Touch-device guard for the cursor-tracking overlays. On a coarse
+   pointer (phone/tablet) "mousemove" is meaningless — hide them so they
+   don't sit fixed at the top of the screen blocking content. */
+@media (pointer: coarse) {
+  .readingGuide,
+  .focusMaskTop,
+  .focusMaskBottom,
+  .tooltip { display: none !important; }
 }
 
 /* ───────────────────────────────────────────────────────────────────────
@@ -300,3 +361,113 @@
   transition: none !important;
   scroll-behavior: auto !important;
 }
+
+/* ───────────────────────────────────────────────────────────────────────
+   Slice 52 — Phase B override rules (12 controls).
+   ─────────────────────────────────────────────────────────────────────
+
+   IMPORTANT: filter-based controls (8, 9, 10, 11) CANNOT use the same
+   `body :not(.a11yWidget *)` selector pattern as Phase A — `filter` on
+   `body` cascades through the compositor and would invert / grayscale
+   the widget too, even though `isolation: isolate` is set on the
+   widget root (filter cascades INTO new stacking contexts).
+
+   The workaround: apply the filter to `body > *:not(.a11yWidget)` —
+   i.e., to every top-level child of `<body>` EXCEPT the widget portal
+   root. Next.js renders all page content under one or more top-level
+   children of body, and the widget is a sibling of those via
+   createPortal — so the filter lands on the page tree only. */
+
+/* 8. invert: 100% color inversion + 180° hue rotation. Counter-inverts
+      media (img / picture / video) so photographs stay legible — the
+      double-inverse cancels out for raster content. The MUTEX in the
+      client toggle handler ensures only ONE of invert / grayscale /
+      saturate-high / saturate-low is active at a time. */
+:global(body.lp-a11y-invert) > *:not(.a11yWidget) {
+  filter: invert(100%) hue-rotate(180deg) !important;
+}
+:global(body.lp-a11y-invert) > *:not(.a11yWidget) img,
+:global(body.lp-a11y-invert) > *:not(.a11yWidget) picture,
+:global(body.lp-a11y-invert) > *:not(.a11yWidget) video {
+  filter: invert(100%) hue-rotate(180deg);
+}
+
+/* 9. grayscale: full desaturation. Filter on body's content children
+      only (widget exempt via the > *:not pattern above). */
+:global(body.lp-a11y-grayscale) > *:not(.a11yWidget) {
+  filter: grayscale(100%) !important;
+}
+
+/* 10. saturate-high: 200% saturation boost. Helps users with mild colour
+       vision deficiencies distinguish hues. */
+:global(body.lp-a11y-saturate-high) > *:not(.a11yWidget) {
+  filter: saturate(200%) !important;
+}
+
+/* 11. saturate-low: 50% saturation — gentler than grayscale's full
+       desaturation but useful for some sensory profiles. */
+:global(body.lp-a11y-saturate-low) > *:not(.a11yWidget) {
+  filter: saturate(50%) !important;
+}
+
+/* 12. highlight-links: yellow-on-black for every <a>. ~19:1 contrast
+       passes SC 1.4.6 AAA-large with margin. Widget links exempt. */
+:global(body.lp-a11y-highlight-links) a:not(.a11yWidget *) {
+  text-decoration: underline !important;
+  font-weight: 700 !important;
+  color: #FFFF00 !important;
+  background-color: #000000 !important;
+  padding: 0 2px;
+}
+
+/* 13. larger-focus-rings: amber outline + slight halo so keyboard focus
+       reads from across the room. Applied to every :focus-visible
+       outside the widget tree. The amber #FFB800 is high-contrast on
+       both light and dark backgrounds (≥ 3:1 against white per
+       SC 1.4.11 non-text contrast). */
+:global(body.lp-a11y-larger-focus-rings) *:focus-visible:not(.a11yWidget *) {
+  outline: 4px solid #FFB800 !important;
+  outline-offset: 3px !important;
+  box-shadow: 0 0 0 6px rgba(255, 184, 0, 0.25) !important;
+}
+
+/* 14. big-cursor: high-contrast cursor (white fill, black outline) sized
+       up to 48×48. The data URL holds the SVG arrow shape; the `6 6`
+       suffix is the hotspot (tip of the arrow). Falls back to `auto`
+       when the SVG is rejected. Applied to every element outside the
+       widget tree so descendants inherit the cursor too. */
+:global(body.lp-a11y-big-cursor) > *:not(.a11yWidget),
+:global(body.lp-a11y-big-cursor) > *:not(.a11yWidget) * {
+  cursor: url("data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI0OCIgaGVpZ2h0PSI0OCIgdmlld0JveD0iMCAwIDQ4IDQ4Ij48cGF0aCBkPSJNNiA2IEw2IDM2IEwxNCAyOCBMMTkgNDAgTDIzIDM4IEwxOCAyNiBMMjggMjYgWiIgZmlsbD0id2hpdGUiIHN0cm9rZT0iYmxhY2siIHN0cm9rZS13aWR0aD0iMiIgc3Ryb2tlLWxpbmVqb2luPSJyb3VuZCIvPjwvc3ZnPg==") 6 6, auto !important;
+}
+
+/* 15. hide-images: CONSERVATIVE scope per PM lock — hides only
+       DECORATIVE imagery:
+         * `aria-hidden="true"` on img / picture / svg (explicit
+            decorative).
+         * `img` with no `alt` AND no `aria-label` (implicit decorative,
+            heuristic).
+         * `picture` / `svg` with no `aria-label` (no `alt` on these so
+            we lean on aria-label only).
+       Meaningful icons with descriptive alt/aria-label stay visible.
+       `visibility: hidden` preserves layout (vs `display: none` which
+       reflows). Widget icons exempt. */
+:global(body.lp-a11y-hide-images) > *:not(.a11yWidget) img[aria-hidden="true"],
+:global(body.lp-a11y-hide-images) > *:not(.a11yWidget) picture[aria-hidden="true"],
+:global(body.lp-a11y-hide-images) > *:not(.a11yWidget) svg[aria-hidden="true"],
+:global(body.lp-a11y-hide-images) > *:not(.a11yWidget) img:not([alt]):not([aria-label]),
+:global(body.lp-a11y-hide-images) > *:not(.a11yWidget) picture:not([aria-label]),
+:global(body.lp-a11y-hide-images) > *:not(.a11yWidget) svg:not([aria-label]) {
+  visibility: hidden !important;
+}
+
+/* The remaining Phase-B controls have no global CSS — they're JS-driven
+   and their state is tracked via the body class only so the cookie
+   round-trips correctly:
+     * tooltips-on-hover  → JS delegated listeners (see client island).
+     * reading-guide      → JS mousemove handler + the `.readingGuide`
+                            overlay above.
+     * focus-mask         → JS mousemove handler + the two
+                            `.focusMaskTop` / `.focusMaskBottom`
+                            overlays above.
+     * pause-autoplay     → JS once-pass + MutationObserver. */

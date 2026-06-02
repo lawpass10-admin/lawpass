@@ -39,16 +39,21 @@ export const A11Y_COOKIE_SAMESITE = "Lax" as const;
 export const A11Y_HTML_CLASS_PREFIX = "lp-a11y-";
 
 /**
- * Phase-A control keys. Adding a key here:
+ * Phase-A + Phase-B control keys. Adding a key here:
  *   1) lets the cookie carry it (encode/decode whitelist),
  *   2) lets the client island render its toggle, and
  *   3) requires the matching `.lp-a11y-<key>` rule in the CSS module.
  *
- * `text-l` and `text-xl` are mutually exclusive (the panel UI enforces);
- * the others are independent on/off toggles. `reset-all` is an action
- * (not a stored pref), so it's NOT in this list.
+ * Mutex groups (enforced in the client toggle handler, NOT here — this
+ * whitelist is concerned only with parsability of the cookie):
+ *   - text-l ↔ text-xl                                  (Phase A typography)
+ *   - invert ↔ grayscale ↔ saturate-high ↔ saturate-low (Phase B filters)
+ *   - reading-guide ↔ focus-mask                        (Phase B cursor guides)
+ *
+ * `reset-all` is an action (not a stored pref), so it's NOT in this list.
  */
 export const A11Y_KEYS = [
+  // ─── Phase A (8 controls) ─────────────────────────────────────────────
   "text-l",
   "text-xl",
   "contrast-high",
@@ -56,6 +61,23 @@ export const A11Y_KEYS = [
   "readable-font",
   "line-height-lg",
   "stop-motion",
+  // ─── Phase B (12 controls) ────────────────────────────────────────────
+  // Visual filters (mutex group):
+  "invert",
+  "grayscale",
+  "saturate-high",
+  "saturate-low",
+  // Links + focus:
+  "highlight-links",
+  "larger-focus-rings",
+  // Cursor + reading tools (reading-guide ↔ focus-mask mutex):
+  "big-cursor",
+  "tooltips-on-hover",
+  "reading-guide",
+  "focus-mask",
+  // Media:
+  "pause-autoplay",
+  "hide-images",
 ] as const;
 
 export type A11yKey = (typeof A11Y_KEYS)[number];
