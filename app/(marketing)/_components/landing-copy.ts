@@ -258,10 +258,13 @@ export const footerCopy = {
       heading: "חשבון",
       links: [
         { label: "כניסה לאזור אישי", href: "/login" },
-        // TODO(PM): wire to real pages once they exist. Inert "#" today.
+        // TODO(PM): wire to a real support page once it exists. Inert "#" today.
         { label: "תמיכה", href: "#" },
-        { label: "תקנון", href: "#" },
-        { label: "מדיניות פרטיות", href: "#" },
+        // Slice 50 — `תקנון` (/terms) is deferred to a follow-up slice
+        // once the תקנון file lands. Until then the slot carries the
+        // accessibility declaration (/accessibility, חוק שוויון זכויות).
+        { label: "הצהרת נגישות", href: "/accessibility" },
+        { label: "מדיניות פרטיות", href: "/privacy" },
       ],
     },
     {

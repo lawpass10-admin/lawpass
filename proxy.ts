@@ -25,6 +25,10 @@ const AUTH_BOUNCE_PATHS = new Set([
 // for the first time and got bounced. Authenticated test traffic during
 // Slices 43-45 passed the `!user` check below and rendered fine, which is
 // how the latent bug went unnoticed.
+//
+// Slice 50 — added "/privacy" and "/accessibility" for the legal stub pages
+// (privacy policy + הצהרת נגישות). The future /terms slot will be added in
+// a follow-up slice once the תקנון file lands.
 const PUBLIC_PATHS = new Set([
   "/",
   "/login",
@@ -34,6 +38,8 @@ const PUBLIC_PATHS = new Set([
   "/reset-password",
   "/onboarding/complete-profile",
   "/early-access",
+  "/privacy",
+  "/accessibility",
 ]);
 
 export async function proxy(request: NextRequest): Promise<NextResponse> {

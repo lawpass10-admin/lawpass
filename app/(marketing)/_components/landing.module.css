@@ -1227,4 +1227,155 @@
   .t360Text { font-size: 13.5px; line-height: 1.65; }
   .t360Refs li { font-size: 13px; }
   .ts360Toggle { font-size: 13.5px; padding: 11px 18px; }
+
+  /* Slice 50 — hide the hero disclaimer line on phones. The footer carries
+     the same /privacy link on mobile, so the disclaimer would just stack
+     under an already-tight hero. Desktop/tablet keep it. */
+  .heroDisclaimer { display: none; }
+
+  /* Slice 50 — tighter mobile prose for the legal pages. The desktop rules
+     below set ~70ch / 17px / 1.7 line-height; on phones we drop to 16px
+     body with a slightly tighter rhythm so paragraphs don't feel airy. */
+  .legalProse { font-size: 16px; line-height: 1.65; }
+  .legalProse h1 { font-size: clamp(26px, 7vw, 32px); }
+  .legalProse h2 { font-size: clamp(19px, 5.2vw, 22px); margin-top: 28px; }
+  .legalProse h3 { font-size: clamp(16px, 4.4vw, 18px); margin-top: 18px; }
+  .legalTopstripInner { padding: 10px 16px; }
+  .legalLogoLink img { height: 36px; }
+  .legalBackLink { font-size: 13px; }
+  .legalPage { padding: 18px 16px 48px; }
 }
+
+/* ─── Slice 50 — hero disclaimer line + legal-page (/privacy +
+       /accessibility) prose typography. All rules are scoped to the
+       `.landingRoot` wrapper or to the per-page `.legalRoot` wrapper, so
+       nothing leaks to other parts of the app and no global tokens are
+       added or redefined.
+
+       The disclaimer is a small muted line that sits immediately below the
+       hero `.ctaRow`; the mobile rule above hides it (the footer covers
+       phone visitors). The legal-page shell renders a top strip + a single
+       prose column inside `<main class="legalPage">` with comfortable line
+       height + ~70ch measure; bullet lists, h2/h3 rhythm + the dim
+       "last-updated" subtitle all live here. */
+
+.heroDisclaimer {
+  margin-top: 14px;
+  font-family: "Heebo", Arial, sans-serif;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--ink-muted);
+}
+.heroDisclaimer a {
+  color: var(--gold-deep);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.heroDisclaimer a:hover { color: var(--navy); }
+
+/* ─── Legal-page shell (/privacy + /accessibility) ─── */
+/* `composes: landingRoot` brings in the design tokens (--paper, --ink,
+   --navy-ink, --gold-deep, ...) scoped to this wrapper, without leaking
+   them to :root. CSS Modules emits both hashed class names onto the same
+   element. */
+.legalRoot {
+  composes: landingRoot;
+  min-height: 100vh;
+}
+.legalTopstrip {
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  background: var(--white);
+  border-bottom: 1px solid var(--line);
+}
+.legalTopstripInner {
+  max-width: 920px;
+  margin: 0 auto;
+  padding: 12px 32px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.legalLogoLink { display: inline-flex; align-items: center; }
+.legalLogoLink img {
+  display: block;
+  height: 44px;
+  width: auto;
+}
+.legalBackLink {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: "Heebo", Arial, sans-serif;
+  font-weight: 600;
+  font-size: 14px;
+  color: var(--navy-ink);
+  padding: 8px 14px;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--line-strong);
+  transition: background 0.18s ease, border-color 0.18s ease;
+}
+.legalBackLink:hover {
+  background: var(--gold-tint);
+  border-color: var(--gold);
+}
+
+.legalPage {
+  max-width: 920px;
+  margin: 0 auto;
+  padding: 32px;
+}
+.legalProse {
+  max-width: 70ch;
+  margin: 0 auto;
+  font-size: 17px;
+  line-height: 1.7;
+  color: var(--ink);
+}
+.legalProse h1 {
+  font-family: "Heebo", Arial, sans-serif;
+  font-weight: 800;
+  font-size: clamp(30px, 3vw, 38px);
+  color: var(--navy-ink);
+  margin: 0 0 8px;
+  letter-spacing: -0.01em;
+  line-height: 1.15;
+}
+.legalSubtitle {
+  font-family: "Heebo", Arial, sans-serif;
+  font-size: 14px;
+  color: var(--ink-muted);
+  margin: 0 0 32px;
+}
+.legalProse h2 {
+  font-family: "Heebo", Arial, sans-serif;
+  font-weight: 700;
+  font-size: clamp(20px, 2.2vw, 24px);
+  color: var(--navy-ink);
+  margin: 36px 0 10px;
+  line-height: 1.3;
+}
+.legalProse h3 {
+  font-family: "Heebo", Arial, sans-serif;
+  font-weight: 700;
+  font-size: clamp(17px, 1.8vw, 19px);
+  color: var(--ink);
+  margin: 24px 0 8px;
+  line-height: 1.35;
+}
+.legalProse p {
+  margin: 0 0 14px;
+  text-wrap: pretty;
+}
+.legalProse ul {
+  margin: 0 0 16px;
+  padding-inline-start: 22px;
+  list-style: disc;
+}
+.legalProse li {
+  margin: 0 0 6px;
+  line-height: 1.65;
+}
+.legalProse li::marker { color: var(--gold-deep); }

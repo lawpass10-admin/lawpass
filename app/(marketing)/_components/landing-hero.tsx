@@ -45,6 +45,15 @@ export function LandingHero() {
               {heroCopy.secondaryCtaLabel}
             </a>
           </div>
+
+          {/* Slice 50 — small muted disclaimer below the CTA row, linking to
+              /privacy. Hidden on mobile (≤767 px) via the @media block in
+              landing.module.css — the footer carries the same link there. */}
+          <p className={styles.heroDisclaimer}>
+            השימוש בשירות כפוף ל
+            <Link href="/privacy">מדיניות פרטיות</Link>
+            .
+          </p>
         </div>
 
         <div className={styles.heroFigure}>
