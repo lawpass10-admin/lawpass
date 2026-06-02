@@ -5,6 +5,7 @@ import {
   type PlanCopy,
 } from "@/app/(marketing)/_components/landing-copy";
 
+import { SwipeHint } from "./swipe-hint";
 import styles from "./landing.module.css";
 
 /**
@@ -157,6 +158,9 @@ export function LandingPlans() {
             </article>
           ))}
         </div>
+        {/* Slice 47 — swipe-hint shown only on mobile via the module's
+            `@media (max-width: 767px)` rule. */}
+        <SwipeHint />
       </div>
     </section>
   );

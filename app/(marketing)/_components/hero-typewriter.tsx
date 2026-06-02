@@ -1,17 +1,27 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 
 import styles from "./landing.module.css";
 
 /**
  * Slice 46 — hero subline typewriter.
+ * Slice 47 — fix: the loop's mutable state (displayedText, lineIdx, phase)
+ *   now lives in EFFECT-LOCAL `let` bindings instead of React state + refs,
+ *   and the effect deps are `[lines]` only. Reason: in the Slice-46 version
+ *   `useEffect` depended on `[text, lines]`, so every setText triggered a
+ *   re-render whose cleanup `clearTimeout`'d the just-scheduled 55 ms tick.
+ *   The effect then re-ran and scheduled a fresh `setTimeout(step, 0)` — net
+ *   effect: each char appeared at the React render+effect cycle pace (~16 ms)
+ *   rather than the intended TYPE_SPEED_MS (55 ms), and the typewriter read
+ *   as "instant" instead of typing visibly.
+ *
+ *   New shape: `text` stays as state purely for the visible <span>. The loop
+ *   reads/mutates `displayedText` directly, calling `setText(displayedText)`
+ *   to repaint. Cleanup runs only on unmount.
  *
  * Faithful port of the design's script 3a (lines 1996–2030 of
  * `_design/landing-hifi-new.html`): types each phrase, holds, erases, advances.
- * Refs hold the run-state across rerenders so a hot-reload doesn't double-fire
- * the loop. Uses CSS classes from `landing.module.css` (`.twText` + `.twCursor`)
- * — both module-local.
  */
 
 const TYPE_SPEED_MS = 55;
@@ -21,49 +31,52 @@ const HOLD_AFTER_HOLD_MS = 400;
 
 export function HeroTypewriter({ lines }: { lines: readonly string[] }) {
   const [text, setText] = useState("");
-  const idxRef = useRef(0);
-  const phaseRef = useRef<"typing" | "holding" | "erasing">("typing");
 
   useEffect(() => {
     if (lines.length === 0) return;
     let cancelled = false;
-    let timeout: ReturnType<typeof setTimeout> | null = null;
+    let timeoutId: ReturnType<typeof setTimeout> | null = null;
+    // Slice 47 — locals replace state for the loop's working memory. The
+    // closure stays stable across the whole loop lifetime so the 55ms /
+    // 22ms ticks fire as intended.
+    let displayedText = "";
+    let lineIdx = 0;
+    let phase: "typing" | "holding" | "erasing" = "typing";
 
     const step = () => {
       if (cancelled) return;
-      const cur = lines[idxRef.current % lines.length];
-      if (phaseRef.current === "typing") {
-        if (text.length < cur.length) {
-          const next = cur.slice(0, text.length + 1);
-          setText(next);
-          timeout = setTimeout(step, TYPE_SPEED_MS);
+      const cur = lines[lineIdx % lines.length];
+      if (phase === "typing") {
+        if (displayedText.length < cur.length) {
+          displayedText = cur.slice(0, displayedText.length + 1);
+          setText(displayedText);
+          timeoutId = setTimeout(step, TYPE_SPEED_MS);
         } else {
-          phaseRef.current = "holding";
-          timeout = setTimeout(step, HOLD_MS);
+          phase = "holding";
+          timeoutId = setTimeout(step, HOLD_MS);
         }
-      } else if (phaseRef.current === "holding") {
-        phaseRef.current = "erasing";
-        timeout = setTimeout(step, HOLD_AFTER_HOLD_MS);
+      } else if (phase === "holding") {
+        phase = "erasing";
+        timeoutId = setTimeout(step, HOLD_AFTER_HOLD_MS);
       } else {
-        if (text.length > 0) {
-          setText(text.slice(0, -1));
-          timeout = setTimeout(step, ERASE_SPEED_MS);
+        if (displayedText.length > 0) {
+          displayedText = displayedText.slice(0, -1);
+          setText(displayedText);
+          timeoutId = setTimeout(step, ERASE_SPEED_MS);
         } else {
-          idxRef.current += 1;
-          phaseRef.current = "typing";
-          timeout = setTimeout(step, 0);
+          lineIdx += 1;
+          phase = "typing";
+          timeoutId = setTimeout(step, 0);
         }
       }
     };
 
-    timeout = setTimeout(step, 0);
+    timeoutId = setTimeout(step, 0);
     return () => {
       cancelled = true;
-      if (timeout) clearTimeout(timeout);
+      if (timeoutId) clearTimeout(timeoutId);
     };
-    // `text` and `lines` participate in the loop; the parent passes a stable
-    // const array so re-runs only fire on real changes.
-  }, [text, lines]);
+  }, [lines]);
 
   return (
     <>

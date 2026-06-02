@@ -1,6 +1,7 @@
 import { methodCopy } from "@/app/(marketing)/_components/landing-copy";
 
 import { PillarVideo } from "./pillar-video";
+import { SwipeHint } from "./swipe-hint";
 import styles from "./landing.module.css";
 
 /**
@@ -44,6 +45,9 @@ export function LandingMethod() {
             </div>
           ))}
         </div>
+        {/* Slice 47 — swipe-hint shown only on mobile via the module's
+            `@media (max-width: 767px)` rule. */}
+        <SwipeHint />
       </div>
     </section>
   );

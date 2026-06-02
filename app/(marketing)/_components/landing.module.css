@@ -190,16 +190,29 @@
 @media (min-width: 768px) {
   .heroGrid { padding: 24px 32px 280px; gap: 40px; grid-template-columns: 1.25fr 0.75fr; }
 }
-.heroCopy { position: relative; z-index: 3; }
+/* Slice 47 — center the WHOLE hero copy column (h1 + subline + CTA row) on
+   BOTH desktop and mobile. The CTA row needs `justify-content: center` since
+   the row itself is a flex container. */
+.heroCopy {
+  position: relative;
+  z-index: 3;
+  text-align: center;
+}
+.heroCopy .ctaRow { justify-content: center; }
+
+/* Slice 47 — raise the figure by trimming `.heroFigure` height by ~60 px on
+   desktop and ~40 px on mobile (recommended values from the Slice 47
+   investigation). The negative-margin overlap with the wave below is
+   preserved via `.characterImg`. */
 .heroFigure {
   position: relative;
   z-index: 1;
-  height: 400px;
+  height: 360px;
   display: flex;
   align-items: flex-end;
   justify-content: center;
 }
-@media (min-width: 768px) { .heroFigure { height: 600px; } }
+@media (min-width: 768px) { .heroFigure { height: 540px; } }
 .heroFigureBg {
   position: absolute;
   inset-inline-end: -6%;
@@ -938,4 +951,104 @@
   .planFeatured,
   .faqCharacterRing,
   .twCursor { animation: none !important; }
+}
+
+/* ─── Mobile responsiveness (Slice 47 — port of design's
+       @media (max-width:767px) block, lines 1170–1260 of
+       _design/landing-hifi-new.html). Slice 46 omitted this block
+       entirely; porting it fixes the headline overflow, the oversized
+       CTAs, and the missing pillar/plans swipe carousels.
+       Class names re-spelled to their module-local equivalents
+       (.heroHeadline / .heroGrid / .heroSub / .btnGold / .btnGhost /
+       .heroFigure / .characterSlot / .characterImg / .heroFigureBg /
+       .heroWave / .h2 / .lead / .sectionHead / .pillars / .pillar /
+       .plans / .plan / .swipeHint). All values are byte-for-byte from
+       the design except `.heroFigure { height }` and `.characterImg`
+       (Slice 47 figure-raise — see decision in the investigation). */
+
+/* Swipe-hint base (hidden by default; revealed inside the mobile
+   media query below for both carousels). */
+.swipeHint { display: none; }
+
+@media (max-width: 767px) {
+  /* Headings — tame oversized type on phones. */
+  .h2 { font-size: clamp(25px, 6.6vw, 36px); }
+  .lead { font-size: clamp(15px, 4vw, 17px); }
+  .sectionHead { margin-bottom: 30px; }
+
+  /* Hero — let headline WRAP (design's `white-space: nowrap` was the
+     overflow culprit at <768px), tighten the figure, bring the
+     character forward & larger. */
+  .heroHeadline { font-size: clamp(26px, 7.4vw, 38px); margin-bottom: 14px; }
+  .heroHeadline > span { white-space: normal; }
+  .hero { padding-top: 12px; }
+  .heroGrid { padding: 10px 16px 40px; gap: 6px; }
+  .heroSub { min-height: 0; margin-bottom: 22px; font-size: clamp(15px, 3.9vw, 18px); }
+  .ctaRow { gap: 10px; margin-bottom: 18px; }
+  .btnGold { padding: 14px 28px; font-size: 16px; }
+  .btnGhost { font-size: 15px; padding: 11px 8px; }
+  /* Slice 47 — raised by 40px vs the design's mobile `height: 400px`. */
+  .heroFigure { height: 360px; margin-top: 4px; }
+  .characterSlot { max-width: 360px; z-index: 4; }
+  .characterImg {
+    height: calc(100% + 8px);
+    margin-bottom: -8px;
+    object-position: bottom center;
+  }
+  .heroFigureBg { bottom: -30px; }
+  .heroWave { height: 150px; }
+
+  /* Method pillars → horizontal swipe carousel (CSS scroll-snap, no
+     library). Cards take 80% of the viewport so the next card peeks
+     into view as the swipe affordance. */
+  .pillars {
+    display: flex;
+    grid-template-columns: none;
+    gap: 14px;
+    overflow-x: auto;
+    scroll-snap-type: x mandatory;
+    scroll-padding-inline: 16px;
+    -webkit-overflow-scrolling: touch;
+    margin-inline: -16px;
+    padding: 4px 16px 16px;
+    scrollbar-width: none;
+  }
+  .pillars::-webkit-scrollbar { display: none; }
+  .pillar { flex: 0 0 80%; scroll-snap-align: center; padding: 26px 22px; }
+
+  /* Plans → horizontal swipe carousel (slightly wider cards at 84%
+     because plan cards are denser). */
+  .plans {
+    display: flex;
+    grid-template-columns: none;
+    gap: 16px;
+    overflow-x: auto;
+    scroll-snap-type: x mandatory;
+    scroll-padding-inline: 16px;
+    -webkit-overflow-scrolling: touch;
+    margin-inline: -16px;
+    margin-top: 26px;
+    padding: 10px 16px 18px;
+    align-items: stretch;
+    scrollbar-width: none;
+  }
+  .plans::-webkit-scrollbar { display: none; }
+  .plan { flex: 0 0 84%; scroll-snap-align: center; }
+
+  /* Swipe hint shown only on mobile, under a carousel. The component
+     itself (`<SwipeHint>`) lives in landing components; the rule below
+     controls its visibility per section. */
+  .swipeHint {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
+    margin-top: 6px;
+    font-family: "Heebo", Arial, sans-serif;
+    font-size: 12.5px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+  }
+  .methodSection .swipeHint { color: rgba(255, 255, 255, 0.6); }
+  .plansSection .swipeHint { color: var(--ink-muted); }
 }
