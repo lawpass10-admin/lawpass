@@ -1,216 +1,69 @@
 import Image from "next/image";
 import Link from "next/link";
 
-import { buttonVariants } from "@/components/ui/button";
-import { cn } from "@/lib/utils";
+import { heroCopy } from "@/app/(marketing)/_components/landing-copy";
 
-import {
-  HERO_CTA_LABEL,
-  HERO_HEADLINE_A,
-  HERO_HEADLINE_B,
-  HERO_TYPEWRITER_LINES,
-  HERO_TYPEWRITER_SPEED_MS,
-} from "./landing-copy";
-import { Typewriter } from "./typewriter";
+import { HeroTypewriter } from "./hero-typewriter";
+import styles from "./landing.module.css";
 
 /**
- * Landing hero.
+ * Slice 46 — landing hero.
  *
- * Slice 16 / Phase L2. RTL grid with copy column on the right
- * (column 1 in RTL) and character figure on the left (column 2).
- * Behind the bottom of the figure sits the navy wave SVG, which
- * meets the navy-ink Method section below in L3.
- *
- * Headline stays static; the sub line cycles through four
- * sentences via the `<Typewriter>` client component (originally
- * scoped to Phase L4 but pulled forward in the L2-polish commit
- * since the hero is otherwise complete).
- *
- * NOTE on z-index stacking (prototype index.html L264–276):
- *   hero-figure  → z 1
- *   hero-wave    → z 2  (overlaps figure's bottom)
- *   hero-copy    → z 3  (always above the wave)
- *   .character-img margin-bottom: -60px → bleeds the figure into
- *                                          the wave so the wave
- *                                          "washes over" the feet.
- *
- * Decision 6 — no `<meta property="og:image">` here; that lands in L6.
+ * Two-column grid (md+): hero copy + CTAs on visual-start, character figure on
+ * visual-end. Mobile stacks. Typewriter swap happens in the small
+ * `<HeroTypewriter>` client island. Decorative SVG wave clipped against the
+ * navy method section below.
  */
 export function LandingHero() {
   return (
-    <section className="relative overflow-hidden bg-white pt-6">
-      {/* Subtle radial wash — prototype hero::before. */}
-      <div
-        aria-hidden="true"
-        className="pointer-events-none absolute inset-0"
-        style={{
-          background:
-            "radial-gradient(900px 540px at 85% 30%, rgba(30,58,138,0.04), transparent 65%), radial-gradient(700px 460px at 12% 75%, rgba(201,161,73,0.06), transparent 65%)",
-        }}
-      />
-
-      <div
-        className={cn(
-          "relative mx-auto grid w-full max-w-[1320px] items-start gap-8 px-4 pt-6 pb-[140px]",
-          // Mobile pb-[140px] keeps the wave climbing up close to
-          // the character so its blue curve laps the character's
-          // lower legs (~30 px of overlap at the curve's peak),
-          // matching Sharon's "קצת מהרליים שלה" feedback. With the
-          // trust-cards now dropped on mobile, there's no extra
-          // band to insert between figure and wave. md+ restores
-          // the prototype's 280px so the desktop wave can overlap
-          // the feet via the figure's -60 bleed (existing intent).
-          "md:gap-10 md:px-8 md:pb-[280px]",
-          // RTL grid: column 1 (right) holds copy, column 2 (left) holds figure.
-          // 1.25fr / 0.75fr ratio matches prototype hero-grid (L258).
-          "grid-cols-1 md:grid-cols-[1.25fr_0.75fr]"
-        )}
-        style={{ zIndex: 1 }}
-      >
-        {/* Copy column */}
-        <div className="relative" style={{ zIndex: 3 }}>
-          {/* Eyebrow ("שיטת ה-360° של ד״ר שרון נאור") was removed per
-              Sharon, 2026-05-29 — the headline now opens the column. */}
-
-          {/* Headline. Two lines — second line gets a gold dot.
-              Clamp goes lower (32px) on narrow viewports so the headline
-              never overflows; `whitespace-nowrap` keeps each line on
-              one row at the chosen size. */}
-          <h1 className="mb-[18px] text-[var(--color-navy-ink)] font-extrabold leading-[1.04] text-[clamp(32px,7vw,70px)]">
-            <span className="block whitespace-nowrap">{HERO_HEADLINE_A}</span>
-            <span className="relative block whitespace-nowrap">
-              <span>{HERO_HEADLINE_B}</span>
-              <span
-                aria-hidden="true"
-                className="ms-1 text-[var(--color-gold)]"
-              >
+    <section className={styles.hero}>
+      <div className={styles.heroGrid}>
+        <div className={styles.heroCopy}>
+          <h1 className={styles.heroHeadline}>
+            <span>{heroCopy.headlineTop}</span>
+            <span style={{ color: "var(--gold-deep)" }}>
+              {heroCopy.headlineBottom}
+              <span aria-hidden className={styles.h1Dot}>
                 .
               </span>
             </span>
           </h1>
 
-          {/* Sub line — Typewriter cycles through HERO_TYPEWRITER_LINES.
-              The min-height matches the prototype's reserved 3.2em so the
-              CTA row never shifts as lines of different lengths cycle.
-              Mobile min size 17px keeps the subtitle readable without
-              eating the whole viewport. */}
-          <p
-            className="mb-9 max-w-[620px] text-[var(--ink-3)] font-normal leading-[1.5] text-[clamp(17px,3.6vw,30px)]"
-            style={{ minHeight: "3.2em" }}
-          >
-            <Typewriter
-              lines={HERO_TYPEWRITER_LINES}
-              speed={HERO_TYPEWRITER_SPEED_MS}
-            />
+          <p aria-live="polite" className={styles.heroSub}>
+            <HeroTypewriter lines={heroCopy.typewriterLines} />
           </p>
 
-          <div className="mb-14 flex flex-wrap items-center gap-3.5">
-            <Link
-              // L4: hero CTA goes to /signup. The user picks a plan there
-              // (signup form reads ?plan=… if present) or on /pricing
-              // after they verify the OTP and land with no subscription.
-              href="/signup"
-              className={cn(
-                buttonVariants({ variant: "gold", size: "lg" }),
-                "px-7 py-3 text-base font-semibold"
-              )}
-            >
-              {HERO_CTA_LABEL}
+          <div className={styles.ctaRow}>
+            <Link className={styles.btnGold} href={heroCopy.primaryCtaHref}>
+              {heroCopy.primaryCtaLabel}
             </Link>
-            <Link
-              href="#method"
-              className="text-[var(--color-navy-ink)] text-base font-medium hover:opacity-70 transition-opacity"
+            <a
+              className={styles.btnGhost}
+              aria-label={heroCopy.secondaryCtaAriaLabel}
+              href={heroCopy.secondaryCtaHref}
             >
-              איך זה עובד ←
-            </Link>
-          </div>
-
-          {/* Trust signals — 3 stat cards. Desktop only.
-              Sharon, 2026-05-29 (second mobile pass): the cards
-              were rendered twice (once here for md+, once below the
-              character with `md:hidden` for phones), but the mobile
-              render felt heavy and broke the visual flow into the
-              Method section. The mobile site is dropped; the cards
-              live only on md+ inside the copy column. */}
-          <div className="hidden max-w-[720px] grid-cols-3 gap-4 md:grid">
-            <TrustCard num="+1,200" label="שאלות מקור וזווית" />
-            <TrustCard num="360°" label="ניתוח עומק לכל שאלה" />
-            <TrustCard num="6 שבועות" label="מהרישום לבחינה" />
+              {heroCopy.secondaryCtaLabel}
+            </a>
           </div>
         </div>
 
-        {/* Figure column. Mobile cuts figure height in half so the
-            stacked layout doesn't stretch to 1200px tall on phones. */}
-        <div
-          className="relative flex h-[400px] items-end justify-center md:h-[600px]"
-          style={{ zIndex: 1 }}
-        >
-          <div
-            aria-hidden="true"
-            className="absolute"
-            style={{
-              insetInlineEnd: "-6%",
-              bottom: -80,
-              width: "90%",
-              height: "80%",
-              background:
-                "radial-gradient(closest-side, rgba(201,161,73,0.13), rgba(201,161,73,0) 70%)",
-              zIndex: 0,
-            }}
-          />
-          <div
-            className="relative flex h-full w-full max-w-[520px] items-end justify-center"
-            style={{ zIndex: 1 }}
-          >
-            {/*
-              Character image. Compressed from 2.4MB → ~365KB during
-              L2 build (sips -Z 768, native PNG at half resolution).
-              loading="eager" + explicit dimensions prevent CLS.
-
-              Bleed pattern:
-                Mobile (<md): h-[calc(100%+40px)] + mb-[-40px] —
-                  figure extends 40 px below its column so the wave's
-                  blue peak laps the character's lower legs without
-                  cutting into her torso. Tuned with pb-[140px] on the
-                  grid (see the wrapper above): wave peak at
-                  section_bottom-134, character bottom at -100 → ~34 px
-                  of overlap at the curve's crest, fading at the edges.
-                md+: h-[calc(100%+60px)] + mb-[-60px] — full prototype
-                  bleed; the desktop wave (320 px) overlaps the feet.
-            */}
+        <div className={styles.heroFigure}>
+          <div aria-hidden className={styles.heroFigureBg} />
+          <div className={styles.characterSlot}>
             <Image
+              alt={heroCopy.characterAlt}
+              className={styles.characterImg}
               src="/landing/hero-character.png"
-              alt="ד״ר שרון נאור — שיטת ה-360° של LawPass"
-              width={768}
-              height={1152}
+              width={1040}
+              height={1200}
               priority
-              className="block h-[calc(100%+40px)] w-full object-contain object-top mb-[-40px] md:h-[calc(100%+60px)] md:mb-[-60px]"
-              style={{
-                filter: "drop-shadow(0 30px 40px rgba(15,31,79,0.18))",
-              }}
             />
           </div>
         </div>
-
       </div>
 
-      {/* Navy wave — absolute bottom band, between figure (z1) and copy (z3).
-          Mobile: h-[220px] (longer than the previous 180px per Sharon's
-          "תאריך אותו יותר") gives the wave a more pronounced curve as
-          the Method handoff. With pb-[240px] above, the wave's blue
-          peak still sits comfortably below the mobile trust cards.
-          md+ restores the prototype's 320px so the wave can overlap
-          the character's feet via the figure's -60 bleed. */}
-      <div
-        aria-hidden="true"
-        className="pointer-events-none absolute inset-x-0 bottom-0 h-[220px] md:h-[320px]"
-        style={{ zIndex: 2 }}
-      >
-        <svg
-          viewBox="0 0 1440 360"
-          preserveAspectRatio="none"
-          className="block h-full w-full"
-        >
+      <div aria-hidden className={styles.heroWave}>
+        <svg preserveAspectRatio="none" viewBox="0 0 1440 360">
           <path
             d="M0,260 C220,40 540,-20 860,140 C1080,250 1260,300 1440,300 L1440,360 L0,360 Z"
             fill="#0F1F4F"
@@ -218,20 +71,5 @@ export function LandingHero() {
         </svg>
       </div>
     </section>
-  );
-}
-
-function TrustCard({ num, label }: { num: string; label: string }) {
-  return (
-    <div className="relative overflow-hidden rounded-[var(--radius-card)] border border-[var(--color-line)] bg-white px-4 pb-4 pt-4.5 shadow-[var(--shadow-sm)]">
-      <div className="mb-1.5 text-[clamp(26px,2.4vw,32px)] font-extrabold leading-none tracking-[-0.01em] text-[var(--color-navy-ink)]">
-        {num}
-      </div>
-      <div className="text-sm leading-snug text-[var(--ink-3)]">{label}</div>
-      <div
-        aria-hidden="true"
-        className="absolute inset-x-0 bottom-0 h-[3px] bg-[var(--color-gold)]"
-      />
-    </div>
   );
 }

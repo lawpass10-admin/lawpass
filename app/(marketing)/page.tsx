@@ -1,50 +1,58 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 
+import { CookieBar } from "@/app/(marketing)/_components/cookie-bar";
+import { LandingFaq } from "@/app/(marketing)/_components/landing-faq";
+import { LandingFooter } from "@/app/(marketing)/_components/landing-footer";
+import { LandingHeader } from "@/app/(marketing)/_components/landing-header";
+import { LandingHero } from "@/app/(marketing)/_components/landing-hero";
+import { LandingMethod } from "@/app/(marketing)/_components/landing-method";
+import { LandingPlans } from "@/app/(marketing)/_components/landing-plans";
+import { LandingSourceNote } from "@/app/(marketing)/_components/landing-source-note";
+import styles from "@/app/(marketing)/_components/landing.module.css";
 import { createClient } from "@/lib/supabase/server";
-
-import { ComingSoon } from "./_components/coming-soon";
 
 /**
  * / — public landing page (Server Component).
  *
- * ⏸ TEMPORARY HOLD ⏸
- * The full landing (LandingHeader / Cookie / Hero / Method / Plans /
- * FAQ / Footer) is paused while a client reviews the design offline
- * (see LawPass-לעיון.html in the repo root). Anonymous visitors get
- * the minimal `<ComingSoon>` screen instead.
+ * Slice 46 — replaces the <ComingSoon> placeholder with the new responsive
+ * landing rebuilt from `_design/landing-hifi-new.html`. Anonymous visitors see
+ * the full landing; authenticated visitors continue to bounce to /dashboard
+ * (unchanged from Slice 16 / Phase L1; the project still has no
+ * `middleware.ts`, so the redirect lives here).
  *
- * To restore: `git revert <this-commit-sha>` then push to main.
- * Vercel rebuilds + redeploys in ~2-3 min. Every landing-* component
- * is still in app/(marketing)/_components/ and unchanged — the
- * revert just re-imports them here.
+ * Section order (matches the design):
+ *   1. <LandingHeader>     — sticky navy bar.
+ *   2. <CookieBar>         — passive consent notice (reused as-is from Slice 16).
+ *   3. <LandingHero>       — h1 + typewriter subline + CTAs + character figure.
+ *   4. <LandingSourceNote> — the source-note-360 strip below the hero.
+ *   5. <LandingMethod>     — navy section, 6 pillars (hover-video).
+ *   6. <div id="try" />    — 0-height invisible anchor reserving the slot for
+ *                            the Slice-2 interactive simulator. The simulator
+ *                            itself is NOT mounted here; this just keeps any
+ *                            inbound `#try` link from 404-feeling and prevents
+ *                            a layout reflow when Slice 2 drops the section in.
+ *   7. <LandingPlans>      — 3-card plans grid (3mo / 6mo / 6mo+AI disabled).
+ *   8. <LandingFaq>        — character + accordion.
+ *   9. <LandingFooter>     — footer.
  *
- * Slice 16 / Phase L1 STILL APPLIES — authenticated visitors are
- * bounced to /dashboard. The auth redirect lives here because the
- * project has no `middleware.ts`; auth gating across the app is
- * per-route via `requireActiveSubscription` / `requireAdmin` in
- * lib/auth/*.
+ * NOT mounted in this slice (separate slices):
+ *   - The full #try interactive simulator (Slice 2).
+ *   - The accessibility-options panel `#lpA11yWidget` (Slice 3).
  *
- * NO database access, NO admin client. The single auth.getUser()
- * call uses the SSR client and reads from cookies — Hardening
- * Rule #2 compliant (never the service-role client on a public
- * page).
+ * CSS isolation: the whole landing is wrapped in `<div className={styles.landingRoot}>`
+ * so the design's `--navy`, `--gold`, `--paper`, ... tokens stay scoped to
+ * this wrapper. The app's global `--color-navy-ink`, `--color-gold`, etc. in
+ * `app/globals.css` are NOT touched — the marketing page reads ONLY from the
+ * design tokens (different names, no collision).
+ *
+ * Indexable: `/` is the public marketing surface, so we override the prior
+ * "בקרוב" placeholder's `noindex` metadata with the default indexable values.
  */
-
-// Page-level metadata overrides the marketing layout's (which still
-// carries the production landing's title/description/OG). While we're
-// behind the placeholder we don't want Google to snapshot the rich
-// metadata against a barebones page, and we don't want the title bar
-// to read "עוברים את מבחן הלשכה בפעם הראשונה" over a "בקרוב" body.
 export const metadata: Metadata = {
-  title: "LawPass — בקרוב",
-  description: "האתר בהקמה. נשוב בקרוב.",
-  robots: { index: false, follow: false },
-  // Drop the OG/Twitter cards too — the layout's still applies if
-  // we don't override, and a wrong preview on social would be worse
-  // than no preview. Setting them to null prunes the layout values.
-  openGraph: null,
-  twitter: null,
+  title: "LawPass — עוברים את מבחן הלשכה בפעם הראשונה",
+  description:
+    "פלטפורמה דיגיטלית להכנה למבחני ההסמכה של לשכת עורכי הדין. שיטת ה-360°: לכל שאלה ניתוח מלא של הנושא, המסיחים, מלכודות ופסיקה.",
 };
 
 export default async function Home() {
@@ -54,5 +62,22 @@ export default async function Home() {
   } = await supabase.auth.getUser();
   if (user) redirect("/dashboard");
 
-  return <ComingSoon />;
+  return (
+    <div className={styles.landingRoot}>
+      <div className={styles.page}>
+        <LandingHeader />
+        <CookieBar />
+        <main id="main-content" tabIndex={-1}>
+          <LandingHero />
+          <LandingSourceNote />
+          <LandingMethod />
+          {/* Slice 2 anchor — see file doc-comment. */}
+          <div id="try" aria-hidden style={{ scrollMarginTop: "80px" }} />
+          <LandingPlans />
+          <LandingFaq />
+        </main>
+        <LandingFooter />
+      </div>
+    </div>
+  );
 }

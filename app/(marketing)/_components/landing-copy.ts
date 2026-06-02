@@ -1,204 +1,276 @@
 /**
- * Landing-page copy.
+ * Slice 46 — landing copy strings.
  *
- * Slice 16 / Phase L2-polish. Strings pulled verbatim from the
- * design prototype's `TWEAK_DEFAULTS` block in
- * `reference/app.jsx` (lines 4–13). Centralizing them here keeps
- * the JSX components readable and gives Sharon a single file to
- * scan when copy changes — see comment in landing-hero.tsx about
- * the eventual move to a fuller content store in Phase L5.
+ * Single source of truth for all the landing page's Hebrew copy. Imported by
+ * the section components. Keeping copy outside the JSX makes it easy to do a
+ * single-file pass for tone/wording without touching layout.
+ *
+ * Replaces the Slice 16 / Phase L2-polish version. Numbers + terminology
+ * locked decisions (per the Slice 46 brief):
+ *   - Bank size: "מעל 1,000 שאלות" everywhere (live bank ~1,088).
+ *   - NO "שאלת מקור" / "שאלת זווית" in user-facing copy.
+ *   - Hero source-note corrected from "אלפי השאלות" → "מעל 1,000 השאלות".
+ *   - FAQ Q3 corrected from "למעלה מ-1,200 שאלות" → "מעל 1,000 שאלות".
  */
 
-/** Hero headline, line 1 (no emphasis). */
-export const HERO_HEADLINE_A = "עוברים את מבחן הלשכה";
+import type { ReactNode } from "react";
 
-/** Hero headline, line 2 (gets the gold trailing dot). */
-export const HERO_HEADLINE_B = "בפעם ראשונה";
-
-/**
- * Typewriter loop — the four lines that cycle in the `<p className="sub">`
- * slot under the headline. Order matters: the typewriter cycles top-to-
- * bottom and then wraps. Each entry is one full sentence; the typewriter
- * adds the punctuation as it types, holds, then erases.
- */
-export const HERO_TYPEWRITER_LINES = [
-  "עם שיטת ה-360° של LawPass.",
-  "ניתוח עומק לכל שאלה — לא רק תשובה.",
-  "כל מסיח, כל מלכודת, כל רפרנס.",
-  "כלי תרגול שעובר איתך לחדר הבחינה.",
-] as const;
-
-/** Default typing speed (ms per character) — matches the prototype. */
-export const HERO_TYPEWRITER_SPEED_MS = 55;
-
-/** Primary hero CTA label. L5 wires the href to /signup. */
-export const HERO_CTA_LABEL = "התחילו לתרגל";
-
-/* --------------------------------------------------------------
- * Method section
- * ------------------------------------------------------------ */
-
-export const METHOD_EYEBROW = "השיטה";
-
-/**
- * Each pillar drives one tile in the Method 6-column grid. `video`
- * is the path under public/ (Decision 8 — public/animations/landing/).
- * Order is meaningful: it's the numbered sequence (01–06) the
- * prototype renders.
- */
-export type MethodPillar = {
-  readonly title: string;
-  readonly desc: string;
-  readonly video: string;
-};
-
-export const METHOD_PILLARS: ReadonlyArray<MethodPillar> = [
-  {
-    title: "ניתוח הנושא המשפטי",
-    desc: "רקע תיאורטי וקונטקסט רחב לכל שאלה — לא רק 'מה התשובה', אלא 'באיזה עולם משפטי אנחנו'.",
-    video: "/animations/landing/balance.mp4",
-  },
-  {
-    title: "הסבר משפטי מלא",
-    desc: "למה התשובה הנכונה היא הנכונה — שלב אחר שלב, עם הפניות לחוק, תקנות ופסיקה.",
-    video: "/animations/landing/legal-documents.mp4",
-  },
-  {
-    title: "ניתוח מסיחים",
-    desc: "כל אחת מהאפשרויות השגויות מקבלת הסבר משלה. למה היא נראית נכונה, ולמה היא לא.",
-    video: "/animations/landing/flexibility.mp4",
-  },
-  {
-    title: "מלכודות נפוצות",
-    desc: "השגיאות שנבחנים נופלים בהן שוב ושוב — מתועדות, מסומנות ומנותחות.",
-    video: "/animations/landing/warning.mp4",
-  },
-  {
-    title: "חשיבה מהירה 360°",
-    desc: "פרוטוקול מובנה לחשוב על שאלה תחת לחץ זמן — בלי לקפוא, בלי לנחש.",
-    video: "/animations/landing/creativity.mp4",
-  },
-  {
-    title: "מבט מסכם לזכירה",
-    desc: "תקציר ויזואלי שנשאר איתך עד הבחינה, מותאם לאיך שהמוח שלך זוכר.",
-    video: "/animations/landing/bookmark.mp4",
-  },
-] as const;
-
-/* --------------------------------------------------------------
- * Plans section
- * ------------------------------------------------------------ */
-
-export const PLANS_EYEBROW = "תוכניות מנוי";
-
-/**
- * Per-plan landing-page copy (tag / feature bullets / CTA label).
- * Price + duration + recommended flag come from PLANS in
- * lib/billing/plans.ts so /pricing and the landing stay in sync.
- * Keyed by PlanId so the landing component can `LANDING_PLAN_COPY[plan.id]`
- * without prop drilling.
- */
-export type LandingPlanCopy = {
-  readonly tag: string;
-  readonly subtitle: string;
-  readonly features: ReadonlyArray<string>;
-  readonly ctaLabel: string;
-};
-
-export const LANDING_PLAN_COPY: Record<"plan_3m" | "plan_6m", LandingPlanCopy> = {
-  plan_3m: {
-    tag: "תזוזה ראשונה",
-    subtitle: "90 יום גישה מלאה",
-    features: [
-      "גישה מלאה למאגר השאלות",
-      "Practice Mode עם 360° לכל שאלה",
-      "סימולציית בחינה (40 שאלות / 100 דקות)",
-      "שאלות שטעיתי בהן + סימוניות",
-      "דשבורד התקדמות אישי",
-    ],
-    ctaLabel: "התחילו עם 3 חודשים",
-  },
-  plan_6m: {
-    tag: "המסלול המומלץ",
-    subtitle: "180 יום • החיסכון הכי טוב",
-    features: [
-      "כל מה שב-3 חודשים",
-      "פי 2 זמן ללמוד לעומק",
-      "גישה לכל עדכוני התוכן בתקופה",
-      "התראות עונת בחינות",
-      "תמיכה במייל בעדיפות גבוהה",
-    ],
-    ctaLabel: "אני רוצה 6 חודשים",
-  },
-} as const;
-
-/**
- * AI plan — visual-only "coming soon" card. NOT in PLANS, never
- * granted, no real price (renders "בקרוב"). Kept here in copy so
- * the Plans component renders it inline next to the real plans
- * without touching lib/billing/plans.ts.
- */
-export const COMING_SOON_PLAN = {
-  tag: "בקרוב • בפיתוח",
-  name: "6 חודשים + AI אישי",
-  subtitle: "בוט חכם שילמד איתכם — בפיתוח",
-  features: [
-    "מסביר כל שאלה בשפה טבעית",
-    "מזהה נקודות חולשה ובונה תוכנית חזרה",
-    "התאמה אישית לקצב הלמידה שלך",
-    "מעקב את ההתקדמות שלך לאורך זמן",
-    "מתוכנן להשקה בגרסה הבאה",
+export const headerCopy = {
+  navLinks: [
+    { href: "#method", label: "שיטת ה-360°" },
+    { href: "#plans", label: "תוכניות מנוי" },
+    { href: "#faq", label: "שאלות נפוצות" },
+    { href: "#contact", label: "צרו קשר" },
   ],
-  ctaLabel: "צוות הפיתוח שלנו עובד על זה",
+  /** Header CTA goes to /login per the locked decision (testers reach the app). */
+  ctaLabel: "כניסה לאזור אישי",
+  ctaHref: "/login",
 } as const;
 
-/* --------------------------------------------------------------
- * FAQ section
- * ------------------------------------------------------------ */
+export const cookieBarCopy = {
+  text: "אתר זה משתמש בעוגיות (Cookies) לשיפור חוויית הגלישה והתאמת תכנים.",
+  linkLabel: "מדיניות הפרטיות",
+  // TODO(PM): wire to the real privacy page once it exists. Inert "#" today.
+  linkHref: "#",
+  closeLabel: "סגור",
+} as const;
 
-export const FAQ_EYEBROW = "שאלות נפוצות";
+export const heroCopy = {
+  headlineTop: "עוברים את מבחן הלשכה",
+  headlineBottom: "בפעם ראשונה",
+  /** Typewriter cycles through these on `<HeroTypewriter>`. */
+  typewriterLines: [
+    "עם שיטת ה-360° של LawPass.",
+    "מאגר שאלות 360° + ניתוח מעמיק לכל שאלה.",
+    "כל מסיח, כל מלכודת, כל רפרנס.",
+    "כלי תרגול שיעזור להגיע מוכנים למבחן.",
+  ],
+  primaryCtaLabel: "התחילו לתרגל",
+  primaryCtaHref: "/early-access?source=hero",
+  secondaryCtaLabel: "איך זה עובד",
+  secondaryCtaAriaLabel: "איך זה עובד - הסבר על שיטת LawPass",
+  secondaryCtaHref: "#method",
+  characterAlt: "ד״ר שרון נאור — שיטת ה-360° של LawPass",
+} as const;
 
-export type FaqItem = {
-  readonly q: string;
-  readonly a: string;
+export const sourceNoteCopy = {
+  ariaLabel: "מקורות וסימוכין במאגר",
+  items: [
+    {
+      highlight: "כל מעל 1,000 השאלות במאגר",
+      tail: " מבוססות על שאלות אמיתיות ממבחני לשכת עורכי הדין בשנים 2018–2024.",
+    },
+    {
+      lead: "כל תשובה כוללת ",
+      highlight: "סימוכין ממאגרי משפט",
+      tail: " — עדכון לפי פסיקת בתי המשפט העליון וההלכה העכשווית.",
+    },
+  ],
+} as const;
+
+export const methodCopy = {
+  headline: "שיטת חשיבה ",
+  headlineGold: "360°",
+  headlineTail: " - אל תלמדו את השאלה. תלמדו את החשיבה שמאחוריה.",
+  lead: "זו לא רק הכנה למבחן הבא. זו בניית חשיבה משפטית שמאפשרת להתמודד עם כל שאלה שתופיע במבחן.",
+  /** 6 pillars. Video file paths must exist in /public/animations/landing/. */
+  pillars: [
+    {
+      num: "01",
+      videoSrc: "/animations/landing/legal-documents.mp4",
+      title: "ניתוח הנושא המשפטי",
+      desc: "רקע תיאורטי וקונטקסט רחב לכל שאלה — לא רק 'מה התשובה', אלא 'באיזה עולם משפטי אנחנו'.",
+    },
+    {
+      num: "02",
+      videoSrc: "/animations/landing/balance.mp4",
+      title: "הסבר משפטי מלא",
+      desc: "למה התשובה הנכונה היא הנכונה — שלב אחר שלב, עם הפניות לחוק, תקנות ופסיקה.",
+    },
+    {
+      num: "03",
+      videoSrc: "/animations/landing/bookmark.mp4",
+      title: "ניתוח מסיחים",
+      desc: "כל אחת מהאפשרויות השגויות מקבלת הסבר משלה. למה היא נראית נכונה, ולמה היא לא.",
+    },
+    {
+      num: "04",
+      videoSrc: "/animations/landing/warning.mp4",
+      title: "מלכודות נפוצות",
+      desc: "השגיאות שנבחנים נופלים בהן שוב ושוב — מתועדות, מסומנות ומנותחות.",
+    },
+    {
+      num: "05",
+      videoSrc: "/animations/landing/creativity.mp4",
+      title: "חשיבה 360°",
+      desc: "מתודולוגיית למידה ייחודית המנתחת כל סוגיה משפטית ממספר זוויות באמצעות שאלות, תרחישים ווריאציות שונות, במטרה לפתח חשיבה אנליטית, הבנה מעמיקה וגמישות מחשבתית להתמודדות עם כל שאלה במבחן.",
+    },
+    {
+      num: "06",
+      videoSrc: "/animations/landing/flexibility.mp4",
+      title: "מבט מסכם לזכירה",
+      desc: "תקציר ויזואלי שנשאר איתך עד הבחינה, מותאם לאיך שהמוח שלך זוכר.",
+    },
+  ],
+} as const;
+
+export type PlanCopy = {
+  /** "featured" gets the gold border + float animation; "comingSoon" is the
+   *  disabled AI plan. */
+  variant: "default" | "featured" | "comingSoon";
+  badge?: string;
+  badgeWithStar?: boolean;
+  tag: string;
+  tagWithBrainIcon?: boolean;
+  name: string;
+  priceCurrency?: string;
+  priceAmount?: string;
+  priceAmountTbd?: string;
+  sub: string;
+  features: string[];
+  ctaLabel: string;
+  /** Disabled plans render a <button> with no href. */
+  ctaHref?: string;
 };
 
-/**
- * Quote bubble next to the FAQ character — title + subtitle. Sharon
- * 2026-05-29 (post-deploy): the prior copy was too soft; new framing
- * leads with "הכל עניין של תרגול." as the headline and lets the
- * subtitle spell out the value (per-distractor analysis, traps,
- * references). Stored as two separate strings rather than a
- * `\n`-joined block so the JSX can apply distinct typography
- * (bigger/bolder title, smaller subtitle).
- */
-export const FAQ_QUOTE_TITLE = "הכל עניין של תרגול.";
-export const FAQ_QUOTE_SUBTITLE =
-  "כל שאלה שכבר נשאלה, לפי נושא — עם הסבר לכל מסיח, מלכודת ורפרנס.";
+export const plansCopy = {
+  headline: "בחרו את הקצב ",
+  headlineGold: "שלכם.",
+  lead: 'כל מסלול נותן ערך מלא מהיום הראשון. כל המחירים כוללים מע"מ.',
+  plans: [
+    {
+      variant: "default",
+      tag: "תזוזה ראשונה",
+      name: "3 חודשים",
+      priceCurrency: "₪",
+      priceAmount: "2,000",
+      sub: "90 יום גישה מלאה",
+      features: [
+        "גישה מלאה למאגר השאלות",
+        "Practice Mode עם 360° לכל שאלה",
+        "סימולציות לחלק הדיוני והמהותי — עם טיימר נפרד לכל חלק",
+        "שאלות שטעיתי בהן + סימוניות",
+        "דשבורד התקדמות אישי",
+      ],
+      ctaLabel: "התחילו עם 3 חודשים",
+      ctaHref: "/early-access?source=plan-3mo",
+    },
+    {
+      variant: "featured",
+      badge: "המומלץ",
+      tag: "המסלול המומלץ",
+      name: "6 חודשים",
+      priceCurrency: "₪",
+      priceAmount: "3,500",
+      sub: "180 יום • החיסכון הכי טוב",
+      features: [
+        "כל מה שב-3 חודשים",
+        "פי 2 זמן ללמוד לעומק",
+        "גישה לכל עדכוני התוכן בתקופה",
+        "התראות עונת בחינות",
+        "תמיכה במייל בעדיפות גבוהה",
+      ],
+      ctaLabel: "אני רוצה 6 חודשים",
+      ctaHref: "/early-access?source=plan-6mo",
+    },
+    {
+      variant: "comingSoon",
+      badge: "בקרוב",
+      badgeWithStar: true,
+      tag: "בקרוב • בפיתוח",
+      tagWithBrainIcon: true,
+      name: "6 חודשים + LawBot AI",
+      priceAmountTbd: "בקרוב",
+      sub: "בוט חכם שילמד איתכם — בפיתוח",
+      features: [
+        "מסביר כל שאלה בשפה טבעית",
+        "מזהה נקודות חולשה ובונה תוכנית חזרה",
+        "התאמה אישית לקצב הלמידה שלך",
+        "מעקב את ההתקדמות שלך לאורך זמן",
+        "מתוכנן להשקה בגרסה הבאה",
+      ],
+      ctaLabel: "צוות הפיתוח שלנו עובד על זה",
+    },
+  ] satisfies readonly PlanCopy[],
+} as const;
 
-export const FAQ_ITEMS: ReadonlyArray<FaqItem> = [
-  {
-    q: "מה זה שיטת ה-360°?",
-    a: "השיטה הפדגוגית של LawPass: כל שאלת מקור מקבלת ניתוח עומק מלא — לא רק התשובה הנכונה, אלא הנושא המשפטי, ניתוח של כל אחד מהמסיחים, מלכודות נפוצות, פרוטוקול חשיבה מהירה, ורפרנסים לחוק ולפסיקה. בנוסף, לכל שאלת מקור מצורפות 5 שאלות זווית מאותו נושא — כל אחת עם 360° עצמאי.",
-  },
-  {
-    q: "האם יש תקופת ניסיון חינם?",
-    a: "לא. אנחנו מאמינים שגישה רצינית לבחינת הלשכה דורשת מחויבות מהיום הראשון. כל המסלולים נותנים ערך מלא מהרגע הראשון, ויש לנו מדיניות ביטולים הוגנת בשבועיים הראשונים.",
-  },
-  {
-    q: "כמה שאלות יש במאגר?",
-    a: "המאגר בהשקה כולל למעלה מ-1,200 שאלות (שאלות מקור + זוויות), ומתעדכן באופן שוטף. כל מנוי פעיל מקבל גישה לכל העדכונים בתקופת המנוי שלו ללא תוספת תשלום.",
-  },
-  {
-    q: "האם המערכת מתאימה למי שניגש בפעם השנייה?",
-    a: "כן. למעשה, מסלול Pro מתוכנן במיוחד עבור חוזרים על הבחינה — עם שיחת אבחון אישית שמזהה את נקודות החולשה הספציפיות, ותוכנית לימוד שמתמקדת בדיוק בהן.",
-  },
-  {
-    q: "באילו מכשירים אפשר ללמוד?",
-    a: "LawPass רץ על כל דפדפן מודרני — מחשב, טאבלט וסמארטפון. ההתקדמות שלכם מסתנכרנת אוטומטית בין המכשירים, כך שאפשר להתחיל סימולציה במחשב ולסיים אותה בנייד.",
-  },
-  {
-    q: "איך מבטלים את המנוי?",
-    a: "ניתן לבטל בכל עת מאזור המנוי האישי. במקרה של ביטול תוך 14 יום מהרכישה ולפני שימוש מהותי במערכת — מגיע החזר מלא. לאחר מכן, הביטול נכנס לתוקף בסוף תקופת המנוי הנוכחית.",
-  },
-] as const;
+export type FaqItemCopy = {
+  question: string;
+  /** ReactNode so an answer can include light formatting. Today all are
+   *  plain strings. */
+  answer: ReactNode;
+};
+
+export const faqCopy = {
+  eyebrow: "שאלות נפוצות",
+  headline: "כל מה שרציתם לדעת, ",
+  headlineGold: "לפני שנכנסים.",
+  characterAlt: "ד״ר שרון נאור",
+  characterQuoteTitle: "הכל עניין של תרגול.",
+  characterQuoteSubtitle:
+    "כל שאלה שכבר נשאלה, לפי נושא — עם הסבר לכל מסיח, מלכודת ורפרנס.",
+  items: [
+    {
+      question: "מה זה שיטת ה-360°?",
+      answer:
+        "חשיבה 360° של LawPass היא מתודולוגיית למידה שמלמדת את הנבחן להבין את ההיגיון המשפטי שמאחורי השאלה, ולא רק לשנן תשובות. כל שאלה מנותחת ממספר זוויות: מדוע התשובה הנכונה נכונה, מדוע כל מסיח שגוי, אילו עקרונות משפטיים עומדים בבסיס ההכרעה, וכיצד שינוי קטן בעובדות עשוי לשנות את התוצאה. המערכת מייצרת וריאציות של השאלה ומחברת בין נושאים משפטיים שונים כדי לפתח חשיבה אנליטית וגמישות מחשבתית — כך הנבחן בונה יכולת להתמודד גם עם שאלות חדשות ובלתי מוכרות במבחן, ולא רק עם שאלות שראה בעבר.",
+    },
+    {
+      question: "האם יש תקופת ניסיון חינם?",
+      answer:
+        "לא. אנחנו מאמינים שגישה רצינית לבחינת הלשכה דורשת מחויבות מהיום הראשון. כל המסלולים נותנים ערך מלא כבר מהרגע הראשון.",
+    },
+    {
+      question: "כמה שאלות יש במאגר?",
+      // Slice 46 — corrected from "למעלה מ-1,200" → "מעל 1,000" per the
+      // locked content decision (live bank ~1,088).
+      answer:
+        "המאגר בהשקה כולל מעל 1,000 שאלות, ומתעדכן באופן שוטף. כל מנוי פעיל מקבל גישה לכל העדכונים בתקופת המנוי שלו ללא תוספת תשלום.",
+    },
+    {
+      question: "האם המערכת מתאימה למי שניגש בפעם השנייה?",
+      answer:
+        "כן. המערכת מתאימה במיוחד גם למי שחוזר על הבחינה — ניתוח ה-360° לכל שאלה ומעקב אחר השאלות שטעיתם בהן עוזרים לזהות בדיוק את נקודות החולשה ולחזק אותן לקראת המועד הבא.",
+    },
+    {
+      question: "באילו מכשירים אפשר ללמוד?",
+      answer:
+        "LawPass רץ על כל דפדפן מודרני — מחשב, טאבלט וסמארטפון. ההתקדמות שלכם מסתנכרנת אוטומטית בין המכשירים, כך שאפשר להתחיל סימולציה במחשב ולסיים אותה בנייד.",
+    },
+  ] satisfies readonly FaqItemCopy[],
+} as const;
+
+export const footerCopy = {
+  logoAlt: "LawPass",
+  cols: [
+    {
+      heading: "המוצר",
+      links: [
+        { label: "שיטת ה-360°", href: "#method" },
+        { label: "תוכניות מנוי", href: "#plans" },
+        { label: "שאלות נפוצות", href: "#faq" },
+      ],
+    },
+    {
+      heading: "חשבון",
+      links: [
+        { label: "כניסה לאזור אישי", href: "/login" },
+        // TODO(PM): wire to real pages once they exist. Inert "#" today.
+        { label: "תמיכה", href: "#" },
+        { label: "תקנון", href: "#" },
+        { label: "מדיניות פרטיות", href: "#" },
+      ],
+    },
+    {
+      heading: "צרו קשר",
+      links: [
+        // TODO(PM): confirm footer email. Placeholder mailto: until then.
+        { label: "info@law-pass.com", href: "mailto:info@law-pass.com" },
+        { label: "WhatsApp", href: "#" },
+        { label: "טופס פנייה", href: "#" },
+      ],
+    },
+  ],
+  copyright: "© 2026 LawPass. כל הזכויות שמורות.",
+  tagline: "נבנה בקפידה עבור סטאז'רים בישראל.",
+} as const;

@@ -21,7 +21,10 @@ const assistant = Assistant({
 const heebo = Heebo({
   variable: "--font-heebo",
   subsets: ["latin", "hebrew"],
-  weight: ["400", "500", "600", "700", "800", "900"],
+  // Slice 46 — added 300 so the landing's hero subline (weight: 300 in the
+  // design CSS) renders at its intended thinness. The rest of the app
+  // continues to use 400/500/600/700/800/900 unchanged.
+  weight: ["300", "400", "500", "600", "700", "800", "900"],
   display: "swap",
 });
 
