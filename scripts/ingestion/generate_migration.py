@@ -56,6 +56,21 @@ def sql_jsonb(value: Any) -> str:
     return "'" + sql_escape(js) + "'::jsonb"
 
 
+def sql_jsonb_array(value: Any) -> str:
+    """Emit a JSONB literal for an array column. Coalesces None / non-list
+    inputs to `'[]'::jsonb` so NOT-NULL-default-`[]` columns
+    (`source_questions.references_list`, `source_questions.concepts_and_skills`,
+    `angle_questions.references_list`, `angle_questions.concepts_and_skills`)
+    never receive a stray NULL. Caught by Sharon's 2022-W-S Q17 which had
+    `references_list: null` in source — the column is
+    `NOT NULL DEFAULT '[]'::jsonb` so a NULL literal violates the
+    constraint."""
+    if not isinstance(value, list):
+        return "'[]'::jsonb"
+    js = json.dumps(value, ensure_ascii=False)
+    return "'" + sql_escape(js) + "'::jsonb"
+
+
 def sql_bool(v: Any) -> str:
     return "true" if bool(v) else "false"
 
@@ -173,10 +188,10 @@ def emit_question_block(q: dict, cls: dict, created_by: str) -> str:
         sql_str(q.get("legal_topic_analysis")),
         sql_str(q.get("full_explanation")),
         sql_str(q.get("common_pitfall")),
-        sql_jsonb(q.get("concepts_and_skills")),
+        sql_jsonb_array(q.get("concepts_and_skills")),
         sql_str(q.get("quick_thinking_360")),
         sql_str(q.get("summary_for_memory")),
-        sql_jsonb(q.get("references_list")),
+        sql_jsonb_array(q.get("references_list")),
         sql_str(notes_for_admin),
         "'active'",
         sql_str(created_by),
@@ -225,10 +240,10 @@ def emit_question_block(q: dict, cls: dict, created_by: str) -> str:
             sql_str(angle.get("legal_topic_analysis")),
             sql_str(angle.get("full_explanation")),
             sql_str(angle.get("common_pitfall")),
-            sql_jsonb(angle.get("concepts_and_skills")),
+            sql_jsonb_array(angle.get("concepts_and_skills")),
             sql_str(angle.get("quick_thinking_360")),
             sql_str(angle.get("summary_for_memory")),
-            sql_jsonb(angle.get("references_list")),
+            sql_jsonb_array(angle.get("references_list")),
         ]
         lines.append("  INSERT INTO public.angle_questions (")
         lines.append("    " + ", ".join(a_cols))
@@ -444,10 +459,10 @@ def emit_angles_only_block(q: dict, ext_id_lookup: str | None = None) -> str:
             sql_str(angle.get("legal_topic_analysis")),
             sql_str(angle.get("full_explanation")),
             sql_str(angle.get("common_pitfall")),
-            sql_jsonb(angle.get("concepts_and_skills")),
+            sql_jsonb_array(angle.get("concepts_and_skills")),
             sql_str(angle.get("quick_thinking_360")),
             sql_str(angle.get("summary_for_memory")),
-            sql_jsonb(angle.get("references_list")),
+            sql_jsonb_array(angle.get("references_list")),
         ]
         lines.append("    INSERT INTO public.angle_questions (")
         lines.append("      " + ", ".join(a_cols))

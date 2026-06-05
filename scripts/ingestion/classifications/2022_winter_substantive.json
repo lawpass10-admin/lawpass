@@ -1,0 +1,77 @@
+{
+  "_about": "Per-question classification for the 2022 winter substantive (חורף 2022, חלק ג', דין מהותי) batch. Each entry maps to a (chapter_code, subtopic_code) in the substantive-track taxonomy (post-Phase 4: 10 chapters incl. torts).",
+  "_taxonomy_source": "chapters.track='substantive'",
+  "_batch": {
+    "exam_year": 2022,
+    "exam_season": "winter",
+    "exam_part": 2,
+    "track": "substantive",
+    "external_id_prefix": "2022-W-S"
+  },
+  "_drops": [
+    {
+      "external_id": "2022-W-S-Q09",
+      "reason": "Not present in the source docx at all — file 1-20 jumps 8→10. Source needs Sharon's clarification."
+    },
+    {
+      "external_id": "2022-W-S-Q13",
+      "reason": "JSON block structurally malformed beyond automatic repair (Expecting ',' delimiter at line 22). Source needs Sharon's re-export."
+    },
+    {
+      "external_id": "2022-W-S-Q14",
+      "reason": "Not present in the source docx at all — file 1-20 jumps 13→15. Source needs Sharon's clarification."
+    },
+    {
+      "external_id": "2022-W-S-Q16",
+      "reason": "Not present in the source docx at all — file 1-20 jumps 15→17. Source needs Sharon's clarification."
+    },
+    {
+      "external_id": "2022-W-S-Q21",
+      "reason": "JSON block structurally malformed beyond automatic repair (Expecting property name enclosed in double-quotes at line ~22). Source needs Sharon's re-export."
+    },
+    {
+      "external_id": "2022-W-S-Q32",
+      "reason": "Exact-content duplicate of Q31 (identical question_text + identical 4 source_choices). Sharon source bug: same question pasted twice."
+    },
+    {
+      "external_id": "2022-W-S-Q11-or-Q12-stripped-marker",
+      "reason": "marker-stripped stray block between Q11 and Q12 in file 1-20 (caught by normalize.py marker==0 skip rule). Recorded in duplicates_dropped[]."
+    }
+  ],
+  "classifications": {
+    "2022-W-S-Q01": { "chapter": "family_inheritance",   "subtopic": "inheritance_will",                "needs_review": false, "note": "Widow died intestate; creditor's options against the estate before probate (צו ירושה)" },
+    "2022-W-S-Q02": { "chapter": "corporate",            "subtopic": "companies_formation",             "needs_review": false, "note": "Public company medical-device acquisition — M&A process; convening shareholders" },
+    "2022-W-S-Q03": { "chapter": "corporate",            "subtopic": "fiduciary_duties",                "needs_review": false, "note": "Continuation of Q02 facts — Prof. Raphael's wink/promise to Mr. Lang = breach of fiduciary duty in M&A" },
+    "2022-W-S-Q04": { "chapter": "property",             "subtopic": "pledge",                          "needs_review": false, "note": "Yacht specific charge (שעבוד ספציפי) for loan default; pledge realization" },
+    "2022-W-S-Q05": { "chapter": "contracts",            "subtopic": "sale",                            "needs_review": false, "note": "Defective chocolate goods, prepaid; sale-of-goods + return obligations" },
+    "2022-W-S-Q06": { "chapter": "criminal_substantive", "subtopic": "general_part_elements",           "needs_review": false, "note": "Hypothetical reform of sec. 34יט (mistake of law) — application in time" },
+    "2022-W-S-Q07": { "chapter": "torts",                "subtopic": "negligence",                      "needs_review": false, "note": "Res ipsa loquitur — 'הדבר מעיד על עצמו' interpretation" },
+    "2022-W-S-Q08": { "chapter": "family_inheritance",   "subtopic": "inheritance_will",                "needs_review": false, "note": "Terminally-ill testator wishing to bequeath all to disability charity — testamentary disposition" },
+    "2022-W-S-Q10": { "chapter": "ethics",               "subtopic": "licensing_bar_membership",        "needs_review": false, "note": "Lawyer + accountant joint practice — bar rules on multi-disciplinary partnership" },
+    "2022-W-S-Q11": { "chapter": "criminal_substantive", "subtopic": "general_part_elements",           "needs_review": true,  "note": "Privacy Law (Section 5) criminal offense — no dedicated 'privacy' subtopic; general_part is the closest fit" },
+    "2022-W-S-Q12": { "chapter": "contracts",            "subtopic": "limitation",                      "needs_review": false, "note": "Solitary man, accident, lost consciousness, limitation period with incapacity (sec. 11 חוק ההתיישנות)" },
+    "2022-W-S-Q15": { "chapter": "administrative",       "subtopic": "constitutional_rights",           "needs_review": false, "note": "Presidential candidate eligibility (Basic Law: The President) — constitutional governance" },
+    "2022-W-S-Q17": { "chapter": "ethics",               "subtopic": "fees_client_funds_advertising",   "needs_review": false, "note": "Lawyer whose bar membership ended — collecting fees for completed work" },
+    "2022-W-S-Q18": { "chapter": "ethics",               "subtopic": "fees_client_funds_advertising",   "needs_review": false, "note": "Contingent-fee arrangements — who may set them" },
+    "2022-W-S-Q19": { "chapter": "administrative",       "subtopic": "constitutional_rights",           "needs_review": false, "note": "BGZ petition over presidential clemency decisions — justiciability of presidential acts" },
+    "2022-W-S-Q20": { "chapter": "ethics",               "subtopic": "fiduciary_privilege_conflict",    "needs_review": false, "note": "Lawyer-spouse representing CEO of director-spouse's company in sexual-harassment case — concurrent representation / conflict" },
+    "2022-W-S-Q22": { "chapter": "family_inheritance",   "subtopic": "inheritance_will",                "needs_review": false, "note": "Estate administrators (מנהלי עיזבון) paying for minor's medical treatment from his estate share" },
+    "2022-W-S-Q23": { "chapter": "torts",                "subtopic": "road_accident_victims",           "needs_review": true,  "note": "Israeli driver in Palestinian-controlled territory hits Palestinian + British tourist + IDF soldier — extraterritorial application of road-accident law (פלת'ד)" },
+    "2022-W-S-Q24": { "chapter": "corporate",            "subtopic": "companies_formation",             "needs_review": false, "note": "5%-shareholder demand to convene special meeting — minority shareholder rights" },
+    "2022-W-S-Q25": { "chapter": "corporate",            "subtopic": "interested_party_transactions",   "needs_review": false, "note": "Tender offer accepted by 96%, dissatisfied minority shareholder — sec. 338 חוק החברות (full tender offer / squeeze-out)" },
+    "2022-W-S-Q26": { "chapter": "property",             "subtopic": "real_estate",                     "needs_review": false, "note": "Municipal land, 40 years' passage by Shlomo — easement by prescription (זיקת הנאה)" },
+    "2022-W-S-Q27": { "chapter": "property",             "subtopic": "mortgages_housing_loans",         "needs_review": false, "note": "Inherited apartment as collateral for 2M NIS loan — mortgage / debt security" },
+    "2022-W-S-Q28": { "chapter": "corporate",            "subtopic": "companies_formation",             "needs_review": false, "note": "Two classes of shares — article amendment requiring class B holders to purchase more shares" },
+    "2022-W-S-Q29": { "chapter": "corporate",            "subtopic": "piercing_veil",                   "needs_review": false, "note": "Limited liability + separate legal entity protections — creditor competition" },
+    "2022-W-S-Q30": { "chapter": "contracts",            "subtopic": "general_part",                    "needs_review": false, "note": "Tender, terms settled with bidder, board rejection — pre-contractual bad faith (חוסר תום לב במו\"מ)" },
+    "2022-W-S-Q31": { "chapter": "property",             "subtopic": "real_estate",                     "needs_review": false, "note": "Mortgaged land owner sold passage rights to neighbor; neither lien nor easement registered — competing transactions (עסקאות נוגדות)" },
+    "2022-W-S-Q33": { "chapter": "contracts",            "subtopic": "construction_contract",           "needs_review": false, "note": "Construction contract — landowner + contractor for apartment-building development" },
+    "2022-W-S-Q34": { "chapter": "contracts",            "subtopic": "general_part",                    "needs_review": false, "note": "Community sports-club gymnastics contest, prize promise — unilateral promise / award contract" },
+    "2022-W-S-Q35": { "chapter": "contracts",            "subtopic": "general_part",                    "needs_review": true,  "note": "Elderly man with chronic anxiety signing under pressure; shop ownership transfer — duress/capacity in contract; no dedicated capacity subtopic in contracts" },
+    "2022-W-S-Q36": { "chapter": "criminal_substantive", "subtopic": "sex_offenses",                    "needs_review": false, "note": "US-Israeli dual national committed sex offense in NY against Israeli minor — extraterritorial jurisdiction in penal law" },
+    "2022-W-S-Q37": { "chapter": "criminal_substantive", "subtopic": "sentencing",                      "needs_review": false, "note": "Activation of suspended sentence after appeal-period stay" },
+    "2022-W-S-Q38": { "chapter": "criminal_substantive", "subtopic": "general_part_elements",           "needs_review": false, "note": "De minimis defense (זוטי דברים) — sec. 34יז to threats charge" },
+    "2022-W-S-Q39": { "chapter": "torts",                "subtopic": "negligence",                      "needs_review": false, "note": "Volunteer-operating organization, sexual-harassment policy — duty of care + policy considerations" },
+    "2022-W-S-Q40": { "chapter": "torts",                "subtopic": "negligence",                      "needs_review": true,  "note": "Tort liability of mentally-ill attacker after criminal court found him unfit — civil-vs-criminal liability boundary" }
+  }
+}
