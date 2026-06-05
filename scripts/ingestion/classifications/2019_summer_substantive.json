@@ -1,0 +1,62 @@
+{
+  "_about": "Per-question classification for the 2019 summer substantive (קיץ 2019, חלק ג', דין מהותי) batch. Each entry maps to a (chapter_code, subtopic_code) in the substantive-track taxonomy (post-Phase 4: 10 chapters incl. torts).",
+  "_taxonomy_source": "chapters.track='substantive'",
+  "_batch": {
+    "exam_year": 2019,
+    "exam_season": "summer",
+    "exam_part": 2,
+    "track": "substantive",
+    "external_id_prefix": "2019-S-S"
+  },
+  "_drops": [
+    {
+      "external_id": "2019-S-S-Q05-dup-stripped-marker",
+      "reason": "marker-stripped content duplicate of Q05 (position 5 in file 1-21; same question_text as position 4). Dropped by normalize.py's new marker==0 → skip rule. Reported by normalize.py in duplicates_dropped[]."
+    },
+    {
+      "external_id": "2019-S-S-Q33",
+      "reason": "JSON block structurally malformed beyond automatic repair (Expecting ',' delimiter at line 87). Source needs Sharon's re-export."
+    }
+  ],
+  "classifications": {
+    "2019-S-S-Q01": { "chapter": "ethics",               "subtopic": "fees_client_funds_advertising",   "needs_review": false, "note": "Lawyer + funding-company referral → advertising/solicitation rules" },
+    "2019-S-S-Q02": { "chapter": "administrative",       "subtopic": "administrative_authority_discretion","needs_review": true,  "note": "State Comptroller (מבקר המדינה) responsibilities — constitutional/admin governance; no dedicated subtopic" },
+    "2019-S-S-Q03": { "chapter": "corporate",            "subtopic": "fiduciary_duties",                "needs_review": false, "note": "Business judgment rule — officer duty of care" },
+    "2019-S-S-Q04": { "chapter": "criminal_substantive", "subtopic": "general_part_elements",           "needs_review": false, "note": "Section 284 (breach of trust by public servant); accessory to special-offender offense" },
+    "2019-S-S-Q05": { "chapter": "criminal_substantive", "subtopic": "general_part_elements",           "needs_review": false, "note": "Extraterritorial application of penal law — solicitation abroad targeting Israel" },
+    "2019-S-S-Q06": { "chapter": "criminal_substantive", "subtopic": "sentencing",                      "needs_review": false, "note": "Fine paid in installments — sentencing rule" },
+    "2019-S-S-Q07": { "chapter": "criminal_substantive", "subtopic": "general_part_elements",           "needs_review": false, "note": "Withdrawal from criminal attempt (חרטה) — sec. 28 פקודת העונשין, burden of proof" },
+    "2019-S-S-Q08": { "chapter": "ethics",               "subtopic": "licensing_bar_membership",        "needs_review": false, "note": "Lawyer's bar-membership expiry — licensing consequences" },
+    "2019-S-S-Q09": { "chapter": "ethics",               "subtopic": "fiduciary_privilege_conflict",    "needs_review": false, "note": "Lawyer concurrently serving as director — conflict of interest rules" },
+    "2019-S-S-Q10": { "chapter": "torts",                "subtopic": "damages_assessment",              "needs_review": true,  "note": "Trustee in bankruptcy claiming tort compensation paid pre-bankruptcy — straddles torts (damages) and insolvency. Insolvency is in the procedural track; closest substantive home is torts/damages_assessment" },
+    "2019-S-S-Q11": { "chapter": "ethics",               "subtopic": "licensing_bar_membership",        "needs_review": false, "note": "Sole-practitioner lawyer with two practices — bar-membership/practice-structure rules" },
+    "2019-S-S-Q12": { "chapter": "ethics",               "subtopic": "disciplinary_law",                "needs_review": false, "note": "Lawyer-to-lawyer demand letter procedure (notice + service to opposing firm before filing)" },
+    "2019-S-S-Q13": { "chapter": "criminal_substantive", "subtopic": "general_part_elements",           "needs_review": false, "note": "Self-defense (סייגים לאחריות פלילית) — burglar killed by homeowner; reasonableness threshold" },
+    "2019-S-S-Q14": { "chapter": "criminal_substantive", "subtopic": "sentencing",                      "needs_review": false, "note": "Minimum sentence for attempted sex offense (sec. 345(a)(1))" },
+    "2019-S-S-Q15": { "chapter": "criminal_substantive", "subtopic": "sentencing",                      "needs_review": false, "note": "Minimum sentence for being accomplice to sec. 345(a)(1)" },
+    "2019-S-S-Q16": { "chapter": "criminal_substantive", "subtopic": "sentencing",                      "needs_review": false, "note": "Minimum sentence for solicitation of sec. 345(a)(1)" },
+    "2019-S-S-Q17": { "chapter": "corporate",            "subtopic": "companies_formation",             "needs_review": false, "note": "External-director eligibility under sec. 240(b) — merger context" },
+    "2019-S-S-Q18": { "chapter": "contracts",            "subtopic": "general_part",                    "needs_review": false, "note": "Non-justiciable contract clause (חוזה בלתי שפיט) — judicial review of performance" },
+    "2019-S-S-Q19": { "chapter": "contracts",            "subtopic": "limitation",                      "needs_review": false, "note": "Limitation period start for cancellation of conditional/illegal contract" },
+    "2019-S-S-Q20": { "chapter": "contracts",            "subtopic": "limitation",                      "needs_review": false, "note": "Limitation on enforcement of judgment after failed negotiations (ע\"א 8301/98 הדסה אנואר)" },
+    "2019-S-S-Q21": { "chapter": "contracts",            "subtopic": "limitation",                      "needs_review": false, "note": "Same case (ע\"א 8301/98) but framed re evictions — limitation on execution of judgment" },
+    "2019-S-S-Q22": { "chapter": "corporate",            "subtopic": "companies_formation",             "needs_review": false, "note": "Merger of two private companies — approval requirements" },
+    "2019-S-S-Q23": { "chapter": "corporate",            "subtopic": "companies_formation",             "needs_review": false, "note": "Changing limited→unlimited liability via article amendment" },
+    "2019-S-S-Q24": { "chapter": "corporate",            "subtopic": "fiduciary_duties",                "needs_review": false, "note": "Officer indemnification — administrative fine after criminal investigation closed" },
+    "2019-S-S-Q25": { "chapter": "property",             "subtopic": "condominiums",                    "needs_review": false, "note": "Solar water heater on shared condominium roof — common property" },
+    "2019-S-S-Q26": { "chapter": "property",             "subtopic": "real_estate",                     "needs_review": false, "note": "Co-ownership of real estate — partition restrictions in joint-ownership agreement" },
+    "2019-S-S-Q27": { "chapter": "criminal_substantive", "subtopic": "sex_offenses",                    "needs_review": false, "note": "Statute of limitations on indecent-act offense against a minor" },
+    "2019-S-S-Q28": { "chapter": "family_inheritance",   "subtopic": "spousal_property",                "needs_review": false, "note": "Spousal property after death — 30-year marriage, all assets in husband's name" },
+    "2019-S-S-Q29": { "chapter": "family_inheritance",   "subtopic": "marriage_divorce",                "needs_review": false, "note": "Civil marriage abroad (Jew + Christian); inheritance complications" },
+    "2019-S-S-Q30": { "chapter": "contracts",            "subtopic": "sale",                            "needs_review": false, "note": "Yaakov-Esav lentil-stew sale — basic contract of sale" },
+    "2019-S-S-Q31": { "chapter": "contracts",            "subtopic": "sale",                            "needs_review": false, "note": "Used-car dealer sold encumbered car — buyer's protection (תקנת השוק)" },
+    "2019-S-S-Q32": { "chapter": "contracts",            "subtopic": "breach_remedies",                 "needs_review": false, "note": "Liquidated damages (פיצוי מוסכם) clause — enforceability" },
+    "2019-S-S-Q34": { "chapter": "contracts",            "subtopic": "general_part",                    "needs_review": false, "note": "Performance with alternative consideration (Ming vase OR cash) — חוזה ברירה" },
+    "2019-S-S-Q35": { "chapter": "contracts",            "subtopic": "general_part",                    "needs_review": false, "note": "Third-party performance of obligation — Rembrandt painting / 30M payment" },
+    "2019-S-S-Q36": { "chapter": "contracts",            "subtopic": "standard_contracts",              "needs_review": false, "note": "Pre-printed contract template for sale of apartments — standard-form contracts" },
+    "2019-S-S-Q37": { "chapter": "contracts",            "subtopic": "agency",                          "needs_review": false, "note": "Power of attorney to contractor for procurement — agency law" },
+    "2019-S-S-Q38": { "chapter": "torts",                "subtopic": "nuisance_trespass",               "needs_review": false, "note": "Trespass to apartment (הסגת גבול), tenant ousting + eviction tort" },
+    "2019-S-S-Q39": { "chapter": "torts",                "subtopic": "road_accident_victims",           "needs_review": false, "note": "Pedestrian + driver dispute over right-of-way; intentional vehicle strike → road-accident victims compensation (PLT'D)" },
+    "2019-S-S-Q40": { "chapter": "torts",                "subtopic": "negligence",                      "needs_review": true,  "note": "Employer vicarious liability — waiter mopping during break left puddle. Negligence is closest; could also be strict_liability_torts for employer-employee specifics" }
+  }
+}

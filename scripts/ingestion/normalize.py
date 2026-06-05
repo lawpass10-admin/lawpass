@@ -162,8 +162,24 @@ def main() -> int:
         cleaned = b["cleaned_block"]
 
         if marker == 0:
-            # Marker unreadable — fall back to expected.
-            qnum = expected_qnum
+            # Marker unreadable — record as a duplicate/anomaly and skip.
+            # `parse_docx.py` already handles period-less round-number markers
+            # (10, 20), so marker=0 now indicates a truly anomalous block:
+            # stray content with no marker, or a Sharon source-bug where a
+            # block was pasted twice and the second occurrence lost its
+            # number prefix (e.g. 2019-S-S file 1-21 position 5: an exact
+            # text duplicate of position 4 / Q05 with the "5." marker
+            # stripped). Falling back to expected_qnum would either steal
+            # the next slot (and push the legitimate next question into the
+            # duplicate-of-previous skip path) or — worse — silently insert
+            # duplicate content. Skip is the safer default; the operator
+            # can review the count gap before merging.
+            duplicates.append({
+                "qnum_marker": marker,
+                "expected_qnum": expected_qnum,
+                "reason": "marker unreadable (likely stray block or content-duplicate with stripped marker)",
+            })
+            continue
         elif marker < expected_qnum:
             duplicates.append({
                 "qnum_marker": marker,
