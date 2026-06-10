@@ -257,10 +257,32 @@ export function Learning360Panel({
         )}
       </Section>
 
-      {/* 9. References */}
+      {/* 9. References — Slice 55 carve-out. The legal citations are
+          the one piece of 360° content users legitimately want to
+          paste into outside notes. We re-enable selection and let the
+          native copy proceed for THIS subtree only; everything else
+          in the panel stays under the deterrent.
+
+          How it works (paired with the panel root):
+            - CSS: `select-text` overrides the root's `.no-copy-content`
+              `user-select: none` via direct rule on the descendant.
+              `[-webkit-touch-callout:default]` restores iOS Safari's
+              long-press copy callout that the root suppressed.
+            - JS: the panel root's onCopy/onCut/onContextMenu/onDragStart
+              call `preventDefault()` to block clipboard writes. Here we
+              call `stopPropagation()` (NOT preventDefault) on the same
+              four React synthetic events so they never bubble to the
+              root handlers — the browser's default copy behaviour then
+              runs unimpeded. */}
       <Section icon={<Gavel className="size-3.5" />} title="רפרנסים">
         {question.references_list.length > 0 ? (
-          <ul className="list-disc space-y-1 ps-5 text-foreground/80 marker:text-muted-foreground">
+          <ul
+            className="list-disc space-y-1 ps-5 text-foreground/80 marker:text-muted-foreground select-text [-webkit-touch-callout:default]"
+            onCopy={(e) => e.stopPropagation()}
+            onCut={(e) => e.stopPropagation()}
+            onContextMenu={(e) => e.stopPropagation()}
+            onDragStart={(e) => e.stopPropagation()}
+          >
             {question.references_list.map((ref, i) => (
               <li key={`${i}-${ref}`} dir="auto">
                 {ref}
