@@ -69,6 +69,9 @@ type ViewModel =
       breadcrumbChapter: string;
       breadcrumbType: string; // "זווית א" etc.
       subtopicTitle: string;
+      /** Slice 54 A — parent source's external_id, used to compose the
+       *  QA question-ID badge ("{external_id} · זווית {letter}"). */
+      parentExternalId: string;
     };
 
 /** Slice 25 B-1 — initial note state passed in from the play page.
@@ -96,6 +99,11 @@ type PracticeQuestionProps = {
   /** Slice 25 B-1 — server-built Hebrew header label for the
    *  note-editor sheet ("שאלה N · {chapter}"). */
   questionContextLabel: string;
+  /** Slice 54 A — QA/admin-only gate for the question-ID badge. When
+   *  `false` (students) the badge element never renders — no element,
+   *  no reserved space. The play page computes this from
+   *  (is_qa_tester || is_admin). */
+  showQuestionId: boolean;
 };
 
 /**
@@ -136,6 +144,7 @@ export function PracticeQuestion({
   sessionRemainingSeconds,
   initialNote,
   questionContextLabel,
+  showQuestionId,
 }: PracticeQuestionProps) {
   // Slice 6 fix 2 — router.refresh() after a successful submit
   // re-runs the (app) layout server-side and pulls fresh
@@ -335,6 +344,17 @@ export function PracticeQuestion({
       ? { ...view.question, choices: choicesFor360 }
       : { ...view.question, choices: choicesFor360 };
 
+  // Slice 54 A — QA/admin-only question identifier. The ID portion is
+  // the source's own external_id, or (for angles) the PARENT source's
+  // external_id threaded in via `view.parentExternalId`. Null/empty
+  // guards keep us from rendering a dangling " · זווית" with no ID.
+  const qaQuestionExternalId =
+    view.kind === "source" ? view.question.external_id : view.parentExternalId;
+  const showQaQuestionId =
+    showQuestionId &&
+    typeof qaQuestionExternalId === "string" &&
+    qaQuestionExternalId.length > 0;
+
   return (
     <>
       {/* Section A — Header card (Phase 9d hotfix): full-width across the
@@ -461,6 +481,17 @@ export function PracticeQuestion({
             className="rounded-full bg-muted px-2.5 py-0.5 text-xs font-medium text-foreground/75"
           >
             {view.subtopicTitle}
+          </span>
+        )}
+        {/* Slice 54 A — QA/admin-only question identifier. Selectable
+            (select-text) so a reviewer can copy it into feedback. The
+            ID reads LTR inside the RTL row via <bdi dir="ltr">; the
+            Hebrew " · זווית X" suffix (angles only) stays plain text so
+            it reads naturally. Renders nothing for students. */}
+        {showQaQuestionId && (
+          <span className="font-mono text-xs text-muted-foreground select-text">
+            <bdi dir="ltr">{qaQuestionExternalId}</bdi>
+            {view.kind === "angle" && ` · זווית ${view.question.angle_letter}`}
           </span>
         )}
       </div>

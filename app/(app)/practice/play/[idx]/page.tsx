@@ -95,11 +95,29 @@ export default async function PracticePlayPage({
   // `null` for first-time view). RLS gates this on
   // has_active_subscription, so an expired user fails CLOSED at the
   // DB layer — the page can't show a stale note.
-  const [existingAttempt, bookmarked, initialNote] = await Promise.all([
-    getExistingAttempt(supabase, user.id, sessionId, resolved),
-    getBookmarkState(supabase, user.id, resolved),
-    getNoteForPosition(supabase, user.id, resolved),
-  ]);
+  //
+  // Slice 54 A — the QA/admin gate for the question-ID badge. The
+  // profile flags aren't loaded by requireActiveSubscription() (it
+  // only reads the subscriptions row), so we fetch (is_qa_tester,
+  // is_admin) here in the same parallel batch. `is_qa_tester` lives
+  // in the DB (qa_feedback_system migration) but isn't in the stale
+  // generated types; the SSR client is untyped so the select is
+  // fine (same pattern as the (app) layout + qa actions).
+  const [existingAttempt, bookmarked, initialNote, profileResult] =
+    await Promise.all([
+      getExistingAttempt(supabase, user.id, sessionId, resolved),
+      getBookmarkState(supabase, user.id, resolved),
+      getNoteForPosition(supabase, user.id, resolved),
+      supabase
+        .from("profiles")
+        .select("is_qa_tester, is_admin")
+        .eq("id", user.id)
+        .maybeSingle(),
+    ]);
+
+  const profile = profileResult.data;
+  const showQuestionId =
+    profile?.is_qa_tester === true || profile?.is_admin === true;
 
   // Replay vs first-view: strip `is_correct` + `distractor_analysis`
   // from the choices when the user hasn't answered yet — otherwise the
@@ -127,6 +145,10 @@ export default async function PracticePlayPage({
           breadcrumbChapter: resolved.parentSource.chapter_title,
           breadcrumbType: `זווית ${resolved.question.angle_letter}`,
           subtopicTitle: resolved.parentSource.subtopic_title,
+          // Slice 54 A — parent source's external_id, already fetched
+          // server-side, threaded through so the QA badge can compose
+          // the angle identifier ("{external_id} · זווית {letter}").
+          parentExternalId: resolved.parentSource.external_id,
         };
 
   return (
@@ -149,6 +171,9 @@ export default async function PracticePlayPage({
         totalQuestions={totalQuestions}
         existingAttempt={existingAttempt}
         bookmarked={bookmarked}
+        // Slice 54 A — QA/admin-only question-ID badge gate. False for
+        // students, so the badge element never renders for them.
+        showQuestionId={showQuestionId}
         // Slice 24 — wall-clock session timer. Re-derived on every
         // page render from `session_duration_seconds` + `started_at`,
         // so navigation, resume, and refresh all see the same number.

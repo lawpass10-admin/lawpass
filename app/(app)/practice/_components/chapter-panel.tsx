@@ -202,9 +202,11 @@ function ChapterCard({
   className?: string;
 }) {
   const numberPrefix = String(chapter.display_order).padStart(2, "0");
-  const metaText = disabled
-    ? "בקרוב · אין שאלות זמינות"
-    : `${chapter.activeQuestionCount.toLocaleString("he-IL")} שאלות זמינות`;
+  // Slice 54 B — the per-chapter available-question count is hidden for
+  // ALL users (it leaked the still-thin content depth per chapter). The
+  // disabled "coming soon" treatment is preserved for zero-question
+  // chapters; the meta-row simply renders nothing for populated ones.
+  const metaText = disabled ? "בקרוב · אין שאלות זמינות" : null;
 
   return (
     <button
@@ -279,12 +281,14 @@ function ChapterCard({
         >
           {chapter.title}
         </span>
-        <span
-          className="block mt-0.5"
-          style={{ fontSize: 11.5, color: "var(--color-ink-muted)" }}
-        >
-          {metaText}
-        </span>
+        {metaText && (
+          <span
+            className="block mt-0.5"
+            style={{ fontSize: 11.5, color: "var(--color-ink-muted)" }}
+          >
+            {metaText}
+          </span>
+        )}
       </span>
       <span
         className="inline-flex items-center justify-center shrink-0 transition-all"
