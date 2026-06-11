@@ -4,6 +4,7 @@ import {
   Bookmark,
   ChevronDown,
   ChevronLeft,
+  ChevronRight,
   ChevronUp,
   LogOut,
 } from "lucide-react";
@@ -30,6 +31,7 @@ import type {
   PracticeSessionRow,
   SourceQuestionRow,
 } from "@/lib/db/practice";
+import { practicePlayUrl } from "@/lib/urls";
 import { cn } from "@/lib/utils";
 import type { ChoiceLetter } from "@/lib/validators/practice";
 
@@ -390,6 +392,44 @@ export function PracticeQuestion({
               Slice 33 — gap-1.5 at <md so 4–5 controls fit at 320px;
               md:gap-3 preserves the desktop rhythm. */}
           <div className="flex items-center gap-1.5 md:gap-3">
+            {/* Slice 56 — "שאלה קודמת" affordance. Practice nav was
+                forward-only; backward routing was already permitted by
+                the page guard (idx > questions_answered → redirect, but
+                anything ≤ questions_answered renders fine in replay
+                mode), so this is a pure UI affordance with no server
+                action. Hidden on position 0 (no dead control on the
+                first question). Plain client navigation:
+                window.location.assign() → full reload → page Server
+                Component re-runs → getExistingAttempt resolves prior
+                attempt → revealed-mode rendering with prior selection +
+                360 panel. Timer is server-derived from started_at and
+                re-derives on reload. Counters/notes/bookmarks are
+                revisit-safe. submitAttempt is idempotent (23505 path).
+                Icon-only at both breakpoints to match the bookmark/note
+                button footprint in this dense header cluster; the brief
+                requested header-fallback placement because no
+                pre-reveal bottom action-row exists post Slice 24.
+                ChevronRight points to the natural-end in RTL (visually
+                right = back), mirroring the exam's pattern. */}
+            {position > 0 && (
+              <button
+                type="button"
+                onClick={() =>
+                  window.location.assign(
+                    practicePlayUrl(session.id, position - 1)
+                  )
+                }
+                aria-label="שאלה קודמת"
+                title="שאלה קודמת"
+                className={cn(
+                  "flex h-8 w-8 items-center justify-center rounded-md border border-border bg-card transition-colors",
+                  "hover:border-primary/40 hover:bg-muted/60",
+                  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+                )}
+              >
+                <ChevronRight className="size-4" aria-hidden />
+              </button>
+            )}
             <PositionCounter current={position + 1} total={totalQuestions} />
             <button
               type="button"
