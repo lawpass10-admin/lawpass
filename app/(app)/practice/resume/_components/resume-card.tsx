@@ -26,23 +26,22 @@ import { cn } from "@/lib/utils";
 
 type Props = {
   sessionId: string;
-  /** Display title — first selected chapter's title, or fallback. */
-  chapterTitle: string;
-  sourceCount: number;
-  angleCount: number;
+  /** Slice 57 A — ALL selected chapters' titles in builder click-order.
+   *  Empty array for legacy single-question review sessions (they
+   *  insert `selected_chapters: []`); the card falls back to a generic
+   *  label in that case. */
+  chapterTitles: string[];
   /** ISO timestamp of session start. Used for the "התחל לפני N דקות" line. */
   startedAtISO: string;
   totalQuestions: number;
   questionsAnswered: number;
   questionsCorrect: number;
-  /** Type of the next question (the one the user will resume into). */
-  nextQuestionType: "source" | "angle" | null;
-  /**
-   * Sub-line for the next-question banner — kept loose ("מקור בסדר דין
-   * אזרחי" or a richer string when subtopic resolves). The page composes
-   * this so the card stays presentation-only.
-   */
-  nextQuestionLabel: string;
+  /** Slice 57 A — the chapter the user will actually land on when they
+   *  click resume. Resolved server-side from the next item in
+   *  `question_list`. `null` only in pathological cases (archived /
+   *  out-of-range / empty selected_chapters) — the card then falls
+   *  back to the first chapter title. */
+  nextChapterTitle: string | null;
 };
 
 function formatRelativeHebrew(iso: string): string {
@@ -60,18 +59,26 @@ function formatRelativeHebrew(iso: string): string {
 
 export function ResumeCard({
   sessionId,
-  chapterTitle,
-  sourceCount,
-  angleCount,
+  chapterTitles,
   startedAtISO,
   totalQuestions,
   questionsAnswered,
   questionsCorrect,
-  // Slice 18 — `nextQuestionType` (source/angle) is still required
-  // on the Props type so callers don't break, but no longer rendered
-  // on the next-question line. Intentionally NOT destructured here.
-  nextQuestionLabel,
+  nextChapterTitle,
 }: Props) {
+  // Slice 57 A — title composition. Builder click-order is preserved
+  // server-side; we just join with the existing midpoint-dot separator.
+  // Legacy single-question sessions (chapterTitles=[]) keep the prior
+  // generic "התרגול הפעיל שלך" label.
+  const titleText =
+    chapterTitles.length > 0
+      ? `${chapterTitles.join(" · ")} · ${totalQuestions} שאלות`
+      : `התרגול הפעיל שלך · ${totalQuestions} שאלות`;
+  // Slice 57 A — next-q banner: real chapter from getQuestionForPosition,
+  // falling back to the first selected chapter or the generic label
+  // (covers archived/out-of-range and the legacy [] case).
+  const nextLabel =
+    nextChapterTitle ?? chapterTitles[0] ?? "התרגול הפעיל שלך";
   const [abandoning, setAbandoning] = useState(false);
   const nextPosition = questionsAnswered; // 0-indexed in routes
   const displayNext = questionsAnswered + 1; // 1-indexed for copy
@@ -195,8 +202,9 @@ export function ResumeCard({
           <h2
             className="relative font-heebo font-bold text-white mb-2"
             style={{ fontSize: 24, lineHeight: 1.2 }}
+            dir="auto"
           >
-            {chapterTitle} · {sourceCount * (1 + angleCount)} שאלות
+            {titleText}
           </h2>
 
           <div
@@ -298,7 +306,7 @@ export function ResumeCard({
               style={{ color: "var(--color-navy-ink)", fontSize: 14 }}
             >
               <b style={{ fontWeight: 700 }}>השאלה הבאה:</b>{" "}
-              {nextQuestionLabel}
+              {nextLabel}
             </div>
           </div>
 
