@@ -73,7 +73,16 @@ export const MIN_QUESTIONS_REQUIRED: SourceCount = SOURCE_COUNT_CHOICES[0];
 export const TOTAL_QUESTION_CHOICES = [3, 6, 15, 30, 60, 150] as const;
 export type TotalQuestionCount = (typeof TOTAL_QUESTION_CHOICES)[number];
 
-export const DEFAULT_TOTAL_QUESTIONS = 15;
+/**
+ * Slice 59 B — native-dropdown presets for the new question-count
+ * selector. PM-locked values; the engine still resolves
+ * sourceCount = round(total/3), so 5→6, 10→9, 40→39 effective
+ * questions (only 30 is exact). The CountsPanel renders a "≈ {total}
+ * שאלות בפועל" caption so users see the truthful resolved count;
+ * submit + summary footer continue to use the engine's `total`. */
+export const TOTAL_QUESTION_DROPDOWN_PRESETS = [5, 10, 30, 40] as const;
+
+export const DEFAULT_TOTAL_QUESTIONS = 10;
 export const MIN_TOTAL_QUESTIONS_REQUIRED = TOTAL_QUESTION_CHOICES[0];
 
 /** Slice 23 — input clamp for the free numeric field. 1 is the

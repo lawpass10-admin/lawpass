@@ -662,6 +662,67 @@ export function PracticeQuestion({
                 correctChoice={correctChoice}
               />
             )}
+
+            {/* Slice 59 A — duplicate prev/next at the BOTTOM of the
+                expanded 360 panel. The 9-section panel is tall enough
+                that the top action row scrolls out of view by the time
+                the user reaches "רפרנסים"; a second nav row keeps the
+                back/forward affordance reachable without an extra
+                scroll back up.
+
+                Reuses the SAME handlers as the top row
+                (window.location.assign(practicePlayUrl…) for prev,
+                handleAdvance for next), the SAME visibility rule
+                (position > 0 for prev), and the SAME button variants.
+                360-toggle deliberately omitted here — the user just
+                read the panel; collapsing it from below adds friction
+                without value.
+
+                Layout switches from justify-between to justify-end
+                when prev is hidden (position === 0) so the lone next
+                button doesn't stretch across an empty row. Lives in
+                practice-question.tsx — NOT inside Learning360Panel,
+                which is shared with practice summary, exam results,
+                and notes bank (none of which have per-question nav). */}
+            {panel360Expanded && (
+              <div
+                className={cn(
+                  "mt-3 flex items-center gap-3",
+                  position > 0 ? "justify-between" : "justify-end"
+                )}
+              >
+                {position > 0 && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="lg"
+                    onClick={() =>
+                      window.location.assign(
+                        practicePlayUrl(session.id, position - 1)
+                      )
+                    }
+                  >
+                    <ChevronRight className="size-4" aria-hidden />
+                    <span className="ms-1.5">שאלה קודמת</span>
+                  </Button>
+                )}
+                <Button
+                  type="button"
+                  size="lg"
+                  onClick={handleAdvance}
+                  disabled={advancing}
+                >
+                  <span>
+                    {advancing
+                      ? "טוען..."
+                      : isLastQuestion
+                        ? "סיום וצפייה בסיכום"
+                        : "השאלה הבאה"}
+                  </span>
+                  <ChevronLeft className="ms-1.5 size-4" aria-hidden />
+                </Button>
+              </div>
+            )}
           </>
         )}
       </div>

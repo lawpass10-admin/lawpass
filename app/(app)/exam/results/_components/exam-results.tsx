@@ -217,12 +217,19 @@ export function ExamResults({ aggregate, notedIdentities }: Props) {
         <p className="text-xs font-mono uppercase tracking-wider text-muted-foreground">
           {heroEyebrow}
         </p>
-        <div className="flex items-baseline justify-center gap-1.5">
+        {/* Slice 59 D — single stable unit rendering total/score so
+            the visual order is deterministic in any bidi context.
+            The previous two-flex-children pattern reversed visually
+            under the document's dir="rtl", scattering the slash from
+            the score and producing inconsistent reading. <bdi
+            dir="ltr"> isolates the score/total run as a single LTR
+            atom; PM locked the operand order as total-then-score
+            ("40/0", "40/30") for this hero. */}
+        <div className="flex items-baseline justify-center">
           <span className="text-5xl font-bold tabular-nums sm:text-7xl">
-            {score}
-          </span>
-          <span className="text-5xl font-bold tabular-nums sm:text-7xl">
-            /{total}
+            <bdi dir="ltr">
+              {total}/{score}
+            </bdi>
           </span>
         </div>
         <p className="text-sm text-muted-foreground" dir="auto">

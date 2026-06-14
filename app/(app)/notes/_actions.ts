@@ -72,7 +72,7 @@ export async function saveNoteFromBank(
 
   if (!result.ok) return result;
 
-  // The sidebar's "הערות" badge counts un-archived notes and is
+  // The sidebar's "הערות שלי" badge counts un-archived notes and is
   // computed in the (app) layout's bookmark/mistake/notes helper.
   // Revalidate so a brand-new note bumps the count immediately.
   revalidatePath("/", "layout");

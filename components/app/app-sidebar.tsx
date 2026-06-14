@@ -81,7 +81,7 @@ const NAV_LIBRARY = [
   },
   {
     href: "/notes",
-    label: "הערות",
+    label: "הערות שלי",
     Icon: Pencil,
     countKey: "notes",
   },
