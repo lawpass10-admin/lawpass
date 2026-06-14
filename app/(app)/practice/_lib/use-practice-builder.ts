@@ -104,14 +104,19 @@ export function clampTotalInput(n: number): number {
   );
 }
 
-/** Derive sourceCountTarget from a chosen total. When the total
- *  isn't an exact multiple of (1 + angles), `Math.round` snaps to
- *  the nearest source count; the resolved total
- *  (sourceCount × (1 + angles)) is what the engine actually
- *  produces — and what `total` from the hook returns — so the UI
- *  can surface the rounding. */
+/** Slice 61 — derive sourceCountTarget from a chosen total. CEIL
+ *  (not round): we want ENOUGH sources to cover the requested total
+ *  so the server can trim the streamed question_list to EXACTLY
+ *  `total` items. With angles=2 the math is:
+ *    total=5  → ceil(5/3)  = 2 sources → 6 items built → trim to 5
+ *    total=10 → ceil(10/3) = 4 sources → 12 items built → trim to 10
+ *    total=30 → ceil(30/3) = 10 sources → 30 items (no trim)
+ *    total=40 → ceil(40/3) = 14 sources → 42 items built → trim to 40
+ *  The server may also need to oversample further when sources have
+ *  fewer than `anglesPerSource` angles in the DB — see
+ *  createPracticeSession for the streaming/cap loop. */
 export function totalToSourceCount(total: number): number {
-  return Math.max(1, Math.round(total / (1 + DEFAULT_ANGLES)));
+  return Math.max(1, Math.ceil(total / (1 + DEFAULT_ANGLES)));
 }
 
 // =============================================================================
@@ -317,10 +322,17 @@ export function usePracticeBuilder({
     isSourceCount(initialValues.sourceCount)
       ? initialValues.sourceCount
       : DEFAULT_SOURCE_COUNT;
+  // Slice 61 — preferred prefill is `total` (the truthful item count
+  // from a prior session's question_list.length). Legacy callers that
+  // still pass `sourceCount` (pre-Slice-61 URLs / bookmarks) map
+  // through the historical `sourceCount × (1 + angles)` derivation
+  // for behavior parity.
   const initialTotal: number =
-    initialValues?.sourceCount === undefined
-      ? DEFAULT_TOTAL_QUESTIONS
-      : clampTotalInput(prefillSourceCount * (1 + prefillAngles));
+    initialValues?.total !== undefined
+      ? clampTotalInput(initialValues.total)
+      : initialValues?.sourceCount !== undefined
+        ? clampTotalInput(prefillSourceCount * (1 + prefillAngles))
+        : DEFAULT_TOTAL_QUESTIONS;
   const initialTime: number =
     initialValues?.timePerQuestion !== undefined
       ? Math.min(TIME_MAX, Math.max(TIME_MIN, initialValues.timePerQuestion))
@@ -468,11 +480,14 @@ export function usePracticeBuilder({
     setSelectedChapterIds([]);
   }
 
-  // `total` equals `effectiveTotal` by construction. We compute it
-  // from the engine-bound source count instead of returning
-  // effectiveTotal directly so that any drift between display and
-  // engine output is impossible — they're now the same number.
-  const total = effectiveSourceCount * (1 + angles);
+  // Slice 61 — `total` is the literal user-picked total (clamped by
+  // availability). The server samples `sourceCountTarget = ceil(total
+  // / 3)` sources, builds the question_list streaming-style, and
+  // trims to EXACTLY this many items. There's no longer a drift step
+  // (the prior `round(total/3) × 3` formula rewrote the user's pick
+  // to the nearest multiple of 3); the displayed total now matches
+  // what the user receives.
+  const total = effectiveTotal;
 
   // Submit blockers: no chapters, no availability yet, availability
   // below the smallest count button, or a request already in-flight.
@@ -494,6 +509,10 @@ export function usePracticeBuilder({
       selectedSubtopicId: effectiveSubtopicId,
       sourceCountTarget: effectiveSourceCount,
       anglesPerSource: angles,
+      // Slice 61 — the truthful item-count target. Server trims the
+      // streamed question_list to exactly this length whenever the
+      // selected chapters can produce ≥ that many items.
+      totalQuestions: effectiveTotal,
       // Slice 24 — `timePerQuestionSeconds` is still required by the
       // schema (the DB column is NOT NULL); the play UI no longer
       // reads it. The active timer the user sees is the session-level

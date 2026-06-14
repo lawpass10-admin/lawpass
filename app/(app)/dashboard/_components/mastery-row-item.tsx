@@ -48,9 +48,17 @@ const MIN_ATTEMPTS_FOR_WEAKNESS = 5;
 const STRONG_ACCURACY_PCT = 75;
 
 /** Per-row "תרגל" deep-link defaults. Matches PrefillInput in
- *  lib/urls.ts; sized toward "quick weakness remediation". */
+ *  lib/urls.ts; sized toward "quick weakness remediation".
+ *
+ *  Slice 61 — migrated from `sourceCount: 5` (legacy SOURCE-count
+ *  prefill, which the old builder multiplied by (1 + angles) = 3 →
+ *  15 total items) to `total: 15` (truthful item-count prefill).
+ *  Net session size is identical to before, but the builder now
+ *  hydrates straight to a 15-item session via the new `?total=15`
+ *  param. 15 isn't in the dropdown presets so the builder lands in
+ *  ידני mode with the number input pre-filled — same prior UX. */
 const PRACTICE_DEEPLINK_DEFAULTS = {
-  sourceCount: 5,
+  total: 15,
   angles: 2,
   timePerQuestion: 150,
 } as const;
@@ -140,7 +148,7 @@ export function MasteryRowItem({
   const empty = state === "empty";
   const href = practiceSetupUrl({
     chapters: [row.chapterId],
-    sourceCount: PRACTICE_DEEPLINK_DEFAULTS.sourceCount,
+    total: PRACTICE_DEEPLINK_DEFAULTS.total,
     angles: PRACTICE_DEEPLINK_DEFAULTS.angles,
     timePerQuestion: PRACTICE_DEEPLINK_DEFAULTS.timePerQuestion,
   });

@@ -191,7 +191,15 @@ export function CountsPanel({
               !hasSelection && "cursor-not-allowed opacity-50"
             )}
             style={{
-              padding: "11px 14px",
+              // Slice 61 Part 2 — split the physical `11px 14px`
+              // shorthand into logical properties so the native
+              // chevron (drawn by the browser at the inline-end =
+              // visual-LEFT in RTL) gets breathing room. The chevron
+              // glyph sits inside the inline-end padding zone; 30px
+              // visibly separates it from the box's left border.
+              paddingBlock: 11,
+              paddingInlineStart: 14,
+              paddingInlineEnd: 30,
               borderRadius: 10,
               fontSize: 15,
               minWidth: 132,

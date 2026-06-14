@@ -23,10 +23,34 @@
 export type PrefillInput = {
   chapters?: string[];
   subtopic?: string;
+  /**
+   * Slice 61 — preferred prefill: the truthful item-count to seed
+   * the builder with (= question_list.length on a prior session).
+   * When set, emits `?total=N`; the parser accepts it on the way
+   * back. Producers that previously sent `sourceCount` should
+   * migrate to this field.
+   */
+  total?: number;
+  /**
+   * Legacy SOURCE-count prefill. Retained so pre-Slice-61 URLs
+   * still hydrate the builder (bookmarks, deep-links, retry links
+   * from before the cutover). When only `sourceCount` is present,
+   * the builder hydrates `initialTotal = sourceCount × (1 +
+   * angles)` — the historical sizing.
+   */
   sourceCount?: number;
   angles?: number;
   timePerQuestion?: number;
 };
+
+/**
+ * Slice 61 — clamp range for the new `total` prefill param. Matches
+ * MIN_TOTAL_QUESTIONS_REQUIRED (3) / MAX_TOTAL_QUESTIONS_INPUT (200)
+ * in use-practice-builder.ts so the parser refuses junk values
+ * before they reach hydration.
+ */
+const TOTAL_PREFILL_MIN = 3;
+const TOTAL_PREFILL_MAX = 200;
 
 const SOURCE_COUNT_CHOICES = new Set([1, 2, 5, 10, 20, 50]);
 
@@ -102,7 +126,13 @@ export function practiceSetupUrl(prefill?: PrefillInput): string {
   ) {
     params.set("subtopic", prefill.subtopic);
   }
-  if (prefill.sourceCount !== undefined) {
+  // Slice 61 — `total` is the new preferred shape. `sourceCount`
+  // (and the legacy ?count=N param) is kept for older bookmarks but
+  // never emitted by current producers; when both are set `total`
+  // wins on the read side.
+  if (prefill.total !== undefined) {
+    params.set("total", String(prefill.total));
+  } else if (prefill.sourceCount !== undefined) {
     params.set("count", String(prefill.sourceCount));
   }
   if (prefill.angles !== undefined) {
@@ -153,6 +183,26 @@ export function parsePracticeSetupPrefill(
     out.subtopic = subtopicRaw;
   }
 
+  // Slice 61 — `total` is the preferred shape (truthful item-count).
+  // Accept any int in [TOTAL_PREFILL_MIN, TOTAL_PREFILL_MAX]; the
+  // hook clamps further if needed.
+  const totalRaw = searchParams.get("total");
+  if (totalRaw !== null) {
+    const n = Number(totalRaw);
+    if (
+      Number.isInteger(n) &&
+      n >= TOTAL_PREFILL_MIN &&
+      n <= TOTAL_PREFILL_MAX
+    ) {
+      out.total = n;
+    }
+  }
+
+  // Legacy ?count=N (SOURCE-count) prefill — kept so older URLs
+  // continue to hydrate the builder. The accept set is the historical
+  // SOURCE_COUNT_CHOICES; the hook converts via the legacy
+  // `sourceCount × (1 + angles)` derivation when only this param
+  // arrives.
   const countRaw = searchParams.get("count");
   if (countRaw !== null) {
     const n = Number(countRaw);

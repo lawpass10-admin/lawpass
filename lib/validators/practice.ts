@@ -39,6 +39,27 @@ export const createPracticeSessionSchema = z
       .min(1, { message: "מספר שאלות חייב להיות לפחות 1" })
       .max(200, { message: "מספר שאלות חייב להיות לכל היותר 200" }),
     anglesPerSource: z.number().int().min(0).max(4),
+    /**
+     * Slice 61 — exact item-count for the question_list. The hook
+     * sends the user's literal picked total; the server samples
+     * `sourceCountTarget = ceil(total / (1 + anglesPerSource))`
+     * sources (oversampling to absorb sources with <full angle sets)
+     * and trims the streamed question_list to exactly this many
+     * items. Optional for backward compat with legacy callers
+     * (createReviewSession variants insert with anglesPerSource=0,
+     * and pre-Slice-61 tests don't pass it). When absent, the server
+     * falls back to `sourceCountTarget × (1 + anglesPerSource)` —
+     * the pre-Slice-61 sizing.
+     *
+     * Range matches MIN_TOTAL_QUESTIONS_REQUIRED (3) /
+     * MAX_TOTAL_QUESTIONS_INPUT (200) in use-practice-builder.ts.
+     */
+    totalQuestions: z
+      .number()
+      .int()
+      .min(3, { message: "מספר שאלות חייב להיות לפחות 3" })
+      .max(200, { message: "מספר שאלות חייב להיות לכל היותר 200" })
+      .optional(),
     timePerQuestionSeconds: z.number().int().min(60).max(300),
     // Slice 24 — per-session timer budget in seconds. 0 = "no timer"
     // (the off state in the builder); cap matches the DB CHECK

@@ -160,6 +160,16 @@ export async function createPracticeSession(
       .eq("user_id", user.id)
       .eq("status", "active");
 
+    // Slice 61 — explicit target item-count drives the streaming
+    // question_list build. The hook sends `totalQuestions` (the
+    // user's literal pick); legacy callers (review-session helpers,
+    // pre-Slice-61 tests) omit it and fall back to the historical
+    // `sourceCountTarget × (1 + anglesPerSource)` derivation, which
+    // matches their prior behavior verbatim.
+    const targetTotal =
+      data.totalQuestions ??
+      data.sourceCountTarget * (1 + data.anglesPerSource);
+
     // Step 1 — fetch all source-question ids matching the filters. RLS
     // already enforces status='active' AND is_current=true; we add the
     // same predicates here so a future RLS relaxation doesn't silently
@@ -178,13 +188,27 @@ export async function createPracticeSession(
     if (poolError) throw poolError;
 
     const allIds = (poolRows ?? []).map((r) => r.id);
-    const sourceIds = shuffle([...allIds]).slice(0, data.sourceCountTarget);
-    if (sourceIds.length === 0) {
+    if (allIds.length === 0) {
       return {
         ok: false,
         error: "אין שאלות זמינות לפרקים שנבחרו",
       };
     }
+
+    // Slice 61 — oversample sources so the streamed question_list is
+    // guaranteed to reach `targetTotal` items even when some sources
+    // have fewer than `anglesPerSource` angles in the DB. Worst case
+    // is 1 item per source (a source with no angles); cap by the
+    // available supply so we never request more than exists. For the
+    // common case (every source has the full angle set) the loop
+    // below stops at ceil(target / (1+angles)) sources — same as
+    // before — but we now have the headroom to keep building if the
+    // first batch falls short.
+    const shuffledIds = shuffle([...allIds]);
+    const sourceIds = shuffledIds.slice(
+      0,
+      Math.min(shuffledIds.length, targetTotal)
+    );
 
     // Step 2 — fetch up to N angle questions per source in a single
     // round-trip, then bucket them in TS. We don't trust LIMIT-per-row
@@ -209,16 +233,26 @@ export async function createPracticeSession(
       }
     }
 
-    // Step 3 — build the question_list jsonb. Each source is followed
-    // immediately by its angles in display_order; positions are dense
-    // and start at 0.
+    // Slice 61 — Step 3: build the question_list streaming style.
+    // Push each source then its bucketed angles; stop when we've
+    // collected exactly `targetTotal` items. Positions are dense
+    // 0..length-1 by construction; the final trailing source may
+    // contribute fewer than its full angle set (or even just the
+    // source row alone) when targetTotal isn't a multiple of (1 +
+    // angles) — the user only sees the items in their list, so the
+    // pedagogical impact of an "incomplete" final source is the same
+    // as the prior behavior where some sources' angles were never
+    // sampled at all.
     const questionList: QuestionListItem[] = [];
     let pos = 0;
     for (const sid of sourceIds) {
+      if (questionList.length >= targetTotal) break;
       questionList.push({ type: "source", id: sid, position: pos++ });
+      if (questionList.length >= targetTotal) break;
       const angles = angleMap.get(sid) ?? [];
       for (const aid of angles) {
         questionList.push({ type: "angle", id: aid, position: pos++ });
+        if (questionList.length >= targetTotal) break;
       }
     }
 

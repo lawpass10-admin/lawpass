@@ -124,7 +124,11 @@ export function PracticeSummary({
       session.selected_subtopics.length > 0
         ? session.selected_subtopics[0]
         : undefined,
-    sourceCount: session.source_count_target,
+    // Slice 61 — carry the TRUTHFUL item count (= question_list.length)
+    // via the `?total=N` param instead of the legacy `?count=N`
+    // (sourceCount). The builder hydrates `initialTotal` from this
+    // directly, so "נסה שוב" reproduces the same-sized session.
+    total: session.question_list.length,
     angles: session.angles_per_source,
     timePerQuestion: session.time_per_question_seconds,
   });
