@@ -191,19 +191,41 @@ export function CountsPanel({
               !hasSelection && "cursor-not-allowed opacity-50"
             )}
             style={{
-              // Slice 61 Part 2 — split the physical `11px 14px`
-              // shorthand into logical properties so the native
-              // chevron (drawn by the browser at the inline-end =
-              // visual-LEFT in RTL) gets breathing room. The chevron
-              // glyph sits inside the inline-end padding zone; 30px
-              // visibly separates it from the box's left border.
+              // Slice 62 — drop the native chevron (appearance: none +
+              // vendor prefixes for older WebKit/Gecko) and draw our
+              // own as a background-image data URI. Native rendering
+              // glues the arrow to the inline-end border regardless of
+              // padding; with a CSS-positioned chevron we control the
+              // exact inset and keep the glyph visibly INSIDE the box,
+              // reading closer to the value rather than the border.
+              //
+              // Chevron geometry: 12×8px navy-ink "v" path, anchored
+              // 14px from the physical-LEFT edge (which in this RTL UI
+              // is the inline-end of the box — i.e. the side opposite
+              // the value). `paddingInlineEnd: 40` reserves space on
+              // the value side so the digits don't collide with the
+              // glyph; `paddingInlineStart: 14` matches the chevron
+              // inset for visual symmetry between the two ends.
+              //
+              // Color is hard-coded inside the SVG (`#1E3A8A` =
+              // `--color-navy-ink`) because background-image data URIs
+              // can't resolve CSS custom properties from the parent
+              // document. If the navy token ever shifts, update this
+              // string in lockstep.
+              appearance: "none",
+              WebkitAppearance: "none",
+              MozAppearance: "none",
               paddingBlock: 11,
               paddingInlineStart: 14,
-              paddingInlineEnd: 30,
+              paddingInlineEnd: 40,
               borderRadius: 10,
               fontSize: 15,
               minWidth: 132,
-              background: "var(--color-paper)",
+              backgroundColor: "var(--color-paper)",
+              backgroundImage: `url("data:image/svg+xml;charset=UTF-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 8'%3E%3Cpath d='M1 1L6 6L11 1' stroke='%231E3A8A' stroke-width='1.5' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E")`,
+              backgroundRepeat: "no-repeat",
+              backgroundPosition: "left 14px center",
+              backgroundSize: "12px 8px",
               color: "var(--color-navy-ink)",
               border: "1.5px solid var(--color-line)",
             }}
