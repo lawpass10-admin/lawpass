@@ -48,8 +48,15 @@ export function TimerPanel({ sessionDurationSeconds, onSet }: Props) {
         boxShadow: "var(--shadow-sm)",
       }}
     >
-      <header className="mb-[18px] flex items-start justify-between gap-4">
-        <div>
+      {/* Slice 60 — 2-column layout on md+. The toggle moved out of
+          its prior <header> into the right cluster, joining the
+          duration controls (or the off-message). Title block on the
+          RTL-start (visual-right); the control cluster fills the
+          RTL-end (visual-left). Mobile stacks (flex-col). Outer uses
+          items-start at md+ so a tall expanded cluster doesn't drag
+          the title block downward. */}
+      <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between md:gap-6">
+        <div className="md:max-w-[320px]">
           <h2
             className="font-heebo font-bold flex items-center gap-2.5"
             style={{ fontSize: 18, color: "var(--color-navy-ink)" }}
@@ -77,22 +84,30 @@ export function TimerPanel({ sessionDurationSeconds, onSet }: Props) {
             טיימר אחד שספור לאחור כל זמן הסשן.
           </p>
         </div>
-        <OnOffToggle isOn={isOn} onChange={onSet} />
-      </header>
 
-      {isOn ? (
-        <SessionDurationControls
-          currentMinutes={currentMinutes}
-          onSet={onSet}
-        />
-      ) : (
-        <p
-          className="font-heebo font-medium"
-          style={{ fontSize: 14, color: "var(--color-ink-muted)" }}
-        >
-          ללא טיימר — תוכל לתרגל ללא מגבלת זמן.
-        </p>
-      )}
+        {/* Control cluster — toggle on top, duration controls (or
+            off-message) beneath. `md:items-end` aligns the inner
+            blocks to the cluster's inline-end which in RTL is the
+            visual-LEFT edge, so the cluster reads flush with the
+            section's left side. `md:shrink-0` protects the cluster
+            from collapsing when the title block runs wide. */}
+        <div className="flex flex-col gap-3 md:items-end md:shrink-0">
+          <OnOffToggle isOn={isOn} onChange={onSet} />
+          {isOn ? (
+            <SessionDurationControls
+              currentMinutes={currentMinutes}
+              onSet={onSet}
+            />
+          ) : (
+            <p
+              className="font-heebo font-medium"
+              style={{ fontSize: 14, color: "var(--color-ink-muted)" }}
+            >
+              ללא טיימר — תוכל לתרגל ללא מגבלת זמן.
+            </p>
+          )}
+        </div>
+      </div>
     </section>
   );
 }

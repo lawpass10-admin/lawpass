@@ -26,8 +26,19 @@ import { cn } from "@/lib/utils";
  * offering 5, 10, 30, 40, plus "ידני" which reveals the existing
  * <TotalNumberInput>. The engine math is unchanged (sourceCountTarget
  * = round(total/3); resolved total = source × 3), so 5→6, 10→9, 40→39
- * effective questions (only 30 lands on an exact engine multiple). A
- * caption below the selector surfaces the truthful resolved count.
+ * effective questions (only 30 lands on an exact engine multiple).
+ *
+ * Slice 60 — layout & cleanup:
+ *   • Part 1: the "≈ N שאלות בפועל" caption is removed. The summary
+ *     footer already surfaces the truthful resolved total.
+ *   • Part 2: the populated-state availability subtitle ("כרגע יש N
+ *     שאלות זמינות בנושאים שבחרת") is removed. Status messages for
+ *     no-selection / loading / no-available stay — they convey state.
+ *   • Part 3: the section becomes a 2-column layout at md+: title
+ *     block on the RTL-start (visual-right), the selector cluster on
+ *     the RTL-end (visual-left). Mobile stacks (flex-col). Title's
+ *     duplicate "כמות שאלות" inline label was redundant with the H2
+ *     and is dropped; the <select> still carries aria-label.
  *
  * Stateless presentation: the hook owns rawTotal/total, this panel
  * only dispatches. Same pattern as ChapterPanel from P3.
@@ -44,8 +55,7 @@ type Props = {
   rawTotal: number;
   /** Truthful engine-resolved total: sourceCount × (1 + angles). May
    *  differ from `rawTotal` when the typed/picked number isn't a
-   *  multiple of (1 + angles); the panel renders the resolved count
-   *  in the caption. */
+   *  multiple of (1 + angles); the summary footer surfaces it. */
   total: number;
   onSetTotal: (n: number) => void;
   available: number | null;
@@ -57,12 +67,19 @@ const MANUAL_SELECT_VALUE = "manual";
 
 export function CountsPanel({
   rawTotal,
-  total,
   onSetTotal,
   available,
   isCountPending,
   hasSelection,
 }: Props) {
+  // Slice 60 — `total` is intentionally NOT destructured: the caption
+  // that surfaced it was removed; the prop stays on the Props type
+  // (parent already passes it) so the public surface is stable for
+  // future copy that might want the resolved value back.
+
+  // Slice 60 — only status messages remain in this subtitle slot; the
+  // populated-state count line was dropped. `null` collapses the slot
+  // entirely so the title sits flush against the selector on wide.
   const subLine = !hasSelection
     ? "בחר פרק כדי לראות שאלות זמינות"
     : isCountPending || available === null
@@ -113,17 +130,6 @@ export function CountsPanel({
     if (Number.isFinite(n)) onSetTotal(n);
   };
 
-  // Caption: always show the engine-resolved total when there's a
-  // selection. The ≈ prefix appears only when the raw input rounds to
-  // a different engine output (e.g. 5→6, 10→9, 40→39); for engine-
-  // clean values (30, manual entry of a multiple of 3) the bare
-  // number reads truthfully.
-  const showCaption = hasSelection && total > 0;
-  const captionLabel =
-    rawTotal === total
-      ? `${total.toLocaleString("he-IL")} שאלות בפועל`
-      : `≈ ${total.toLocaleString("he-IL")} שאלות בפועל`;
-
   return (
     <section
       className="rounded-[22px] border bg-card"
@@ -133,8 +139,12 @@ export function CountsPanel({
         boxShadow: "var(--shadow-sm)",
       }}
     >
-      <header className="flex items-start justify-between gap-4 mb-[18px]">
-        <div>
+      {/* Slice 60 — 2-column layout on md+. Title block sits at the
+          RTL-start (visual-right); the selector cluster fills the
+          RTL-end (visual-left) so the formerly-empty half is used.
+          Mobile keeps the stack (flex-col → title above selector). */}
+      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between md:gap-6">
+        <div className="md:max-w-[320px]">
           <h2
             className="font-heebo font-bold flex items-center gap-2.5"
             style={{ fontSize: 18, color: "var(--color-navy-ink)" }}
@@ -155,47 +165,22 @@ export function CountsPanel({
             </span>
             כמות שאלות
           </h2>
-          <p
-            className="font-heebo font-normal mt-1"
-            style={{ fontSize: 13, color: "var(--color-ink-dim)" }}
-          >
-            {subLine ?? (
-              <>
-                כרגע יש{" "}
-                <b
-                  style={{
-                    color: "var(--color-navy-ink)",
-                    fontWeight: 700,
-                  }}
-                >
-                  {available!.toLocaleString("he-IL")} שאלות זמינות
-                </b>{" "}
-                בנושאים שבחרת.
-              </>
-            )}
-          </p>
-        </div>
-      </header>
-
-      <div>
-        <div className="mb-2.5">
-          <label
-            htmlFor="counts-panel-select"
-            className="font-heebo font-semibold"
-            style={{ fontSize: 14.5, color: "var(--color-navy-ink)" }}
-          >
-            כמות שאלות
-          </label>
+          {subLine && (
+            <p
+              className="font-heebo font-normal mt-1"
+              style={{ fontSize: 13, color: "var(--color-ink-dim)" }}
+            >
+              {subLine}
+            </p>
+          )}
         </div>
 
-        {/* Slice 59 B — selector row: native <select> on the natural-
-            start (right in RTL), manual <TotalNumberInput> appears
-            alongside on ידני mode. Both share the same row height
-            rhythm; the input only mounts in manual mode so it never
-            visually competes with the preset selection. */}
-        <div className="flex items-stretch gap-2">
+        {/* Selector cluster — native <select> on the RTL-start of the
+            cluster (visual-right within its own bounds), manual input
+            slides in alongside on ידני mode. `md:shrink-0` keeps the
+            cluster from collapsing when the title block is wide. */}
+        <div className="flex items-stretch gap-2 md:shrink-0">
           <select
-            id="counts-panel-select"
             value={selectValue}
             onChange={handleSelectChange}
             disabled={!hasSelection}
@@ -226,22 +211,12 @@ export function CountsPanel({
           {mode === "manual" && (
             <TotalNumberInput
               rawTotal={rawTotal}
-              total={total}
               onSetTotal={onSetTotal}
               disabled={!hasSelection}
               inputRef={manualInputRef}
             />
           )}
         </div>
-
-        {showCaption && (
-          <p
-            className="font-heebo mt-2 tabular-nums"
-            style={{ fontSize: 12.5, color: "var(--color-ink-muted)" }}
-          >
-            {captionLabel}
-          </p>
-        )}
       </div>
     </section>
   );
@@ -252,25 +227,22 @@ export function CountsPanel({
  * (same height as the dropdown) with a gold accent border to read
  * as editable, distinct from the line-border dropdown.
  *
- * The component holds a local string buffer for the in-flight typed
- * text so the user can clear / partial-edit without the hook
- * snapping back mid-keystroke. Slice 23.1 — on BLUR the field snaps
- * to the engine-resolved `total` (and dispatches it back to the
- * hook), so what the user sees in the input is always the truthful
- * count after they tab away.
+ * Slice 60 — the snap-on-blur to the engine-resolved `total` was
+ * dropped along with the "≈ N שאלות בפועל" caption; the literal user
+ * input now persists (clamped) so a typed "15" stays "15" in the
+ * field. The hook still derives sourceCountTarget for the engine, and
+ * the summary footer surfaces the resolved count.
  *
  * Slice 59 B — accepts an optional inputRef so CountsPanel can focus
  * the field when the user picks "ידני" from the selector.
  */
 function TotalNumberInput({
   rawTotal,
-  total,
   onSetTotal,
   disabled,
   inputRef,
 }: {
   rawTotal: number;
-  total: number;
   onSetTotal: (n: number) => void;
   disabled: boolean;
   inputRef?: Ref<HTMLInputElement>;
@@ -299,21 +271,12 @@ function TotalNumberInput({
   };
 
   const handleBlur = (): void => {
-    // Slice 23.1 — snap-on-blur. The hook's `total` is the engine-
-    // resolved count (sourceCount × (1 + angles)); if the user typed
-    // a number that rounds to a different engine output we sync the
-    // displayed text AND dispatch `total` back so rawTotal === total
-    // afterwards. Empty / invalid input falls back to the current
-    // resolved value, same idea.
+    // Empty / invalid → restore the current clamped value. We DON'T
+    // snap to the engine-resolved total anymore (Slice 60 dropped
+    // that caption); the literal user input persists for next time.
     const parsed = Number.parseInt(text, 10);
     if (text === "" || !Number.isFinite(parsed)) {
-      setText(String(total));
-      if (rawTotal !== total) onSetTotal(total);
-      return;
-    }
-    if (parsed !== total) {
-      setText(String(total));
-      onSetTotal(total);
+      setText(String(rawTotal));
     }
   };
 
