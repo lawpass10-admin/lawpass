@@ -79,7 +79,7 @@ export default async function EarlyAccessPage({
         aria-hidden
       >
         <Image
-          src="/landing/early-access-hero.png"
+          src="/landing/early-access-hero-v2.png"
           alt=""
           fill
           priority
