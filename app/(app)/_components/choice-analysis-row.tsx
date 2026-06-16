@@ -24,6 +24,7 @@
 
 import { Check, X } from "lucide-react";
 
+import { useNoCopyBypass } from "@/app/(app)/_components/no-copy-bypass-provider";
 import type { Choice } from "@/lib/db/practice";
 import { cn } from "@/lib/utils";
 
@@ -40,6 +41,10 @@ export function ChoiceAnalysisRow({
 }: ChoiceAnalysisRowProps) {
   const isUserPick = selectedLetter !== null && choice.letter === selectedLetter;
   const isWrongPick = isUserPick && !choice.is_correct;
+  // Slice 63 — QA reviewers bypass the row-level deterrent (no class,
+  // no handlers) so the choice text + distractor analysis can be
+  // copied into AI tools. Normal users see the deterrent unchanged.
+  const bypassNoCopy = useNoCopyBypass();
 
   let toneClasses: string;
   let icon: React.ReactNode;
@@ -62,17 +67,19 @@ export function ChoiceAnalysisRow({
        shared seam, covering exam-results / practice-summary / notes
        bank in one place. The "סימנת" pill + icon (UI metadata) ride
        the same container, which is fine — they have no copy-worthy
-       text payload. */
+       text payload.
+       Slice 63 — QA mode omits the deterrent class + handlers (see
+       useNoCopyBypass above). */
     <div
       className={cn(
-        "no-copy-content",
+        !bypassNoCopy && "no-copy-content",
         "rounded-md border p-3 text-sm leading-relaxed",
         toneClasses
       )}
-      onCopy={(e) => e.preventDefault()}
-      onCut={(e) => e.preventDefault()}
-      onContextMenu={(e) => e.preventDefault()}
-      onDragStart={(e) => e.preventDefault()}
+      onCopy={bypassNoCopy ? undefined : (e) => e.preventDefault()}
+      onCut={bypassNoCopy ? undefined : (e) => e.preventDefault()}
+      onContextMenu={bypassNoCopy ? undefined : (e) => e.preventDefault()}
+      onDragStart={bypassNoCopy ? undefined : (e) => e.preventDefault()}
     >
       <div className="flex items-start gap-2">
         <span

@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import { useState } from "react";
 
+import { useNoCopyBypass } from "@/app/(app)/_components/no-copy-bypass-provider";
 import { Button } from "@/components/ui/button";
 import type { Choice, Question360 } from "@/lib/db/practice";
 import { cn } from "@/lib/utils";
@@ -100,6 +101,14 @@ export function Learning360Panel({
   question,
   correctChoice,
 }: Learning360PanelProps) {
+  // Slice 63 — QA bypass on the panel's ROOT deterrent only. The
+  // Slice 55 references-carve-out (the inner <ul> with select-text +
+  // stopPropagation on its own copy/cut/contextmenu/dragstart) is
+  // intentionally left untouched below — non-QA users still get the
+  // references-copyable subtree via the existing override pattern.
+  // Toggling the root here just makes the OTHER 8 sections copyable
+  // for QA on top of that.
+  const bypassNoCopy = useNoCopyBypass();
   return (
     /* Slice 37 — copy/paste deterrent applied at the panel's outer
        root so all 360° body text (correct-answer banner,
@@ -109,13 +118,19 @@ export function Learning360Panel({
        practice play + exam-results + practice-summary + notes bank
        (every consumer of this component). The header label stays
        under the block too — that's intentional (it's chrome, not
-       copy-worthy). */
+       copy-worthy).
+       Slice 63 — QA mode renders the root without the deterrent
+       (no class, no handlers) so all 9 sections are copyable. */
     <div
-      className="no-copy-content rounded-xl border border-border bg-card p-6 shadow-sm"
-      onCopy={(e) => e.preventDefault()}
-      onCut={(e) => e.preventDefault()}
-      onContextMenu={(e) => e.preventDefault()}
-      onDragStart={(e) => e.preventDefault()}
+      className={
+        bypassNoCopy
+          ? "rounded-xl border border-border bg-card p-6 shadow-sm"
+          : "no-copy-content rounded-xl border border-border bg-card p-6 shadow-sm"
+      }
+      onCopy={bypassNoCopy ? undefined : (e) => e.preventDefault()}
+      onCut={bypassNoCopy ? undefined : (e) => e.preventDefault()}
+      onContextMenu={bypassNoCopy ? undefined : (e) => e.preventDefault()}
+      onDragStart={bypassNoCopy ? undefined : (e) => e.preventDefault()}
     >
       <header className="mb-6 flex items-center gap-2.5 border-b border-border pb-4">
         <Compass className="size-5 text-primary" aria-hidden />

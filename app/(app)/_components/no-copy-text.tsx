@@ -4,6 +4,8 @@ import type { ElementType, ReactNode } from "react";
 
 import { cn } from "@/lib/utils";
 
+import { useNoCopyBypass } from "./no-copy-bypass-provider";
+
 /**
  * Slice 37 — copy/paste deterrent for question-content surfaces.
  *
@@ -25,6 +27,14 @@ import { cn } from "@/lib/utils";
  * `app/(app)/notes/_components/note-row.tsx` (the saved-note HTML
  * section) and the TipTap NoteEditorSheet are deliberately NOT
  * wrapped — they must stay fully selectable.
+ *
+ * Slice 63 — QA bypass. When the `<NoCopyBypassProvider>` value is
+ * `true` (the (app) layout sets it from is_qa_tester || is_admin),
+ * this component renders a plain pass-through wrapper — no class, no
+ * handlers — so QA reviewers can copy question + 360 content into AI
+ * tools. Outside the provider (tests, marketing routes, the (auth)
+ * group) the context default is `false` and the deterrent renders
+ * as it always has.
  *
  * Usage:
  *   <NoCopyText className="whitespace-pre-wrap text-[17px]">
@@ -50,7 +60,21 @@ export function NoCopyText({
   children,
   ...rest
 }: NoCopyTextProps) {
+  const bypass = useNoCopyBypass();
   const Tag = (as ?? "p") as ElementType;
+
+  if (bypass) {
+    // Slice 63 — QA mode: skip the deterrent entirely. No
+    // `no-copy-content` class, no preventDefault handlers, no
+    // direct DOM signature of the block at all. Native selection
+    // and copy proceed unimpeded.
+    return (
+      <Tag className={className} {...rest}>
+        {children}
+      </Tag>
+    );
+  }
+
   return (
     <Tag
       className={cn("no-copy-content", className)}

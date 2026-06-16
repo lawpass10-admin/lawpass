@@ -2,6 +2,7 @@
 
 import { Check, X } from "lucide-react";
 
+import { useNoCopyBypass } from "@/app/(app)/_components/no-copy-bypass-provider";
 import { cn } from "@/lib/utils";
 
 type Letter = "א" | "ב" | "ג" | "ד";
@@ -46,6 +47,11 @@ export function Choice({
 }: ChoiceProps) {
   const showCorrect = revealed && isCorrect === true;
   const showWrong = revealed && selected && isCorrect === false;
+  // Slice 63 — QA reviewers (is_qa_tester || is_admin, set at the
+  // (app) layout) bypass the deterrent. The text span omits the
+  // no-copy-content class and the 4 preventDefault handlers so
+  // native selection + copy proceed.
+  const bypassNoCopy = useNoCopyBypass();
 
   return (
     <button
@@ -84,17 +90,25 @@ export function Choice({
       {/* Slice 37 — copy/paste deterrent on the choice text label
           ONLY. The button element above keeps its click/focus
           handlers intact; user-select/onContextMenu on the inner
-          span doesn't interfere with button activation. */}
-      <span
-        dir="auto"
-        className="no-copy-content text-[15px] leading-relaxed"
-        onCopy={(e) => e.preventDefault()}
-        onCut={(e) => e.preventDefault()}
-        onContextMenu={(e) => e.preventDefault()}
-        onDragStart={(e) => e.preventDefault()}
-      >
-        {text}
-      </span>
+          span doesn't interfere with button activation.
+          Slice 63 — QA mode renders the span without the deterrent
+          class or handlers (see useNoCopyBypass above). */}
+      {bypassNoCopy ? (
+        <span dir="auto" className="text-[15px] leading-relaxed">
+          {text}
+        </span>
+      ) : (
+        <span
+          dir="auto"
+          className="no-copy-content text-[15px] leading-relaxed"
+          onCopy={(e) => e.preventDefault()}
+          onCut={(e) => e.preventDefault()}
+          onContextMenu={(e) => e.preventDefault()}
+          onDragStart={(e) => e.preventDefault()}
+        >
+          {text}
+        </span>
+      )}
       {showCorrect && (
         <Check className="size-5 text-emerald-600" aria-hidden />
       )}

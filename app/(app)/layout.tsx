@@ -8,6 +8,7 @@ import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { getActiveBookmarkAndMistakeCounts } from "@/lib/db/practice";
 import { createClient } from "@/lib/supabase/server";
 
+import { NoCopyBypassProvider } from "./_components/no-copy-bypass-provider";
 import { QaFloatingWidget } from "./_components/qa-floating-widget";
 
 // Routes inside (app) that don't require an active subscription. The user
@@ -120,10 +121,18 @@ export default async function AppLayout({
   // placement is layout-irrelevant; we keep it as a sibling of <main>
   // to mirror the sidebar's placement-as-sibling convention.
   const isQaTester = profile.is_qa_tester === true;
+  // Slice 63 — QA users (testers + admins) bypass the Slice 37
+  // copy/paste deterrent so reviewers can paste questions + 360
+  // content into AI tools. Wired through <NoCopyBypassProvider>
+  // (context) at the layout level so it covers every (app) route in
+  // one place. The flags are already loaded in the Promise.all
+  // above; no new query. Normal users see `bypass=false` and the
+  // deterrent renders unchanged.
+  const canCopy = isQaTester || profile.is_admin === true;
 
   if (isExamRoute) {
     return (
-      <>
+      <NoCopyBypassProvider bypass={canCopy}>
         {/* Slice 51 — id="main-content" added so the universal skip-link
             (set up by the a11y widget) lands on the actual main element.
             Previously only the landing + legal pages had this id. */}
@@ -131,7 +140,7 @@ export default async function AppLayout({
           {children}
         </main>
         <QaFloatingWidget isQaTester={isQaTester} />
-      </>
+      </NoCopyBypassProvider>
     );
   }
 
@@ -149,25 +158,27 @@ export default async function AppLayout({
     await getActiveBookmarkAndMistakeCounts(supabase, user.id);
 
   return (
-    <SidebarProvider>
-      <AppSidebar
-        userEmail={user.email ?? ""}
-        profileFullName={profile.full_name}
-        subscription={subscription}
-        bookmarksCount={bookmarksCount}
-        mistakesCount={mistakesCount}
-        notesCount={notesCount}
-        isAdmin={profile.is_admin === true}
-      />
-      <SidebarInset>
-        <MobileTopBar />
-        {/* Slice 51 — id="main-content" added (see exam-branch comment
-            above for context). */}
-        <main id="main-content" className="page-fade-in flex-1 p-4 md:p-6">
-          {children}
-        </main>
-      </SidebarInset>
-      <QaFloatingWidget isQaTester={isQaTester} />
-    </SidebarProvider>
+    <NoCopyBypassProvider bypass={canCopy}>
+      <SidebarProvider>
+        <AppSidebar
+          userEmail={user.email ?? ""}
+          profileFullName={profile.full_name}
+          subscription={subscription}
+          bookmarksCount={bookmarksCount}
+          mistakesCount={mistakesCount}
+          notesCount={notesCount}
+          isAdmin={profile.is_admin === true}
+        />
+        <SidebarInset>
+          <MobileTopBar />
+          {/* Slice 51 — id="main-content" added (see exam-branch comment
+              above for context). */}
+          <main id="main-content" className="page-fade-in flex-1 p-4 md:p-6">
+            {children}
+          </main>
+        </SidebarInset>
+        <QaFloatingWidget isQaTester={isQaTester} />
+      </SidebarProvider>
+    </NoCopyBypassProvider>
   );
 }
