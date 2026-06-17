@@ -170,14 +170,18 @@ export async function createPracticeSession(
       data.totalQuestions ??
       data.sourceCountTarget * (1 + data.anglesPerSource);
 
-    // Step 1 — fetch all source-question ids matching the filters. RLS
-    // already enforces status='active' AND is_current=true; we add the
-    // same predicates here so a future RLS relaxation doesn't silently
-    // include drafts/archived. Random sampling is done client-side via
-    // Fisher-Yates (see helper above).
+    // Step 1 — fetch all source-question candidates matching the filters.
+    // RLS already enforces status='active' AND is_current=true; we add
+    // the same predicates here so a future RLS relaxation doesn't
+    // silently include drafts/archived.
+    //
+    // Slice 65 — also project `question_group_id` so the three-pass
+    // assembly below can match the user's prior attempts at the GROUP
+    // level (stable identity across content versions, same approach
+    // as bookmarks/mistakes use).
     let pool = supabase
       .from("source_questions")
-      .select("id")
+      .select("id, question_group_id")
       .eq("status", "active")
       .eq("is_current", true)
       .in("chapter_id", data.selectedChapterIds);
@@ -187,44 +191,133 @@ export async function createPracticeSession(
     const { data: poolRows, error: poolError } = await pool;
     if (poolError) throw poolError;
 
-    const allIds = (poolRows ?? []).map((r) => r.id);
-    if (allIds.length === 0) {
+    const poolSources = (poolRows ?? []).map((r) => ({
+      id: r.id as string,
+      question_group_id: r.question_group_id as string,
+    }));
+    if (poolSources.length === 0) {
       return {
         ok: false,
         error: "אין שאלות זמינות לפרקים שנבחרו",
       };
     }
 
-    // Slice 61 — oversample sources so the streamed question_list is
-    // guaranteed to reach `targetTotal` items even when some sources
-    // have fewer than `anglesPerSource` angles in the DB. Worst case
-    // is 1 item per source (a source with no angles); cap by the
-    // available supply so we never request more than exists. For the
-    // common case (every source has the full angle set) the loop
-    // below stops at ceil(target / (1+angles)) sources — same as
-    // before — but we now have the headroom to keep building if the
-    // first batch falls short.
-    const shuffledIds = shuffle([...allIds]);
-    const sourceIds = shuffledIds.slice(
-      0,
-      Math.min(shuffledIds.length, targetTotal)
+    // Slice 65 — build the user's "seen" sets so the three-pass
+    // assembly below can prefer UNSEEN items first and recycle SEEN
+    // ones only as fill.
+    //
+    // Seen scope (PM-locked):
+    //   • mode='practice' only — exam attempts do NOT count toward
+    //     practice "seen".
+    //   • Per-item granularity: a source attempt and each angle
+    //     attempt are tracked independently. A seen source does NOT
+    //     exclude its unseen angles, and vice-versa.
+    //   • `was_skipped` is intentionally NOT filtered: skips would
+    //     count as seen if any were written. Practice today has no
+    //     skip write path (the UI exposes no skip action and
+    //     submit_attempt always writes was_skipped=false), so this
+    //     is moot until a future skip feature appears.
+    //
+    // Identity strategy:
+    //   • Angles — `angle_question_id` is the stable identity
+    //     (`angle_questions` has no versioning); match directly.
+    //   • Sources — `attempts.source_question_id` references the row
+    //     the user attempted (specific version). We resolve it to
+    //     `question_group_id` via a separate lookup so a republished
+    //     version of the same conceptual question still counts as
+    //     seen. CAVEAT: RLS hides rows where is_current=false from
+    //     the user's client, so an attempt that referenced an
+    //     outdated version won't join — the new version reads as
+    //     unseen to that user. Accepted as-is (rare admin path; no
+    //     DB/RPC work in this slice).
+    const [seenSrcAttemptsResult, seenAngleAttemptsResult] = await Promise.all(
+      [
+        supabase
+          .from("attempts")
+          .select("source_question_id, attempted_at")
+          .eq("user_id", user.id)
+          .eq("mode", "practice")
+          .eq("question_type", "source"),
+        supabase
+          .from("attempts")
+          .select("angle_question_id, attempted_at")
+          .eq("user_id", user.id)
+          .eq("mode", "practice")
+          .eq("question_type", "angle"),
+      ]
     );
+    if (seenSrcAttemptsResult.error) throw seenSrcAttemptsResult.error;
+    if (seenAngleAttemptsResult.error) throw seenAngleAttemptsResult.error;
 
-    // Step 2 — fetch up to N angle questions per source in a single
-    // round-trip, then bucket them in TS. We don't trust LIMIT-per-row
-    // here; PostgREST lacks it and a window-function trick would require
-    // a view. Bucket-and-slice is O(angles · sources) which is fine for
-    // a 50-source session with 4 angles each.
+    const angleLastAt = new Map<string, string>();
+    for (const a of (seenAngleAttemptsResult.data ?? []) as Array<{
+      angle_question_id: string | null;
+      attempted_at: string;
+    }>) {
+      if (!a.angle_question_id) continue;
+      const prev = angleLastAt.get(a.angle_question_id);
+      if (!prev || a.attempted_at > prev) {
+        angleLastAt.set(a.angle_question_id, a.attempted_at);
+      }
+    }
+
+    const groupLastAt = new Map<string, string>();
+    const seenSrcAttempts = (seenSrcAttemptsResult.data ?? []) as Array<{
+      source_question_id: string | null;
+      attempted_at: string;
+    }>;
+    if (seenSrcAttempts.length > 0) {
+      const distinctSrcIds = Array.from(
+        new Set(
+          seenSrcAttempts
+            .map((a) => a.source_question_id)
+            .filter((v): v is string => Boolean(v))
+        )
+      );
+      if (distinctSrcIds.length > 0) {
+        const { data: srcRows, error: srcLookupError } = await supabase
+          .from("source_questions")
+          .select("id, question_group_id")
+          .in("id", distinctSrcIds);
+        if (srcLookupError) throw srcLookupError;
+        const srcToGroup = new Map<string, string>();
+        for (const r of (srcRows ?? []) as Array<{
+          id: string;
+          question_group_id: string;
+        }>) {
+          srcToGroup.set(r.id, r.question_group_id);
+        }
+        for (const a of seenSrcAttempts) {
+          if (!a.source_question_id) continue;
+          const g = srcToGroup.get(a.source_question_id);
+          if (!g) continue; // RLS-hidden non-current row → version-bump caveat
+          const prev = groupLastAt.get(g);
+          if (!prev || a.attempted_at > prev) {
+            groupLastAt.set(g, a.attempted_at);
+          }
+        }
+      }
+    }
+
+    // Step 2 — fetch up to N angle questions per source for the ENTIRE
+    // pool (not just a pre-sampled subset, as before Slice 65). The
+    // three-pass assembly needs the angle map for every candidate
+    // source so it can evaluate per-item seen/unseen at assembly time.
+    // We don't trust LIMIT-per-row here; PostgREST lacks it and a
+    // window-function trick would require a view. Bucket-and-slice is
+    // O(angles · sources) which is fine even at full-catalog scale
+    // (currently ~290 sources × 4 angles).
+    const allPoolSourceIds = poolSources.map((s) => s.id);
     let angleMap = new Map<string, string[]>();
     if (data.anglesPerSource > 0) {
       const { data: angleRows, error: angleError } = await supabase
         .from("angle_questions")
         .select("id, source_question_id, display_order")
-        .in("source_question_id", sourceIds)
+        .in("source_question_id", allPoolSourceIds)
         .order("display_order", { ascending: true });
       if (angleError) throw angleError;
 
-      angleMap = new Map(sourceIds.map((sid) => [sid, [] as string[]]));
+      angleMap = new Map(allPoolSourceIds.map((sid) => [sid, [] as string[]]));
       for (const row of angleRows ?? []) {
         const bucket = angleMap.get(row.source_question_id);
         if (bucket && bucket.length < data.anglesPerSource) {
@@ -233,26 +326,152 @@ export async function createPracticeSession(
       }
     }
 
-    // Slice 61 — Step 3: build the question_list streaming style.
-    // Push each source then its bucketed angles; stop when we've
-    // collected exactly `targetTotal` items. Positions are dense
-    // 0..length-1 by construction; the final trailing source may
-    // contribute fewer than its full angle set (or even just the
-    // source row alone) when targetTotal isn't a multiple of (1 +
-    // angles) — the user only sees the items in their list, so the
-    // pedagogical impact of an "incomplete" final source is the same
-    // as the prior behavior where some sources' angles were never
-    // sampled at all.
+    // Slice 65 — Step 3: three-pass assembly that ALWAYS reaches
+    // targetTotal as long as the pool can produce it.
+    //
+    //   Pass 1 — UNSEEN FIRST (per-item, source-anchored).
+    //     Walk shuffled pool sources. For each source: push only items
+    //     whose identity is NOT in groupLastAt / angleLastAt, in
+    //     canonical [source, angle_1, …] order, dropping seen items.
+    //     Skip a source entirely if all its items are seen. An unseen
+    //     angle whose source was seen appears STANDALONE (no re-anchor
+    //     of the seen source — PM-locked).
+    //   Pass 2 — TOP-UP from SEEN (whole-unit, LRU, APPENDED).
+    //     If short of N: take sources NOT touched in Pass 1 (= fully
+    //     seen units), order by least-recently-seen (max across the
+    //     unit's group + angles, ASC), and push each as a whole unit
+    //     [source, all bucketed angles]. APPEND — no interleave with
+    //     Pass 1's unseen items (PM-locked).
+    //   Pass 3 — SAFETY FILL from PARTIAL units.
+    //     If STILL short: iterate touched units in LRU order and fill
+    //     their remaining (previously-skipped seen) items.
+    //
+    // Slice 61's exact-N invariant is preserved by the `>= targetTotal`
+    // guard on every push. Three passes together always push every
+    // item the pool can produce (every pool item belongs to exactly
+    // one pass), so when targetTotal ≤ pool size we always reach N.
+    // If somehow targetTotal > pool size (upstream availability guard
+    // prevents it), the graceful "proceed with what's available"
+    // behaviour from before Slice 65 still applies.
+    const shuffledPool = shuffle([...poolSources]);
+
     const questionList: QuestionListItem[] = [];
+    const usedItemIds = new Set<string>();
+    const touchedSources = new Set<string>();
     let pos = 0;
-    for (const sid of sourceIds) {
+
+    const pushItem = (type: "source" | "angle", id: string): boolean => {
+      if (questionList.length >= targetTotal) return false;
+      if (usedItemIds.has(id)) return questionList.length < targetTotal;
+      usedItemIds.add(id);
+      questionList.push({ type, id, position: pos++ });
+      return questionList.length < targetTotal;
+    };
+
+    const maxAngleAt = (angleIds: string[]): string | null => {
+      let m: string | null = null;
+      for (const aid of angleIds) {
+        const t = angleLastAt.get(aid);
+        if (t && (!m || t > m)) m = t;
+      }
+      return m;
+    };
+
+    const unitLastAt = (source: {
+      id: string;
+      question_group_id: string;
+    }): string => {
+      const g = groupLastAt.get(source.question_group_id) ?? null;
+      const a = maxAngleAt(angleMap.get(source.id) ?? []);
+      if (g && a) return g > a ? g : a;
+      return g ?? a ?? "";
+    };
+
+    // --- Pass 1: UNSEEN FIRST (per-item, source-anchored) ---
+    let pass1Pushed = 0;
+    for (const src of shuffledPool) {
       if (questionList.length >= targetTotal) break;
-      questionList.push({ type: "source", id: sid, position: pos++ });
-      if (questionList.length >= targetTotal) break;
-      const angles = angleMap.get(sid) ?? [];
-      for (const aid of angles) {
-        questionList.push({ type: "angle", id: aid, position: pos++ });
+      const angleIds = angleMap.get(src.id) ?? [];
+      const sourceUnseen = !groupLastAt.has(src.question_group_id);
+      const unseenAngles = angleIds.filter((aid) => !angleLastAt.has(aid));
+      if (!sourceUnseen && unseenAngles.length === 0) continue;
+
+      const lenBefore = questionList.length;
+      let canContinue = true;
+      if (sourceUnseen) {
+        if (!pushItem("source", src.id)) {
+          canContinue = false;
+        }
+      }
+      if (canContinue) {
+        for (const aid of unseenAngles) {
+          if (!pushItem("angle", aid)) {
+            canContinue = false;
+            break;
+          }
+        }
+      }
+      if (questionList.length > lenBefore) touchedSources.add(src.id);
+      pass1Pushed += questionList.length - lenBefore;
+      if (!canContinue) break;
+    }
+
+    // --- Pass 2: TOP-UP from SEEN (whole-unit, LRU, appended) ---
+    let pass2Pushed = 0;
+    if (questionList.length < targetTotal) {
+      const recycleCandidates = shuffledPool
+        .filter((s) => !touchedSources.has(s.id))
+        .map((s) => ({ src: s, lastAt: unitLastAt(s) }))
+        .sort((a, b) => {
+          if (a.lastAt === b.lastAt) return 0;
+          return a.lastAt < b.lastAt ? -1 : 1;
+        });
+      for (const { src } of recycleCandidates) {
         if (questionList.length >= targetTotal) break;
+        const lenBefore = questionList.length;
+        let canContinue = pushItem("source", src.id);
+        if (canContinue) {
+          for (const aid of angleMap.get(src.id) ?? []) {
+            if (!pushItem("angle", aid)) {
+              canContinue = false;
+              break;
+            }
+          }
+        }
+        if (questionList.length > lenBefore) touchedSources.add(src.id);
+        pass2Pushed += questionList.length - lenBefore;
+        if (!canContinue) break;
+      }
+    }
+
+    // --- Pass 3: SAFETY FILL — leftover items from partial units ---
+    let pass3Pushed = 0;
+    if (questionList.length < targetTotal) {
+      const leftoverCandidates = shuffledPool
+        .filter((s) => touchedSources.has(s.id))
+        .map((s) => ({ src: s, lastAt: unitLastAt(s) }))
+        .sort((a, b) => {
+          if (a.lastAt === b.lastAt) return 0;
+          return a.lastAt < b.lastAt ? -1 : 1;
+        });
+      for (const { src } of leftoverCandidates) {
+        if (questionList.length >= targetTotal) break;
+        const lenBefore = questionList.length;
+        let canContinue = true;
+        if (!usedItemIds.has(src.id)) {
+          if (!pushItem("source", src.id)) canContinue = false;
+        }
+        if (canContinue) {
+          for (const aid of angleMap.get(src.id) ?? []) {
+            if (usedItemIds.has(aid)) continue;
+            if (!pushItem("angle", aid)) {
+              canContinue = false;
+              break;
+            }
+          }
+        }
+        pass3Pushed += questionList.length - lenBefore;
+        if (!canContinue) break;
       }
     }
 
@@ -284,8 +503,11 @@ export async function createPracticeSession(
     if (insertError) throw insertError;
 
     // TODO(slice-7): structured logger.
+    // Slice 65 — pass attribution surfaces how often the unseen-first
+    // path satisfies a session vs. how often we fall back to LRU
+    // recycle. Useful when tuning content coverage per chapter.
     console.info(
-      `[practice] create_session OK user=${user.id} session=${inserted.id} items=${questionList.length}`
+      `[practice] create_session OK user=${user.id} session=${inserted.id} items=${questionList.length} pass1=${pass1Pushed} pass2=${pass2Pushed} pass3=${pass3Pushed}`
     );
 
     // Sidebar layout query may grow to surface an active-session badge
