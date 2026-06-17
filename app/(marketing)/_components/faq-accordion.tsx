@@ -10,8 +10,11 @@ import styles from "./landing.module.css";
  *
  * Faithful port of the design's script 3c (lines 2037–2049 of
  * `_design/landing-hifi-new.html`): clicking an item closes any other open
- * item and toggles the clicked one. The first item starts open by default
- * (same as the design's initial state set via JS).
+ * item and toggles the clicked one.
+ *
+ * Slice 64 — all items start collapsed on load; `-1` is the "nothing open"
+ * sentinel already used by the onClick toggle when closing the currently
+ * open item. Nothing opens until the user clicks.
  *
  * The accordion is the ONLY interactive bit of the FAQ section — the left
  * column (eyebrow + h2 + character + quote) stays server-rendered and is
@@ -19,7 +22,7 @@ import styles from "./landing.module.css";
  */
 
 export function FaqAccordion() {
-  const [openIdx, setOpenIdx] = useState<number>(0);
+  const [openIdx, setOpenIdx] = useState<number>(-1);
 
   return (
     <div className={styles.faqList}>
