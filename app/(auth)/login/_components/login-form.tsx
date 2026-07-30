@@ -7,7 +7,7 @@ import { useEffect, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
 
-import { signInAction } from "@/app/(auth)/_actions";
+import { signInAction } from "@/lib/api/auth";
 import { Button } from "@/components/ui/button";
 import {
   Card,

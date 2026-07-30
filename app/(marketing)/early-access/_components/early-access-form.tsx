@@ -2,7 +2,7 @@
 
 import { useState, type FormEvent } from "react";
 
-import { submitWaitlist } from "@/app/(marketing)/early-access/_actions";
+import { submitWaitlist } from "@/lib/api/early-access";
 
 /**
  * Slice 43 — /early-access waitlist form.

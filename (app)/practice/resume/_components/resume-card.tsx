@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useState } from "react";
 import { toast } from "sonner";
 
-import { abandonActiveSession } from "@/app/(app)/practice/_actions";
+import { abandonActiveSession } from "@/lib/api/practice";
 import { practicePlayUrl } from "@/lib/urls";
 import { cn } from "@/lib/utils";
 

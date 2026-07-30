@@ -4,7 +4,7 @@ import { Loader2 } from "lucide-react";
 import { useEffect, useRef } from "react";
 import { toast } from "sonner";
 
-import { advanceToNext } from "@/app/(app)/practice/play/_actions";
+import { advanceToNext } from "@/lib/api/practice-play";
 
 type ArchivedAutoAdvanceProps = {
   sessionId: string;

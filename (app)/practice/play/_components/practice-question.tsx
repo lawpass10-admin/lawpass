@@ -22,7 +22,7 @@ import {
   saveNote,
   submitAttempt,
   toggleBookmark,
-} from "@/app/(app)/practice/play/_actions";
+} from "@/lib/api/practice-play";
 import { Button } from "@/components/ui/button";
 import type {
   AngleQuestionRow,

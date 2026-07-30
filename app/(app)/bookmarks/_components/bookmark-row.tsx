@@ -6,12 +6,12 @@ import { toast } from "sonner";
 
 import { NoCopyText } from "@/app/(app)/_components/no-copy-text";
 import { RowNotePencil } from "@/app/(app)/_components/row-note-pencil";
-import { createReviewSession } from "@/app/(app)/practice/_actions";
+import { createReviewSession } from "@/lib/api/practice";
 import type { BookmarkListRow } from "@/lib/db/practice";
 import { formatHebrewDateShort } from "@/lib/format/hebrew-date";
 import { cn } from "@/lib/utils";
 
-import { removeBookmark } from "../_actions";
+import { removeBookmark } from "@/lib/api/bookmarks";
 
 /**
  * One bookmark in the /bookmarks list, Phase 5 layout. Three clusters:

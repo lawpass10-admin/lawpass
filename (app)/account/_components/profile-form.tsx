@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
 
-import { updateProfileAction } from "@/app/(app)/account/_actions";
+import { updateProfileAction } from "@/lib/api/account";
 import { Button } from "@/components/ui/button";
 import {
   Card,

@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useState, useTransition } from "react";
 import { toast } from "sonner";
 
-import { createExamSession } from "@/app/(app)/exam/_actions";
+import { createExamSession } from "@/lib/api/exam";
 import { Button, buttonVariants } from "@/components/ui/button";
 import type { ExamMode } from "@/lib/exam/clusters";
 import { cn } from "@/lib/utils";

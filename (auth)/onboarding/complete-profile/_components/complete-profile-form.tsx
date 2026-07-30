@@ -10,7 +10,7 @@ import {
 } from "react-hook-form";
 import { toast } from "sonner";
 
-import { completeGoogleOAuthSignup } from "@/app/(auth)/_actions";
+import { completeGoogleOAuthSignup } from "@/lib/api/auth";
 import { Button } from "@/components/ui/button";
 import {
   Card,

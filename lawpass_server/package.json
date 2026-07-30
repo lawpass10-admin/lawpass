@@ -1,0 +1,23 @@
+{
+  "name": "lawpass-server",
+  "version": "0.1.0",
+  "private": true,
+  "description": "LawPass backend API (Node.js + Express). Extracted from the Next.js server actions; talks to Supabase (RLS-enforced).",
+  "main": "app.js",
+  "scripts": {
+    "start": "node app.js",
+    "dev": "node --watch app.js"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.105.1",
+    "cors": "^2.8.5",
+    "dotenv": "^17.4.2",
+    "express": "^4.21.2",
+    "multer": "^2.2.0",
+    "zod": "4.4.3"
+  },
+  "devDependencies": {},
+  "keywords": [],
+  "author": "",
+  "license": "ISC"
+}

@@ -13,7 +13,7 @@ import {
 } from "react-hook-form";
 import { toast } from "sonner";
 
-import { signUpAction } from "@/app/(auth)/_actions";
+import { signUpAction } from "@/lib/api/auth";
 import { isValidPlanId } from "@/lib/billing/plans";
 import { Button } from "@/components/ui/button";
 import {

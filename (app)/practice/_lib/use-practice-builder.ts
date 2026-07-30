@@ -6,7 +6,7 @@ import { toast } from "sonner";
 import {
   createPracticeSession,
   getAvailableQuestionCount,
-} from "@/app/(app)/practice/_actions";
+} from "@/lib/api/practice";
 import type { PrefillInput } from "@/lib/urls";
 
 // =============================================================================

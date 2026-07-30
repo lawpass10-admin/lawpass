@@ -7,7 +7,7 @@ import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
 
-import { resetPasswordAction } from "@/app/(auth)/_actions";
+import { resetPasswordAction } from "@/lib/api/auth";
 import { Button, buttonVariants } from "@/components/ui/button";
 import {
   Card,

@@ -7,7 +7,7 @@ import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
 
-import { resendOtpAction, verifyOtpAction } from "@/app/(auth)/_actions";
+import { resendOtpAction, verifyOtpAction } from "@/lib/api/auth";
 import { Button, buttonVariants } from "@/components/ui/button";
 import {
   Card,

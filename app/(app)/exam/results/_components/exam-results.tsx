@@ -15,7 +15,7 @@ import { ChoiceAnalysisRow } from "@/app/(app)/_components/choice-analysis-row";
 import { NoCopyText } from "@/app/(app)/_components/no-copy-text";
 import { RowNotePencil } from "@/app/(app)/_components/row-note-pencil";
 import { notedIdentityKey } from "@/lib/db/notes";
-import { createExamSession } from "@/app/(app)/exam/_actions";
+import { createExamSession } from "@/lib/api/exam";
 import { Learning360Panel } from "@/app/(app)/practice/play/_components/learning-360-panel";
 import { Button } from "@/components/ui/button";
 import type { ExamResultsAggregate, ExamReviewRow } from "@/lib/db/exam";

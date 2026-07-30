@@ -4,7 +4,7 @@ import { LogOut } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 
-import { signOutAction } from "@/app/(auth)/_actions";
+import { signOutAction } from "@/lib/api/auth";
 import { Button } from "@/components/ui/button";
 import {
   Card,

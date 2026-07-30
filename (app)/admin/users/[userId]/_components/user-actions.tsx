@@ -12,7 +12,7 @@ import {
   adminForceSignOutAction,
   adminSendPasswordResetAction,
   adminSetQaTesterAction,
-} from "@/app/(app)/admin/_actions";
+} from "@/lib/api/admin";
 import { Button } from "@/components/ui/button";
 import {
   Card,

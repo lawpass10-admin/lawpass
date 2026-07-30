@@ -7,7 +7,7 @@ import { toast } from "sonner";
 import {
   abandonActiveExamSession,
   createExamSession,
-} from "@/app/(app)/exam/_actions";
+} from "@/lib/api/exam";
 import { Button } from "@/components/ui/button";
 import type { ExamSessionRow } from "@/lib/db/exam";
 import type { ExamMode } from "@/lib/exam/clusters";

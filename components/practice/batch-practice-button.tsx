@@ -4,7 +4,7 @@ import { Play } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 
-import { createBatchReviewSession } from "@/app/(app)/practice/_actions";
+import { createBatchReviewSession } from "@/lib/api/practice";
 import { Button } from "@/components/ui/button";
 
 type Props = {

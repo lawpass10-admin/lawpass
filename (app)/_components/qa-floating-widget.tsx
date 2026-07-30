@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState, useTransition } from "react";
 import { toast } from "sonner";
 
-import { submitQaReport } from "@/app/(app)/qa/_actions";
+import { submitQaReport } from "@/lib/api/qa";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import type { ReportType } from "@/lib/validators/qa-reports";

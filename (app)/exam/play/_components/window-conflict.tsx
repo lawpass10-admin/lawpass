@@ -4,7 +4,7 @@ import { ArrowLeft, RotateCcw } from "lucide-react";
 import { useEffect, useRef, useTransition } from "react";
 import { toast } from "sonner";
 
-import { claimExamWindow } from "@/app/(app)/exam/_actions";
+import { claimExamWindow } from "@/lib/api/exam";
 import { Button } from "@/components/ui/button";
 
 type Props = {

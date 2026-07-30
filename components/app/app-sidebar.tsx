@@ -15,7 +15,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
-import { signOutAction } from "@/app/(auth)/_actions";
+import { signOutAction } from "@/lib/api/auth";
 import {
   DropdownMenu,
   DropdownMenuContent,

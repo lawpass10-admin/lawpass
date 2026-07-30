@@ -26,7 +26,7 @@ import { toast } from "sonner";
 import {
   loadNoteByIdentity,
   saveNoteFromBank,
-} from "@/app/(app)/notes/_actions";
+} from "@/lib/api/notes";
 import type { NoteSavePayload } from "@/app/(app)/_components/note-editor-sheet";
 import { cn } from "@/lib/utils";
 

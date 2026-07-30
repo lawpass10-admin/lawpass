@@ -6,7 +6,7 @@ import { useForm } from "react-hook-form";
 import { toast } from "sonner";
 import { z } from "zod";
 
-import { adminEditAngleContentAction } from "@/app/(app)/admin/chapters/[chapterId]/questions/[questionId]/_actions";
+import { adminEditAngleContentAction } from "@/lib/api/admin";
 import { Button } from "@/components/ui/button";
 import {
   Form,

@@ -4,7 +4,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 
-import { adminSetQaReportStatusAction } from "@/app/(app)/admin/_actions";
+import { adminSetQaReportStatusAction } from "@/lib/api/admin";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import type { QaReportStatus } from "@/lib/db/qa-reports";

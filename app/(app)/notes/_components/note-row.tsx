@@ -19,7 +19,7 @@ import { useState } from "react";
 
 import { ChoiceAnalysisRow } from "@/app/(app)/_components/choice-analysis-row";
 import { NoCopyText } from "@/app/(app)/_components/no-copy-text";
-import { saveNoteFromBank } from "@/app/(app)/notes/_actions";
+import { saveNoteFromBank } from "@/lib/api/notes";
 import { Learning360Panel } from "@/app/(app)/practice/play/_components/learning-360-panel";
 import { Button } from "@/components/ui/button";
 import type { Learning360FieldsOnly } from "@/lib/db/learning360";

@@ -6,12 +6,12 @@ import { toast } from "sonner";
 
 import { NoCopyText } from "@/app/(app)/_components/no-copy-text";
 import { RowNotePencil } from "@/app/(app)/_components/row-note-pencil";
-import { createReviewSession } from "@/app/(app)/practice/_actions";
+import { createReviewSession } from "@/lib/api/practice";
 import type { MistakeListRow } from "@/lib/db/practice";
 import { formatHebrewDateShort } from "@/lib/format/hebrew-date";
 import { cn } from "@/lib/utils";
 
-import { removeMistake } from "../_actions";
+import { removeMistake } from "@/lib/api/mistakes";
 
 /**
  * One mistake in the /mistakes list, Phase 5 layout. Mirrors

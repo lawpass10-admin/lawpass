@@ -12,7 +12,7 @@ import {
   submitExamAttempt,
   submitFinalExam,
   toggleExamBookmark,
-} from "@/app/(app)/exam/_actions";
+} from "@/lib/api/exam";
 import { NoCopyText } from "@/app/(app)/_components/no-copy-text";
 import { Choice } from "@/app/(app)/practice/play/_components/choice";
 import { Button } from "@/components/ui/button";
