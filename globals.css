@@ -1,0 +1,448 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-sans);
+  --font-heebo: var(--font-heebo);
+  --font-heading: var(--font-heebo);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+  --radius-3xl: calc(var(--radius) * 2.2);
+  --radius-4xl: calc(var(--radius) * 2.6);
+}
+
+:root {
+  /* ============================================
+     Slice 4 Phase 9a — Dashboard design tokens
+     5 PM-authoritative values (--background, --primary, --foreground,
+     --success, --danger); the rest are aligned with Tailwind's gray
+     scale at PM's request and tunable in follow-up.
+     ============================================ */
+
+  /* Backgrounds — Phase 10a: --background swapped to paper (#FBFAF7) per handoff. */
+  --background: #FBFAF7;
+  --card: #FFFFFF;
+  --popover: #FFFFFF;
+  --popover-foreground: #1A1F2E;
+
+  /* Brand — Phase 10a: --primary swapped from #15337C → #1E3A8A (navy) per handoff. */
+  --primary: #1E3A8A;
+  --primary-foreground: #FFFFFF;
+  --accent-deep: #1E3A8A;
+
+  /* Status colors */
+  --success: #206E46;
+  --danger: #A73A29;
+  --destructive: #A73A29;
+
+  /* Typography colors — Phase 10a: --foreground swapped to ink (#1A1F2E) per handoff. */
+  --foreground: #1A1F2E;
+  --ink: #1A1F2E;
+  --ink-2: #374151;
+  --ink-3: #4B5563;
+  --ink-mute: #6B7280;
+  --card-foreground: #1A1F2E;
+
+  /* Surfaces */
+  --bg-soft: #E5E7EB;
+  --border: #E5E7EB;
+  --input: #E5E7EB;
+  --muted: #F3F4F6;
+  --muted-foreground: #6B7280;
+
+  /* Secondary + accent stay as light surfaces for hover/aria-expanded states. */
+  --secondary: #F3F4F6;
+  --secondary-foreground: #0F2137;
+  --accent: #F3F4F6;
+  --accent-foreground: #0F2137;
+  --ring: #15337C;
+
+  /* Chart slots — unchanged from prior tokens (unused in Slice 4). */
+  --chart-1: oklch(0.87 0 0);
+  --chart-2: oklch(0.556 0 0);
+  --chart-3: oklch(0.439 0 0);
+  --chart-4: oklch(0.371 0 0);
+  --chart-5: oklch(0.269 0 0);
+  --radius: 0.625rem;
+
+  /* Sidebar — Phase 9f navy refactor. Solid navy bg with translucent
+     white overlays for hover/active states. Light-mode only; dark-mode
+     tokens lower in this file are unchanged. */
+  --sidebar: #1E3A8A;
+  --sidebar-foreground: rgba(255, 255, 255, 0.72);
+  --sidebar-primary: #FFFFFF;
+  --sidebar-primary-foreground: #1E3A8A;
+  --sidebar-accent: rgba(255, 255, 255, 0.14);
+  --sidebar-accent-foreground: #FFFFFF;
+  --sidebar-border: rgba(255, 255, 255, 0.10);
+  --sidebar-ring: rgba(255, 255, 255, 0.30);
+
+  /* ============================================
+     Slice 4.X Phase 10a — Design handoff tokens
+     Additive overlay on top of the Phase 9 token set. These
+     mirror handoff/tokens.css verbatim and unlock the navy/gold
+     palette, status pills, shadows + radii used by the new
+     dashboard. The existing tokens above remain authoritative
+     for shadcn primitives (--primary, --sidebar, --border, etc.)
+     so this drop is non-destructive.
+     ============================================ */
+
+  /* Navy ramp */
+  --color-navy:        #1E3A8A;
+  --color-navy-deep:   #15296B;
+  --color-navy-ink:    #0F1F4F;
+
+  /* Gold ramp */
+  --color-gold:        #C9A149;
+  --color-gold-deep:   #A8862E;
+  --color-gold-soft:   #F6ECCA;
+  --color-gold-tint:   #FBF6E4;
+
+  /* Neutrals (paper-toned) */
+  --color-paper:       #FBFAF7;
+  --color-line:        #E8E5DC;
+  --color-line-strong: #D4D0C3;
+  --color-ink-dim:     #535A6E;
+  --color-ink-muted:   #8A8F9F;
+
+  /* Status (mastery weak / ok / strong) */
+  --color-status-weak:      #C2410C;
+  --color-status-weak-bg:   #FEF0E6;
+  --color-status-ok:        #3E5BA8;
+  --color-status-ok-bg:     #E8EDF8;
+  --color-status-strong:    #1F8A5B;
+  --color-status-strong-bg: #E3F4EC;
+
+  /* Shadows */
+  --shadow-xs: 0 1px 2px rgba(15, 31, 79, 0.04);
+  --shadow-sm: 0 1px 2px rgba(15, 31, 79, 0.06), 0 0 0 1px rgba(15, 31, 79, 0.04);
+  --shadow-md: 0 8px 28px -8px rgba(15, 31, 79, 0.18), 0 0 0 1px rgba(15, 31, 79, 0.06);
+  --shadow-lg: 0 24px 60px -20px rgba(15, 31, 79, 0.30), 0 0 0 1px rgba(15, 31, 79, 0.06);
+
+  /* Radii (namespaced to avoid clashing with Tailwind's --radius scale) */
+  --radius-card:     14px;
+  --radius-card-lg:  22px;
+  --radius-pill:    999px;
+
+  /* Layout */
+  --container-dashboard-main: 1480px;
+  --gutter-desktop: 32px;
+  --gutter-mobile:  20px;
+}
+
+.dark {
+  --background: oklch(0.145 0 0);
+  --foreground: oklch(0.985 0 0);
+  --card: oklch(0.205 0 0);
+  --card-foreground: oklch(0.985 0 0);
+  --popover: oklch(0.205 0 0);
+  --popover-foreground: oklch(0.985 0 0);
+  --primary: oklch(0.922 0 0);
+  --primary-foreground: oklch(0.205 0 0);
+  --secondary: oklch(0.269 0 0);
+  --secondary-foreground: oklch(0.985 0 0);
+  --muted: oklch(0.269 0 0);
+  --muted-foreground: oklch(0.708 0 0);
+  --accent: oklch(0.269 0 0);
+  --accent-foreground: oklch(0.985 0 0);
+  --destructive: oklch(0.704 0.191 22.216);
+  --border: oklch(1 0 0 / 10%);
+  --input: oklch(1 0 0 / 15%);
+  --ring: oklch(0.556 0 0);
+  --chart-1: oklch(0.87 0 0);
+  --chart-2: oklch(0.556 0 0);
+  --chart-3: oklch(0.439 0 0);
+  --chart-4: oklch(0.371 0 0);
+  --chart-5: oklch(0.269 0 0);
+  --sidebar: oklch(0.205 0 0);
+  --sidebar-foreground: oklch(0.985 0 0);
+  --sidebar-primary: oklch(0.488 0.243 264.376);
+  --sidebar-primary-foreground: oklch(0.985 0 0);
+  --sidebar-accent: oklch(0.269 0 0);
+  --sidebar-accent-foreground: oklch(0.985 0 0);
+  --sidebar-border: oklch(1 0 0 / 10%);
+  --sidebar-ring: oklch(0.556 0 0);
+
+  /* Slice 4 Phase 8 — dark-mode mirrors of dashboard tokens. */
+  --ink-2: oklch(0.70 0 0);
+  --ink-3: oklch(0.60 0 0);
+  --ink-mute: oklch(0.50 0 0);
+  --bg-soft: oklch(0.25 0 0);
+  --success: oklch(0.65 0.16 145);
+  --danger: oklch(0.65 0.20 25);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+  html {
+    @apply font-sans;
+  }
+}
+
+/* ============================================
+   Slice 4.X Phase 10b — Gold CTA helper
+   Used by the dashboard header (`התחל תרגול`) and any future
+   high-emphasis action. Tailwind covers shape/size/typography
+   from the consumer; this class only injects the gradient +
+   shadow stack because expressing them inline is noisy.
+   ============================================ */
+.btn-gold {
+  background: linear-gradient(135deg, #E8C97A 0%, #D4AC57 55%, #C9A149 100%);
+  color: var(--color-navy-ink);
+  box-shadow:
+    0 8px 22px -8px rgba(201, 161, 73, 0.55),
+    inset 0 1px 0 rgba(255, 255, 255, 0.35);
+  transition: filter .18s ease, transform .18s ease, box-shadow .18s ease;
+}
+.btn-gold:hover {
+  filter: brightness(1.05);
+  transform: translateY(-1px);
+}
+.btn-gold:focus-visible {
+  outline: 2px solid var(--color-gold-deep);
+  outline-offset: 2px;
+}
+
+/* ============================================
+   Slice 4.X Phase 11 — Journey pulse for the "current" step on the
+   hero-row Journey card. Disabled when prefers-reduced-motion to
+   match the timer-pulse precedent below.
+   ============================================ */
+@keyframes journeyPulse {
+  0%, 100% {
+    box-shadow: 0 0 0 6px rgba(201, 161, 73, 0.18),
+                0 8px 22px -4px rgba(201, 161, 73, 0.55);
+  }
+  50% {
+    box-shadow: 0 0 0 10px rgba(201, 161, 73, 0.10),
+                0 8px 22px -4px rgba(201, 161, 73, 0.65);
+  }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .journey-pulse {
+    animation: journeyPulse 2.2s ease-in-out infinite;
+  }
+}
+
+/* Slice 3 Phase 6 — subtle pulse on the exam timer when remaining < 600s.
+   Gated on `prefers-reduced-motion: no-preference` so motion-sensitive
+   users get no animation. */
+@keyframes timerPulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.04); }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .timer-pulse {
+    animation: timerPulse 1s ease-in-out infinite;
+  }
+}
+
+/* ============================================
+   Slice 8 — page-transition fade-in for (app) route segments.
+   Layout-applied via the `.page-fade-in` class on <main> in
+   app/(app)/layout.tsx. The class only renders for the (app)
+   group; auth pages and the root layout stay un-animated.
+   Disabled under prefers-reduced-motion to match the timer/journey
+   precedent above.
+   ============================================ */
+@keyframes pageFadeIn {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.page-fade-in {
+  animation: pageFadeIn 180ms ease-out;
+}
+@media (prefers-reduced-motion: reduce) {
+  .page-fade-in {
+    animation: none;
+  }
+}
+
+/* ============================================
+   Slice 16 — landing Phase L3 animations.
+   `.plan-float` lifts the featured plan card up and down in a
+   gentle 4-second loop; `.faq-ring-rotate` spins the dashed gold
+   ring around the FAQ character. Both disabled under
+   prefers-reduced-motion.
+   ============================================ */
+@keyframes planFloat {
+  0%, 100% { transform: translateY(-8px); }
+  50%      { transform: translateY(-14px); }
+}
+.plan-float {
+  animation: planFloat 4s ease-in-out infinite;
+}
+/* Pause the float on hover — handled in CSS (not Tailwind brackets)
+   so this rule is guaranteed to land regardless of how the utility
+   set merges class names. The lifted `translateY(-10px)` on hover
+   then takes over via Tailwind's hover:-translate-y-[10px]. */
+.plan-float:hover {
+  animation-play-state: paused;
+}
+@keyframes faqRingRotate {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+.faq-ring-rotate {
+  animation: faqRingRotate 24s linear infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .plan-float, .faq-ring-rotate {
+    animation: none;
+  }
+}
+/* Mobile (<1024px = matches the Tailwind `lg` breakpoint where the
+   plans grid stays single-column): featured card now stacks with the
+   others, so the floating translateY would read as a random offset
+   instead of visual emphasis. Disable the animation + lock the
+   resting transform on narrow widths; gold border + glow + badge
+   stay intact and carry the "המומלץ" signal on their own. */
+@media (max-width: 1023px) {
+  .plan-float {
+    animation: none;
+    transform: none;
+  }
+}
+
+/* ============================================
+   Slice 16 — landing-hero typewriter cursor blink.
+   The cursor character (|) toggles opacity every 0.5s so it
+   blinks twice per second. Disabled under prefers-reduced-motion;
+   the cursor stays solid in that case. Mirrors the prototype's
+   `.tw-cursor` rule from reference/index.html (@keyframes blink).
+   ============================================ */
+@keyframes typewriterBlink {
+  50% { opacity: 0; }
+}
+.typewriter-cursor {
+  animation: typewriterBlink 1s steps(2) infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .typewriter-cursor {
+    animation: none;
+  }
+}
+/* ============================================
+   Slice 25 B-1.1 — scoped styling for the in-sheet TipTap note
+   editor. Tailwind's preflight resets `ul`/`ol`/`h1`..`h3` to
+   unstyled, so list bullets and heading sizes disappear inside the
+   editor even though the StarterKit commands apply the elements
+   correctly. We restore the visual rendering on a single scoping
+   class so the rules don't leak outside the editor surface.
+
+   The class is set on EditorContent's root via `editorProps.attributes`
+   in note-editor-sheet.tsx.
+   ============================================ */
+.note-editor-content {
+  /* Spacing rhythm for paragraphs + headings. The editor surface
+     defaults to `font-heebo` (set on the same element) and 15px /
+     1.7 leading via the Tailwind utility classes. */
+  --note-spacing: 0.6em;
+}
+.note-editor-content > * + * {
+  margin-top: var(--note-spacing);
+}
+.note-editor-content h1 {
+  font-size: 1.55rem;
+  font-weight: 700;
+  line-height: 1.25;
+  color: var(--color-navy-ink);
+}
+.note-editor-content h2 {
+  font-size: 1.3rem;
+  font-weight: 700;
+  line-height: 1.3;
+  color: var(--color-navy-ink);
+}
+.note-editor-content h3 {
+  font-size: 1.1rem;
+  font-weight: 600;
+  line-height: 1.35;
+  color: var(--color-navy-ink);
+}
+.note-editor-content ul,
+.note-editor-content ol {
+  padding-inline-start: 1.5rem;
+}
+.note-editor-content ul {
+  list-style: disc outside;
+}
+.note-editor-content ol {
+  list-style: decimal outside;
+}
+.note-editor-content li > p {
+  margin: 0;
+}
+.note-editor-content li + li {
+  margin-top: 0.2em;
+}
+.note-editor-content a {
+  color: var(--color-gold-deep);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+/* TipTap Placeholder renders an empty paragraph that carries
+   `data-placeholder`; the rule below shows the placeholder text
+   via ::before only while the editor is empty (`is-editor-empty`
+   class set by the Placeholder extension). */
+.note-editor-content p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  float: inline-start;
+  height: 0;
+  color: var(--color-ink-muted, var(--muted-foreground));
+  pointer-events: none;
+}
+
+/* Slice 37 — copy/paste deterrent for question-content surfaces.
+   Applied by `<NoCopyText>` and at three shared seams
+   (`ChoiceAnalysisRow`, `Learning360Panel`, `Choice`'s text span).
+   Blocks text-selection on desktop + mobile, plus iOS Safari's
+   long-press magnifier/callout. Deterrent only — does not prevent
+   screenshots / devtools / OCR by design. */
+.no-copy-content {
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+}

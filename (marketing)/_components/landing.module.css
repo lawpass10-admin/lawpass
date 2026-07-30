@@ -1,0 +1,1381 @@
+/*
+ * Slice 46 — landing shell CSS module.
+ *
+ * Faithful port of the design's first <style> block (lines 31–1070 of
+ * _design/landing-hifi-new.html) plus the source-note-360 block, scoped to a
+ * `.landingRoot` wrapper so the design's `:root { --navy: ...; --gold: ... }`
+ * tokens DO NOT leak to the rest of the app. All generic class names (.hero,
+ * .h2, .lead, .btn-gold, .pillar, .plan, .faq-item, ...) are module-local —
+ * Next.js + CSS Modules hashes them at build time.
+ *
+ * NOT ported here (deferred to later slices):
+ *   - The #try simulator (`.ts-*` / `.t360-*` selectors) — Slice 2.
+ *   - The accessibility-options panel (`.lp-a11y-*` / `.lp-reading-*`,
+ *     `.lp-skip-link`) — Slice 3.
+ *   - The design's @font-face rules — the app uses next/font for Heebo (weights
+ *     300–900) and Assistant (300–700).
+ *
+ * No global app token is added or redefined. The design's tokens live ONLY
+ * inside `.landingRoot { ... }` (which the marketing page wraps the landing in)
+ * so pages outside /(marketing) are visually unaffected.
+ */
+
+/* ─── Design tokens — scoped to .landingRoot, NOT :root ─── */
+.landingRoot {
+  --navy: #1E3A8A;
+  --navy-deep: #15296B;
+  --navy-ink: #0F1F4F;
+  --gold: #C9A149;
+  --gold-deep: #A8862E;
+  --gold-tint: #FBF6E4;
+  --paper: #FBFAF7;
+  --line: #E8E5DC;
+  --line-strong: #D4D0C3;
+  --ink: #1A1F2E;
+  --ink-2: #374151;
+  --ink-3: #4B5563;
+  --ink-muted: #6B7280;
+  --white: #FFFFFF;
+  --shadow-xs: 0 1px 2px rgba(15, 31, 79, 0.04);
+  --shadow-sm: 0 1px 2px rgba(15, 31, 79, 0.06), 0 0 0 1px rgba(15, 31, 79, 0.04);
+  --shadow-md: 0 8px 28px -8px rgba(15, 31, 79, 0.18),
+    0 0 0 1px rgba(15, 31, 79, 0.06);
+  --shadow-lg: 0 24px 60px -20px rgba(15, 31, 79, 0.30),
+    0 0 0 1px rgba(15, 31, 79, 0.06);
+  --radius-card: 14px;
+  --radius-card-lg: 22px;
+  --radius-pill: 999px;
+  --container: 1320px;
+
+  /* Body-level resets applied via the wrapper so we don't redefine `body`. */
+  background: var(--paper);
+  color: var(--ink);
+  font-family: "Assistant", Arial, sans-serif;
+  font-size: 16px;
+  line-height: 1.5;
+  overflow-x: hidden;
+}
+.landingRoot * { box-sizing: border-box; }
+.landingRoot a { color: inherit; text-decoration: none; }
+.landingRoot button { font-family: inherit; cursor: pointer; }
+
+.page { display: flex; flex-direction: column; min-height: 100vh; }
+.container {
+  max-width: var(--container);
+  margin: 0 auto;
+  padding-inline: 16px;
+}
+@media (min-width: 768px) {
+  .container { padding-inline: 32px; }
+}
+
+/* ─── Header ─── */
+.siteHeader {
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  background: var(--navy-ink);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+.headerInner {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  gap: 12px;
+  padding-block: 10px;
+}
+.mainNav { display: none; }
+.logoLink { justify-self: start; display: inline-flex; align-items: center; }
+.logoLink img {
+  display: block;
+  height: clamp(40px, 4.2vw, 70px);
+  width: auto;
+}
+.headerCta {
+  justify-self: end;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 9px 14px;
+  background: linear-gradient(135deg, #e8c97a 0%, #d4ac57 55%, #c9a149 100%);
+  color: var(--navy-ink);
+  font-weight: 600;
+  font-size: 13px;
+  border-radius: var(--radius-pill);
+  box-shadow: 0 8px 22px -8px rgba(201, 161, 73, 0.55),
+    inset 0 1px 0 rgba(255, 255, 255, 0.35);
+  transition: filter 0.18s ease, transform 0.18s ease;
+}
+.headerCta:hover { filter: brightness(1.05); transform: translateY(-1px); }
+@media (min-width: 768px) {
+  .headerInner { grid-template-columns: 1fr auto 1fr; gap: 24px; }
+  .mainNav { display: flex; align-items: center; gap: 26px; justify-self: start; }
+  .mainNav a {
+    color: rgba(255, 255, 255, 0.86);
+    font-family: "Heebo", Arial, sans-serif;
+    font-weight: 500;
+    font-size: 15px;
+    padding: 6px 2px;
+    transition: color 0.18s ease;
+  }
+  .mainNav a:hover { color: var(--gold); }
+  .logoLink { justify-self: center; }
+  .headerCta { padding: 11px 22px; font-size: 14px; }
+}
+
+/* ─── Cookie bar ─── */
+.cookieBar {
+  position: relative;
+  background: #f4f1e8;
+  color: var(--ink);
+  padding: 12px 48px 12px 12px;
+  font-size: 14px;
+  border-bottom: 1px solid var(--line);
+  text-align: start;
+}
+.cookieBar a {
+  color: var(--navy);
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.cookieClose {
+  position: absolute;
+  top: 50%;
+  inset-inline-end: 16px;
+  transform: translateY(-50%);
+  width: 28px;
+  height: 28px;
+  border: none;
+  border-radius: 50%;
+  background: var(--navy);
+  color: var(--white);
+  font-size: 18px;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+@media (min-width: 768px) {
+  .cookieBar { padding: 14px 56px; font-size: 16px; text-align: center; }
+}
+
+/* ─── Hero ─── */
+.hero {
+  position: relative;
+  background: var(--white);
+  overflow: hidden;
+  padding-top: 24px;
+}
+.hero::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(900px 540px at 85% 30%, rgba(30, 58, 138, 0.04), transparent 65%),
+    radial-gradient(700px 460px at 12% 75%, rgba(201, 161, 73, 0.06), transparent 65%);
+  pointer-events: none;
+}
+.heroGrid {
+  position: relative;
+  z-index: 1;
+  max-width: var(--container);
+  margin: 0 auto;
+  padding: 24px 16px 140px;
+  display: grid;
+  gap: 32px;
+  grid-template-columns: 1fr;
+  align-items: start;
+}
+@media (min-width: 768px) {
+  .heroGrid { padding: 24px 32px 280px; gap: 40px; grid-template-columns: 1.25fr 0.75fr; }
+}
+/* Slice 47 — center the WHOLE hero copy column (h1 + subline + CTA row) on
+   BOTH desktop and mobile. The CTA row needs `justify-content: center` since
+   the row itself is a flex container. */
+.heroCopy {
+  position: relative;
+  z-index: 3;
+  text-align: center;
+}
+.heroCopy .ctaRow { justify-content: center; }
+
+/* Slice 47 — raise the figure by trimming `.heroFigure` height by ~60 px on
+   desktop and ~40 px on mobile (recommended values from the Slice 47
+   investigation). The negative-margin overlap with the wave below is
+   preserved via `.characterImg`. */
+.heroFigure {
+  position: relative;
+  z-index: 1;
+  height: 360px;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+}
+@media (min-width: 768px) { .heroFigure { height: 540px; } }
+.heroFigureBg {
+  position: absolute;
+  inset-inline-end: -6%;
+  bottom: -80px;
+  width: 90%;
+  height: 80%;
+  background: radial-gradient(closest-side, rgba(201, 161, 73, 0.13), rgba(201, 161, 73, 0) 70%);
+  z-index: 0;
+  pointer-events: none;
+}
+.characterSlot {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  max-width: 520px;
+  height: 100%;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+}
+.characterImg {
+  display: block;
+  width: 100%;
+  height: calc(100% + 40px);
+  margin-bottom: -40px;
+  object-fit: contain;
+  object-position: top center;
+  filter: drop-shadow(0 30px 40px rgba(15, 31, 79, 0.18));
+}
+@media (min-width: 768px) {
+  .characterImg { height: calc(100% + 60px); margin-bottom: -60px; }
+}
+
+.heroHeadline {
+  font-family: "Heebo", Arial, sans-serif;
+  font-size: clamp(32px, 7vw, 70px);
+  font-weight: 800;
+  line-height: 1.04;
+  color: var(--navy-ink);
+  margin: 0 0 18px;
+}
+.heroHeadline > span { display: block; white-space: nowrap; }
+.h1Dot { color: var(--gold); margin-inline-start: 4px; }
+.heroSub {
+  font-family: "Heebo", Arial, sans-serif;
+  font-size: clamp(17px, 3.6vw, 30px);
+  line-height: 1.5;
+  color: var(--ink-3);
+  font-weight: 400;
+  min-height: 3.2em;
+  margin: 0 0 36px;
+  max-width: 620px;
+}
+.twText { color: var(--navy-ink); font-weight: 400; }
+.twCursor {
+  display: inline-block;
+  color: var(--gold-deep);
+  font-weight: 700;
+  margin-inline-start: 2px;
+  animation: lpBlink 1s steps(2) infinite;
+}
+@keyframes lpBlink { 50% { opacity: 0; } }
+
+.ctaRow {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 56px;
+  flex-wrap: wrap;
+}
+.btnGold {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 18px 42px;
+  background: linear-gradient(135deg, #e8c97a 0%, #d4ac57 55%, #c9a149 100%);
+  color: var(--navy-ink);
+  font-family: "Heebo", Arial, sans-serif;
+  font-weight: 700;
+  font-size: 20px;
+  border-radius: var(--radius-pill);
+  border: 1px solid transparent;
+  box-shadow: 0 8px 22px -8px rgba(201, 161, 73, 0.55),
+    inset 0 1px 0 rgba(255, 255, 255, 0.35);
+  transition: filter 0.18s ease, transform 0.18s ease;
+  cursor: pointer;
+}
+.btnGold:hover { filter: brightness(1.05); transform: translateY(-1px); }
+.btnGhost {
+  display: inline-flex;
+  align-items: center;
+  color: var(--navy-ink);
+  font-weight: 600;
+  font-size: 19px;
+  padding: 14px 12px;
+  transition: opacity 0.18s ease;
+}
+.btnGhost:hover { opacity: 0.7; }
+
+.heroWave {
+  position: absolute;
+  inset-inline: 0;
+  bottom: 0;
+  height: 220px;
+  z-index: 2;
+  pointer-events: none;
+}
+@media (min-width: 768px) { .heroWave { height: 320px; } }
+.heroWave svg { width: 100%; height: 100%; display: block; }
+
+/* ─── Source-note 360° ─── */
+.sourceNote360 {
+  background: #f7f4ec;
+  padding: 48px 20px;
+  border-top: 1px solid rgba(212, 175, 55, 0.45);
+  border-bottom: 1px solid rgba(212, 175, 55, 0.45);
+}
+.sourceNoteGrid {
+  max-width: 1180px;
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 28px 60px;
+  text-align: right;
+}
+.sourceNoteItem {
+  margin: 0;
+  padding-inline-start: 22px;
+  border-inline-start: 3px solid var(--gold);
+  font-family: "Assistant", Arial, sans-serif;
+  font-size: clamp(1.05rem, 1.5vw, 1.3rem);
+  line-height: 1.65;
+  font-weight: 500;
+  color: var(--ink);
+  max-width: 48ch;
+  text-wrap: pretty;
+}
+.sourceNoteItem .snHl { color: var(--gold-deep); font-weight: 700; }
+@media (max-width: 820px) {
+  .sourceNoteGrid { grid-template-columns: 1fr; gap: 22px; }
+}
+
+/* ─── Method ─── */
+.methodSection {
+  background: var(--navy-ink);
+  color: var(--white);
+  padding: 64px 0 80px;
+  position: relative;
+  overflow: hidden;
+}
+@media (min-width: 768px) { .methodSection { padding: 80px 0 112px; } }
+.methodSection::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(700px 460px at 88% 12%, rgba(201, 161, 73, 0.12), transparent 65%),
+    radial-gradient(560px 400px at 8% 88%, rgba(255, 255, 255, 0.04), transparent 65%);
+  pointer-events: none;
+}
+.methodSection .container { position: relative; padding-inline: 16px; }
+@media (min-width: 768px) {
+  .methodSection .container { padding-inline: 32px; }
+}
+.sectionHead {
+  max-width: 820px;
+  margin: 0 auto 44px;
+  text-align: center;
+}
+.eyebrow {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  font-family: "Heebo", Arial, sans-serif;
+  font-weight: 500;
+  font-size: 14px;
+  color: var(--gold);
+  margin-bottom: 22px;
+}
+.eyebrowBar { display: block; width: 28px; height: 1.5px; background: var(--gold); flex-shrink: 0; }
+.h2 {
+  font-family: "Heebo", Arial, sans-serif;
+  font-size: clamp(32px, 4vw, 56px);
+  line-height: 1.08;
+  font-weight: 800;
+  margin-bottom: 18px;
+  letter-spacing: -0.01em;
+}
+.methodSection .h2 { color: var(--white); }
+.gold { color: var(--gold-deep); }
+.methodSection .gold { color: var(--gold); }
+.lead {
+  font-family: "Heebo", Arial, sans-serif;
+  font-weight: 400;
+  font-size: clamp(16px, 1.4vw, 19px);
+  line-height: 1.55;
+  color: var(--ink-3);
+  max-width: 620px;
+  margin: 0 auto;
+}
+.methodSection .lead { color: rgba(255, 255, 255, 0.78); }
+
+.pillars {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 20px;
+}
+@media (min-width: 700px) { .pillars { grid-template-columns: repeat(2, 1fr); } }
+@media (min-width: 1024px) { .pillars { grid-template-columns: repeat(3, 1fr); } }
+
+.pillar {
+  background: var(--white);
+  padding: 28px 24px;
+  border: 1px solid rgba(255, 255, 255, 0.04);
+  border-radius: var(--radius-card-lg);
+  box-shadow: 0 12px 28px -10px rgba(0, 0, 0, 0.35);
+  transition: background 0.28s ease, color 0.28s ease, transform 0.28s ease,
+    box-shadow 0.28s ease, border-color 0.28s ease;
+  text-align: center;
+  cursor: default;
+}
+@media (min-width: 768px) { .pillar { padding: 36px 32px; } }
+.pillar:hover {
+  background: var(--navy);
+  color: var(--white);
+  border-color: rgba(201, 161, 73, 0.55);
+  transform: translateY(-4px);
+  box-shadow: 0 28px 60px -14px rgba(0, 0, 0, 0.55),
+    0 0 0 1px rgba(201, 161, 73, 0.35);
+}
+.pillarIcon {
+  width: 72px;
+  height: 72px;
+  border-radius: 16px;
+  background: var(--white);
+  border: 1px solid var(--line);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto 22px;
+  overflow: hidden;
+  transition: border-color 0.28s ease, box-shadow 0.28s ease, transform 0.28s ease;
+}
+.pillar:hover .pillarIcon {
+  border-color: rgba(201, 161, 73, 0.7);
+  box-shadow: 0 6px 18px -6px rgba(201, 161, 73, 0.35);
+  transform: translateY(-2px) scale(1.03);
+}
+.pillarIcon video {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  background: var(--white);
+  display: block;
+}
+.pillarNum {
+  font-family: "Heebo", Arial, sans-serif;
+  font-weight: 700;
+  font-size: 13px;
+  color: var(--gold-deep);
+  letter-spacing: 0.06em;
+  transition: color 0.28s ease;
+}
+.pillar:hover .pillarNum { color: var(--gold); }
+.pillarBar {
+  width: 64px;
+  height: 3px;
+  background: var(--gold);
+  margin: 16px auto 22px;
+  border-radius: 2px;
+  transition: width 0.28s ease;
+}
+.pillar:hover .pillarBar { width: 88px; }
+.pillarT {
+  font-family: "Heebo", Arial, sans-serif;
+  font-size: 22px;
+  font-weight: 700;
+  margin: 0 0 12px;
+  line-height: 1.25;
+  color: var(--navy-ink);
+  transition: color 0.28s ease;
+}
+.pillar:hover .pillarT { color: var(--white); }
+.pillarD {
+  font-family: "Assistant", Arial, sans-serif;
+  color: var(--ink-3);
+  font-size: 15.5px;
+  line-height: 1.55;
+  margin: 0;
+  transition: color 0.28s ease;
+}
+.pillar:hover .pillarD { color: rgba(255, 255, 255, 0.82); }
+
+/* ─── Plans ─── */
+.plansSection {
+  background: var(--paper);
+  padding: 80px 0;
+  position: relative;
+}
+@media (min-width: 768px) { .plansSection { padding: 112px 0; } }
+.plansSection .sectionHead { margin-inline: auto; max-width: 720px; }
+.plansSection .lead { color: var(--ink-3); }
+
+.plans {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 24px;
+  margin-top: 40px;
+  align-items: stretch;
+}
+@media (min-width: 1024px) {
+  .plans { grid-template-columns: repeat(3, 1fr); margin-top: 56px; }
+}
+.plan {
+  position: relative;
+  background: var(--white);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-card-lg);
+  padding: 24px 24px 28px;
+  display: flex;
+  flex-direction: column;
+  box-shadow: var(--shadow-sm);
+  transition: transform 0.25s ease, box-shadow 0.25s ease;
+}
+@media (min-width: 768px) { .plan { padding: 36px 32px 32px; } }
+.plan:hover { transform: translateY(-2px); box-shadow: var(--shadow-md); }
+
+@keyframes lpPlanFloat {
+  0%, 100% { transform: translateY(-8px); }
+  50% { transform: translateY(-14px); }
+}
+.planFeatured {
+  background: var(--navy-ink);
+  color: var(--white);
+  border: 2px solid var(--gold);
+  box-shadow: var(--shadow-lg), 0 0 0 4px rgba(201, 161, 73, 0.10);
+}
+@media (min-width: 1024px) {
+  .planFeatured { animation: lpPlanFloat 4s ease-in-out infinite; }
+  .planFeatured:hover { animation-play-state: paused; transform: translateY(-10px); }
+}
+.planFeatured .planName,
+.planFeatured .planPrice { color: var(--white); }
+.planFeatured .planTag { color: var(--gold); }
+.planFeatured .planSub { color: rgba(255, 255, 255, 0.65); }
+.planFeatured .planFeatures li { color: rgba(255, 255, 255, 0.85); }
+.planFeatured .planFeatures svg { color: var(--gold); }
+
+.planComingSoon {
+  background: #f4f2ec;
+  border: 1px dashed var(--line-strong);
+  box-shadow: none;
+}
+.planComingSoon .planTag { color: #6f7585; }
+.planComingSoon .planName { color: #4b5263; }
+.planComingSoon .planFeatures li { color: #6f7585; }
+.planComingSoon .planFeatures svg { color: #b8bcc8; }
+.planComingSoon .planSub { color: #8a8f9f; }
+
+.planBadge {
+  position: absolute;
+  top: -14px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--gold);
+  color: var(--navy-ink);
+  font-family: "Heebo", Arial, sans-serif;
+  font-weight: 700;
+  font-size: 12px;
+  letter-spacing: 0.06em;
+  padding: 6px 18px;
+  border-radius: var(--radius-pill);
+  text-transform: uppercase;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 90px;
+  line-height: 1;
+  white-space: nowrap;
+  z-index: 5;
+}
+.planBadgeSoon { background: #b8bcc8; color: var(--white); gap: 6px; }
+.planTag {
+  font-family: "Heebo", Arial, sans-serif;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--gold-deep);
+  letter-spacing: 0.04em;
+  margin-bottom: 8px;
+  display: inline-flex;
+  align-items: center;
+}
+.planName {
+  font-family: "Heebo", Arial, sans-serif;
+  font-size: 28px;
+  font-weight: 700;
+  color: var(--navy-ink);
+  margin: 0 0 16px;
+}
+.planPrice {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+  font-family: "Heebo", Arial, sans-serif;
+  color: var(--navy-ink);
+}
+.planCurrency { font-size: 22px; font-weight: 600; opacity: 0.7; }
+.planAmount {
+  font-size: 56px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  line-height: 1;
+}
+.planAmountTbd {
+  font-family: "Heebo", Arial, sans-serif;
+  font-weight: 800;
+  font-size: 40px;
+  color: #b8bcc8;
+  letter-spacing: -0.01em;
+  line-height: 1;
+}
+.planSub { font-size: 14px; color: var(--ink-muted); margin: 6px 0 28px; }
+.planFeatures {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 28px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  flex: 1;
+}
+.planFeatures li {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  font-size: 15px;
+  color: var(--ink);
+  line-height: 1.45;
+}
+.planFeatures svg {
+  flex-shrink: 0;
+  color: var(--gold-deep);
+  margin-top: 4px;
+}
+
+.planCta {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  padding: 12px 18px;
+  border-radius: var(--radius-pill);
+  font-family: "Heebo", Arial, sans-serif;
+  font-weight: 600;
+  font-size: 14px;
+  border: 2px solid var(--navy-ink);
+  background: transparent;
+  color: var(--navy-ink);
+  transition: background 0.2s ease, color 0.2s ease;
+}
+.planCta:hover { background: var(--navy-ink); color: var(--white); }
+.planFeatured .planCta {
+  background: var(--gold);
+  color: var(--navy-ink);
+  border-color: var(--gold);
+}
+.planFeatured .planCta:hover {
+  filter: brightness(1.05);
+  background: var(--gold);
+  color: var(--navy-ink);
+}
+.planCtaDisabled {
+  background: #eceae3;
+  color: #6f7585;
+  border: 1.5px dashed #b8bcc8;
+  cursor: not-allowed;
+}
+
+/* ─── FAQ ─── */
+.faqSection {
+  background: var(--white);
+  padding: 80px 0;
+}
+@media (min-width: 768px) { .faqSection { padding: 112px 0; } }
+.faqContainer {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 48px;
+  align-items: start;
+}
+@media (min-width: 1024px) {
+  .faqContainer { grid-template-columns: 1fr 1.2fr; gap: 80px; }
+}
+.faqLeft { position: relative; }
+.faqSection .sectionHead { text-align: start; margin-bottom: 32px; }
+.faqSection .eyebrow { color: var(--gold-deep); justify-content: flex-start; }
+.faqSection .h2 { color: var(--navy-ink); }
+.faqSection .lead { margin: 0; }
+.faqCharacter {
+  position: relative;
+  margin: 40px auto 0;
+  aspect-ratio: 1 / 1;
+  width: 100%;
+  max-width: 420px;
+}
+.faqCharacterRing {
+  position: absolute;
+  inset: -14px;
+  border-radius: 50%;
+  border: 1.5px dashed rgba(201, 161, 73, 0.5);
+  animation: lpRingRotate 24s linear infinite;
+}
+@keyframes lpRingRotate {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+.faqCharacterCircle {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background:
+    radial-gradient(closest-side, rgba(30, 58, 138, 0.07), rgba(30, 58, 138, 0.02) 70%, transparent 80%),
+    linear-gradient(135deg, #f5f1e4 0%, #faf7ec 60%, #f0ead5 100%);
+  overflow: hidden;
+  box-shadow: inset 0 -20px 60px rgba(201, 161, 73, 0.10);
+}
+.faqCharacterCircle::after {
+  content: "";
+  position: absolute;
+  inset: 6px;
+  border-radius: 50%;
+  border: 1px solid rgba(201, 161, 73, 0.25);
+  pointer-events: none;
+}
+.faqCharacterImg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 110%;
+  object-fit: cover;
+  object-position: center top;
+  filter: drop-shadow(0 10px 20px rgba(15, 31, 79, 0.10));
+}
+.faqCharacterQuote {
+  position: absolute;
+  bottom: 24px;
+  inset-inline-end: 0;
+  max-width: 280px;
+  background: var(--white);
+  border-radius: var(--radius-card);
+  border: 1px solid var(--line);
+  padding: 18px 22px 16px;
+  box-shadow: var(--shadow-md);
+}
+@media (min-width: 1024px) {
+  .faqCharacterQuote { inset-inline-end: -40px; }
+}
+.faqQuoteMark {
+  position: absolute;
+  top: -14px;
+  inset-inline-start: 20px;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: var(--gold);
+  color: var(--navy-ink);
+  font-family: "Heebo", Arial, sans-serif;
+  font-weight: 700;
+  font-size: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+}
+.faqQuoteTitle {
+  font-family: "Heebo", Arial, sans-serif;
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--navy-ink);
+  line-height: 1.3;
+}
+.faqQuoteSubtitle {
+  font-family: "Heebo", Arial, sans-serif;
+  margin-top: 6px;
+  font-size: 13.5px;
+  font-weight: 400;
+  color: var(--ink-3);
+  line-height: 1.45;
+}
+
+.faqList { display: flex; flex-direction: column; gap: 12px; }
+.faqItem {
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-card);
+  overflow: hidden;
+  transition: border-color 0.2s ease, background 0.2s ease;
+}
+.faqItem.open {
+  background: var(--white);
+  border-color: var(--navy);
+  box-shadow: var(--shadow-sm);
+}
+.faqQ {
+  width: 100%;
+  background: transparent;
+  border: none;
+  text-align: start;
+  padding: 20px 22px;
+  font-family: "Heebo", Arial, sans-serif;
+  font-weight: 600;
+  font-size: 17px;
+  color: var(--navy-ink);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+.faqQText { flex: 1; position: relative; padding-bottom: 4px; }
+.faqQText::after {
+  content: "";
+  position: absolute;
+  inset-inline-start: 0;
+  bottom: -2px;
+  width: 38px;
+  height: 2px;
+  background: rgba(201, 161, 73, 0.55);
+  border-radius: 1px;
+  transition: background 0.2s ease, width 0.2s ease;
+}
+.faqItem.open .faqQText::after { background: var(--gold); width: 52px; }
+.faqQIcon {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: var(--white);
+  border: 1px solid var(--line);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--navy);
+  transition: transform 0.25s ease, background 0.2s ease, color 0.2s ease, border-color 0.2s ease;
+  flex-shrink: 0;
+}
+.faqItem.open .faqQIcon {
+  transform: rotate(180deg);
+  background: var(--gold);
+  border-color: var(--gold);
+  color: var(--navy-ink);
+}
+.faqAWrap {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 0.3s ease;
+}
+.faqItem.open .faqAWrap { grid-template-rows: 1fr; }
+.faqA {
+  overflow: hidden;
+  padding: 0 22px;
+  color: var(--ink-3);
+  font-family: "Assistant", Arial, sans-serif;
+  font-size: 15.5px;
+  line-height: 1.65;
+}
+.faqItem.open .faqA { padding: 0 22px 22px; }
+
+/* ─── Footer ─── */
+.siteFooter {
+  background: var(--navy-ink);
+  color: rgba(255, 255, 255, 0.78);
+}
+.footerInner {
+  padding: 48px 16px 40px;
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 40px;
+}
+@media (min-width: 768px) {
+  .footerInner {
+    padding: 72px 32px 48px;
+    grid-template-columns: 1.2fr 2fr;
+    gap: 60px;
+  }
+}
+.footerLogo { display: block; height: 72px; width: auto; margin-bottom: 16px; filter: brightness(1.05); }
+.footerCols {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 24px;
+}
+@media (min-width: 640px) {
+  .footerCols { grid-template-columns: repeat(3, 1fr); gap: 32px; }
+}
+.footerCol { display: flex; flex-direction: column; gap: 10px; }
+.footerColH {
+  font-family: "Heebo", Arial, sans-serif;
+  font-weight: 700;
+  color: var(--white);
+  font-size: 14px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  margin-bottom: 8px;
+}
+.footerCol a {
+  color: rgba(255, 255, 255, 0.75);
+  font-size: 15px;
+  transition: color 0.2s ease;
+}
+.footerCol a:hover { color: var(--gold); }
+.footerBottom {
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.55);
+}
+.footerBottomInner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 8px;
+  padding: 20px 16px;
+  max-width: var(--container);
+  margin: 0 auto;
+}
+@media (min-width: 768px) {
+  .footerBottomInner {
+    flex-direction: row;
+    justify-content: space-between;
+    text-align: start;
+    padding: 22px 32px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .planFeatured,
+  .faqCharacterRing,
+  .twCursor { animation: none !important; }
+}
+
+/* ─── Slice 48 — `#try` simulator (ts-* / t360-*) ────────────────────
+   Verbatim port of the design's ts-section block in
+   _design/landing-hifi-new.html lines 1418–1528. All class names are
+   re-spelled to module-local camelCase equivalents:
+     .ts-section → .tsSection, .ts-qtab → .tsQtab, .ts-card → .tsCard,
+     .ts-opt → .tsOpt, .ts-360 → .ts360, .ts-360toggle → .ts360Toggle,
+     .t360-tab → .t360Tab, .t360-pane → .t360Pane, etc.
+   State classes (`is-active`, `is-answered`, `is-correct`, `is-wrong`,
+   `is-good`, `is-bad`, `is-open`, `is-360open`, `is-locked`) become
+   `.isActive`, `.isAnswered`, ... module-local — Next.js + CSS Modules
+   hashes them at build time.
+   The design's `.ts-fb { display:none }` + `display:block` toggling is
+   collapsed: the client island renders only the relevant `.tsFb`
+   (good OR bad), so we map the title color to the parent
+   `.tsFeedback.isGood / .isBad` instead. */
+.tsSection { position: relative; background: var(--paper); overflow: hidden; padding: 64px 0 80px; border-top: 1px solid var(--line); }
+@media (min-width: 768px) { .tsSection { padding: 88px 0 104px; } }
+.tsSection::before {
+  content: ""; position: absolute; inset: 0; pointer-events: none;
+  background:
+    radial-gradient(760px 480px at 88% 6%, rgba(201,161,73,0.07), transparent 64%),
+    radial-gradient(640px 420px at 6% 94%, rgba(30,58,138,0.05), transparent 64%);
+}
+.tsSection .container { position: relative; }
+.tsQtabs { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; margin: 0 auto 30px; max-width: 920px; }
+.tsQtab {
+  display: inline-flex; align-items: center; gap: 9px; padding: 11px 18px;
+  border-radius: var(--radius-pill); border: 1px solid var(--line-strong); background: var(--white);
+  font-family: 'Heebo', Arial, sans-serif; font-weight: 600; font-size: 14px; color: var(--ink-3);
+  box-shadow: var(--shadow-xs); transition: border-color .18s ease, color .18s ease, background .18s ease, box-shadow .18s ease;
+}
+.tsQtab:hover { border-color: var(--navy); color: var(--navy-ink); }
+.tsQtab.isActive { background: var(--navy-ink); border-color: var(--navy-ink); color: #fff; box-shadow: var(--shadow-md); }
+.tsQtabNum { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; border-radius: 50%; background: rgba(0,0,0,.06); font-size: 12px; font-weight: 800; }
+.tsQtab.isActive .tsQtabNum { background: var(--gold); color: var(--navy-ink); }
+
+.tsCard { display: none; max-width: 880px; margin: 0 auto; background: var(--white); border: 1px solid var(--line); border-radius: var(--radius-card-lg); box-shadow: var(--shadow-md); overflow: hidden; }
+.tsCard.isActive { display: block; }
+.tsCardpad { padding: 24px 22px; }
+@media (min-width: 768px) { .tsCardpad { padding: 34px 38px; } }
+
+.tsTopicbar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding-bottom: 16px; border-bottom: 1px solid var(--line); margin-bottom: 22px; }
+.tsCrumb { font-family: 'Heebo', Arial, sans-serif; font-weight: 700; font-size: 13px; color: var(--navy); }
+.tsTag { margin-inline-start: auto; display: inline-flex; align-items: center; gap: 6px; padding: 5px 12px; border-radius: var(--radius-pill); background: var(--gold-tint); color: var(--gold-deep); font-family: 'Heebo', Arial, sans-serif; font-weight: 700; font-size: 12px; }
+
+.tsQuestion { font-family: 'Heebo', Arial, sans-serif; font-weight: 600; font-size: clamp(18px, 2.3vw, 22px); line-height: 1.6; color: var(--ink); margin: 0 0 22px; text-wrap: pretty; }
+.tsOptions { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 12px; }
+.tsOpt { width: 100%; display: flex; align-items: center; gap: 14px; padding: 15px 16px; border: 1.5px solid var(--line-strong); border-radius: 14px; background: var(--white); text-align: start; cursor: pointer; transition: border-color .16s ease, background .16s ease, box-shadow .16s ease, opacity .16s ease; }
+.tsOpt:hover { border-color: var(--navy); box-shadow: var(--shadow-sm); }
+.tsOptLetter { flex-shrink: 0; width: 34px; height: 34px; border-radius: 50%; background: #F1EFE8; color: var(--ink-3); display: flex; align-items: center; justify-content: center; font-family: 'Heebo', Arial, sans-serif; font-weight: 700; font-size: 15px; }
+.tsOptText { flex: 1; font-size: 16px; line-height: 1.45; color: var(--ink-2); }
+.tsOptMark { flex-shrink: 0; width: 22px; height: 22px; display: flex; align-items: center; justify-content: center; opacity: 0; color: #fff; }
+.tsCard.isAnswered .tsOpt { cursor: default; }
+.tsCard.isAnswered .tsOpt:hover { box-shadow: none; }
+.tsCard.isAnswered .tsOpt:not(.isCorrect):not(.isWrong) { opacity: .55; }
+.tsCard.isAnswered .tsOpt:not(.isCorrect):not(.isWrong):hover { border-color: var(--line-strong); }
+.tsOpt.isCorrect { border-color: #1E8E5A; background: #EAF7F0; }
+.tsOpt.isCorrect .tsOptLetter { background: #1E8E5A; color: #fff; }
+.tsOpt.isCorrect .tsOptText { color: #10623E; }
+.tsOpt.isCorrect .tsOptMark { opacity: 1; background: #1E8E5A; border-radius: 50%; }
+.tsOpt.isWrong { border-color: #C0392B; background: #FBEDEA; }
+.tsOpt.isWrong .tsOptLetter { background: #C0392B; color: #fff; }
+.tsOpt.isWrong .tsOptMark { opacity: 1; background: #C0392B; border-radius: 50%; }
+
+.tsFeedback { display: none; margin-top: 18px; border-radius: 14px; padding: 15px 18px; border: 1px solid; }
+.tsCard.isAnswered .tsFeedback { display: block; }
+.tsFeedback.isGood { background: #EAF7F0; border-color: #BFE6D1; }
+.tsFeedback.isBad { background: #FBEDEA; border-color: #F2C9C2; }
+.tsFeedbackTitle { font-family: 'Heebo', Arial, sans-serif; font-weight: 700; font-size: 15px; margin-bottom: 3px; }
+.tsFeedback.isGood .tsFeedbackTitle { color: #10623E; }
+.tsFeedback.isBad .tsFeedbackTitle { color: #9B2C1E; }
+.tsFeedbackSub { font-size: 14px; color: var(--ink-3); line-height: 1.5; }
+
+.ts360Toggle { display: none; margin-top: 18px; align-items: center; gap: 10px; padding: 13px 24px; border-radius: var(--radius-pill); background: linear-gradient(135deg,#E8C97A 0%,#D4AC57 55%,#C9A149 100%); color: var(--navy-ink); font-family: 'Heebo', Arial, sans-serif; font-weight: 700; font-size: 15px; line-height: 1.2; border: none; cursor: pointer; box-shadow: 0 8px 22px -8px rgba(201,161,73,0.55), inset 0 1px 0 rgba(255,255,255,0.35); transition: filter .18s ease, transform .18s ease; }
+.tsCard.isAnswered .ts360Toggle { display: inline-flex; }
+.ts360Toggle:hover { filter: brightness(1.05); transform: translateY(-1px); }
+.ts360Toggle svg { transition: transform .2s ease; }
+.tsCard.is360open .ts360Toggle svg { transform: rotate(180deg); }
+/* Slice 49 follow-up — the `<span class="ts-360toggle-label">` in the design
+   was a script hook, never styled, so when the port renders the JSX as
+   `<span className={styles.ts360ToggleLabel}>` we accidentally referenced an
+   undefined CSS-module key, leaving the span without a class. As a flex
+   child it gets "blockified" to `display: block` (per the flex spec), and
+   under that path the mixed Hebrew + LTR "הצג ניתוח 360°" can pick up a
+   baseline shift different from the wider "הסתר ניתוח 360°", which the
+   PM read as "closed-state label invisible / cut off". This rule pins the
+   label to `display: inline-block`, `line-height: 1.2` and
+   `white-space: nowrap` so both states share the same baseline + layout
+   and the closed text is unambiguously visible on desktop and mobile. */
+.ts360ToggleLabel { display: inline-block; line-height: 1.2; white-space: nowrap; }
+
+.ts360 { display: none; margin-top: 24px; border-top: 1px dashed var(--line-strong); padding-top: 24px; }
+.ts360.isOpen { display: block; }
+.ts360Head { display: flex; align-items: center; gap: 10px; margin-bottom: 18px; }
+.ts360Badge { display: inline-flex; align-items: center; justify-content: center; padding: 4px 11px; border-radius: var(--radius-pill); background: var(--navy-ink); color: var(--gold); font-family: 'Heebo', Arial, sans-serif; font-weight: 800; font-size: 13px; }
+.ts360Title { font-family: 'Heebo', Arial, sans-serif; font-weight: 800; font-size: 18px; color: var(--navy-ink); }
+.ts360Correct { display: flex; align-items: flex-start; gap: 12px; background: #EAF7F0; border: 1px solid #BFE6D1; border-radius: 14px; padding: 14px 16px; margin-bottom: 20px; }
+.ts360CorrectIco { flex-shrink: 0; width: 26px; height: 26px; border-radius: 50%; background: #1E8E5A; color: #fff; display: flex; align-items: center; justify-content: center; margin-top: 1px; }
+.ts360CorrectTtl { font-family: 'Heebo', Arial, sans-serif; font-weight: 700; font-size: 14px; color: #10623E; margin-bottom: 2px; }
+.ts360CorrectTxt { font-size: 15px; color: var(--ink-2); line-height: 1.5; }
+
+.ts360Tabs { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 12px; margin-bottom: 18px; scrollbar-width: thin; }
+.t360Tab { flex-shrink: 0; display: inline-flex; align-items: center; gap: 7px; padding: 9px 14px; border-radius: 10px; border: 1px solid var(--line); background: #FAF8F2; font-family: 'Heebo', Arial, sans-serif; font-weight: 600; font-size: 13px; color: var(--ink-3); white-space: nowrap; cursor: pointer; transition: border-color .15s ease, color .15s ease, background .15s ease; }
+.t360Tab:hover { border-color: var(--navy); color: var(--navy-ink); }
+.t360Tab.isActive { background: var(--navy-ink); border-color: var(--navy-ink); color: #fff; }
+.t360Tab.isLocked { color: var(--gold-deep); border-color: rgba(201,161,73,.4); background: var(--gold-tint); }
+.t360Tab.isLocked.isActive { background: var(--gold-deep); border-color: var(--gold-deep); color: #fff; }
+.t360Tab svg { flex-shrink: 0; }
+
+.t360Pane { display: none; }
+.t360Pane.isActive { display: block; animation: tsFade .2s ease; }
+@keyframes tsFade { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+.t360SecTitle { display: flex; align-items: center; gap: 8px; font-family: 'Heebo', Arial, sans-serif; font-weight: 700; font-size: 16px; color: var(--navy-ink); margin: 0 0 10px; }
+.t360SecIco { color: var(--gold-deep); }
+.t360Text { font-size: 15.5px; line-height: 1.75; color: var(--ink-2); margin: 0; text-wrap: pretty; }
+.t360Refs { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 13px; }
+.t360Refs li { position: relative; padding-inline-start: 20px; font-size: 15px; line-height: 1.6; color: var(--ink-2); }
+.t360Refs li::before { content: ""; position: absolute; inset-inline-start: 0; top: 9px; width: 7px; height: 7px; border-radius: 50%; background: var(--gold); }
+
+.t360Locked { position: relative; border-radius: 14px; overflow: hidden; min-height: 220px; }
+.t360LockedContent { filter: blur(6px); user-select: none; pointer-events: none; opacity: .65; padding: 4px; }
+.t360LockedOverlay { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; gap: 12px; padding: 24px; background: linear-gradient(180deg, rgba(251,250,247,0.55), rgba(251,250,247,0.92)); }
+.t360LockBadge { width: 46px; height: 46px; border-radius: 50%; background: var(--gold-tint); border: 1px solid rgba(201,161,73,.4); display: flex; align-items: center; justify-content: center; color: var(--gold-deep); }
+.t360LockedTitle { font-family: 'Heebo', Arial, sans-serif; font-weight: 800; font-size: 17px; color: var(--navy-ink); }
+.t360LockedSub { font-size: 14px; color: var(--ink-3); max-width: 360px; line-height: 1.5; }
+.t360LockedCta { display: inline-flex; align-items: center; gap: 8px; margin-top: 4px; padding: 11px 22px; border-radius: var(--radius-pill); background: var(--navy-ink); color: #fff; font-family: 'Heebo', Arial, sans-serif; font-weight: 700; font-size: 14px; transition: filter .18s ease, transform .18s ease; }
+.t360LockedCta:hover { filter: brightness(1.12); transform: translateY(-1px); }
+
+/* ─── Mobile responsiveness (Slice 47 — port of design's
+       @media (max-width:767px) block, lines 1170–1260 of
+       _design/landing-hifi-new.html). Slice 46 omitted this block
+       entirely; porting it fixes the headline overflow, the oversized
+       CTAs, and the missing pillar/plans swipe carousels.
+       Class names re-spelled to their module-local equivalents
+       (.heroHeadline / .heroGrid / .heroSub / .btnGold / .btnGhost /
+       .heroFigure / .characterSlot / .characterImg / .heroFigureBg /
+       .heroWave / .h2 / .lead / .sectionHead / .pillars / .pillar /
+       .plans / .plan / .swipeHint). All values are byte-for-byte from
+       the design except `.heroFigure { height }` and `.characterImg`
+       (Slice 47 figure-raise — see decision in the investigation).
+       Slice 48 — appended the design's .ts-* / .t360- mobile rules
+       inside this same @media block (lines 1242–1257 of the design)
+       so the simulator's spacing/typography track phone widths. */
+
+/* Swipe-hint base (hidden by default; revealed inside the mobile
+   media query below for both carousels). */
+.swipeHint { display: none; }
+
+@media (max-width: 767px) {
+  /* Headings — tame oversized type on phones. */
+  .h2 { font-size: clamp(25px, 6.6vw, 36px); }
+  .lead { font-size: clamp(15px, 4vw, 17px); }
+  .sectionHead { margin-bottom: 30px; }
+
+  /* Hero — let headline WRAP (design's `white-space: nowrap` was the
+     overflow culprit at <768px), tighten the figure, bring the
+     character forward & larger. */
+  /* Slice 47 follow-up #3 — hero h1 bumped up one step
+     (26 / 7.4vw / 38 → 30 / 8.4vw / 44). Two-line wrap still balanced
+     at ~390 px. */
+  .heroHeadline { font-size: clamp(30px, 8.4vw, 44px); margin-bottom: 14px; }
+  .heroHeadline > span { white-space: normal; }
+  .hero { padding-top: 12px; }
+  /* Slice 47 follow-up #2 — push the h1 down from the header by adding
+     ~32 px of extra top padding (10 → 42). Bottom + sides unchanged. */
+  .heroGrid { padding: 42px 16px 40px; gap: 6px; }
+  /* Slice 47 follow-up #2 — extra space between the h1 and the typewriter
+     subline via margin-top (the .heroHeadline still has margin-bottom: 14px).
+     Slice 47 follow-up #3 — typewriter subline (`.heroSub`) bumped a clear
+     step above its previous mobile size (15 / 3.9vw / 18 → 17 / 4.6vw / 20).
+     The brief described the target as "the .lead / subline carrier" but the
+     typewriter actually lives inside `.heroSub`; `.lead` is the
+     section-head lead under method / plans / FAQ. We adjust `.heroSub`
+     (the literal typewriter carrier) per the brief's stated intent. */
+  .heroSub {
+    min-height: 0;
+    margin-top: 20px;
+    margin-bottom: 22px;
+    font-size: clamp(17px, 4.6vw, 20px);
+  }
+  /* Slice 47 follow-up #2 — hide BOTH hero CTAs on mobile only. The CTAs
+     stay in the DOM (and the locked CTA routing is preserved); we just
+     display:none them on phones. Desktop is unaffected. */
+  .heroCopy .ctaRow { display: none; }
+  .btnGold { padding: 14px 28px; font-size: 16px; }
+  .btnGhost { font-size: 15px; padding: 11px 8px; }
+  /* Slice 47 follow-up #2 — enlarged the figure (360 → 420) AND moved it
+     down via a bigger margin-top (4 → 32) so the character + wave sit
+     visually lower on the page. Wave-overlap with the character preserved
+     via .characterImg's negative bottom margin. */
+  .heroFigure { height: 420px; margin-top: 32px; }
+  .characterSlot { max-width: 360px; z-index: 4; }
+  .characterImg {
+    height: calc(100% + 8px);
+    margin-bottom: -8px;
+    object-position: bottom center;
+  }
+  .heroFigureBg { bottom: -30px; }
+  .heroWave { height: 150px; }
+
+  /* Method pillars → horizontal swipe carousel (CSS scroll-snap, no
+     library). Cards take 80% of the viewport so the next card peeks
+     into view as the swipe affordance. */
+  .pillars {
+    display: flex;
+    grid-template-columns: none;
+    gap: 14px;
+    overflow-x: auto;
+    scroll-snap-type: x mandatory;
+    scroll-padding-inline: 16px;
+    -webkit-overflow-scrolling: touch;
+    margin-inline: -16px;
+    padding: 4px 16px 16px;
+    scrollbar-width: none;
+  }
+  .pillars::-webkit-scrollbar { display: none; }
+  .pillar { flex: 0 0 80%; scroll-snap-align: center; padding: 26px 22px; }
+
+  /* Plans → horizontal swipe carousel (slightly wider cards at 84%
+     because plan cards are denser). */
+  .plans {
+    display: flex;
+    grid-template-columns: none;
+    gap: 16px;
+    overflow-x: auto;
+    scroll-snap-type: x mandatory;
+    scroll-padding-inline: 16px;
+    -webkit-overflow-scrolling: touch;
+    margin-inline: -16px;
+    margin-top: 26px;
+    padding: 10px 16px 18px;
+    align-items: stretch;
+    scrollbar-width: none;
+  }
+  .plans::-webkit-scrollbar { display: none; }
+  .plan { flex: 0 0 84%; scroll-snap-align: center; }
+
+  /* Swipe hint shown only on mobile, under a carousel. The component
+     itself (`<SwipeHint>`) lives in landing components; the rule below
+     controls its visibility per section. */
+  .swipeHint {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
+    margin-top: 6px;
+    font-family: "Heebo", Arial, sans-serif;
+    font-size: 12.5px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+  }
+  .methodSection .swipeHint { color: rgba(255, 255, 255, 0.6); }
+  .plansSection .swipeHint { color: var(--ink-muted); }
+
+  /* Slice 48 — `#try` mobile tuning (design lines 1242–1257, ts-* /
+     t360- rules inside `@media (max-width:767px)`). Tighter padding +
+     smaller type so the card fits comfortably on phone widths and the
+     option list isn't dominated by the letter pills. */
+  .tsSection { padding: 48px 0 60px; }
+  .tsCardpad { padding: 18px 14px; }
+  .tsQuestion { font-size: clamp(15px, 4.1vw, 17.5px); line-height: 1.55; }
+  .tsTopicbar { gap: 8px; }
+  .tsOpt { padding: 12px 12px; gap: 10px; border-radius: 12px; }
+  .tsOptLetter { width: 27px; height: 27px; font-size: 13px; }
+  .tsOptText { font-size: 13.5px; line-height: 1.45; }
+  .tsQtab { padding: 8px 12px; font-size: 12.5px; }
+  .tsQtabNum { width: 19px; height: 19px; font-size: 11px; }
+  .ts360Title { font-size: 15px; }
+  .ts360CorrectTxt { font-size: 13.5px; }
+  .t360Tab { font-size: 12px; padding: 8px 12px; }
+  .t360SecTitle { font-size: 14.5px; }
+  .t360Text { font-size: 13.5px; line-height: 1.65; }
+  .t360Refs li { font-size: 13px; }
+  .ts360Toggle { font-size: 13.5px; padding: 11px 18px; }
+
+  /* Slice 50 — hide the hero disclaimer line on phones. The footer carries
+     the same /privacy link on mobile, so the disclaimer would just stack
+     under an already-tight hero. Desktop/tablet keep it. */
+  .heroDisclaimer { display: none; }
+
+  /* Slice 50 — tighter mobile prose for the legal pages. The desktop rules
+     below set ~70ch / 17px / 1.7 line-height; on phones we drop to 16px
+     body with a slightly tighter rhythm so paragraphs don't feel airy. */
+  .legalProse { font-size: 16px; line-height: 1.65; }
+  .legalProse h1 { font-size: clamp(26px, 7vw, 32px); }
+  .legalProse h2 { font-size: clamp(19px, 5.2vw, 22px); margin-top: 28px; }
+  .legalProse h3 { font-size: clamp(16px, 4.4vw, 18px); margin-top: 18px; }
+  .legalTopstripInner { padding: 10px 16px; }
+  .legalLogoLink img { height: 36px; }
+  .legalBackLink { font-size: 13px; }
+  .legalPage { padding: 18px 16px 48px; }
+}
+
+/* ─── Slice 50 — hero disclaimer line + legal-page (/privacy +
+       /accessibility) prose typography. All rules are scoped to the
+       `.landingRoot` wrapper or to the per-page `.legalRoot` wrapper, so
+       nothing leaks to other parts of the app and no global tokens are
+       added or redefined.
+
+       The disclaimer is a small muted line that sits immediately below the
+       hero `.ctaRow`; the mobile rule above hides it (the footer covers
+       phone visitors). The legal-page shell renders a top strip + a single
+       prose column inside `<main class="legalPage">` with comfortable line
+       height + ~70ch measure; bullet lists, h2/h3 rhythm + the dim
+       "last-updated" subtitle all live here. */
+
+.heroDisclaimer {
+  margin-top: 14px;
+  font-family: "Heebo", Arial, sans-serif;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--ink-muted);
+}
+.heroDisclaimer a {
+  color: var(--gold-deep);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.heroDisclaimer a:hover { color: var(--navy); }
+
+/* ─── Legal-page shell (/privacy + /accessibility) ─── */
+/* `composes: landingRoot` brings in the design tokens (--paper, --ink,
+   --navy-ink, --gold-deep, ...) scoped to this wrapper, without leaking
+   them to :root. CSS Modules emits both hashed class names onto the same
+   element. */
+.legalRoot {
+  composes: landingRoot;
+  min-height: 100vh;
+}
+.legalTopstrip {
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  background: var(--white);
+  border-bottom: 1px solid var(--line);
+}
+.legalTopstripInner {
+  max-width: 920px;
+  margin: 0 auto;
+  padding: 12px 32px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.legalLogoLink { display: inline-flex; align-items: center; }
+.legalLogoLink img {
+  display: block;
+  height: 44px;
+  width: auto;
+}
+.legalBackLink {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: "Heebo", Arial, sans-serif;
+  font-weight: 600;
+  font-size: 14px;
+  color: var(--navy-ink);
+  padding: 8px 14px;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--line-strong);
+  transition: background 0.18s ease, border-color 0.18s ease;
+}
+.legalBackLink:hover {
+  background: var(--gold-tint);
+  border-color: var(--gold);
+}
+
+.legalPage {
+  max-width: 920px;
+  margin: 0 auto;
+  padding: 32px;
+}
+.legalProse {
+  max-width: 70ch;
+  margin: 0 auto;
+  font-size: 17px;
+  line-height: 1.7;
+  color: var(--ink);
+}
+.legalProse h1 {
+  font-family: "Heebo", Arial, sans-serif;
+  font-weight: 800;
+  font-size: clamp(30px, 3vw, 38px);
+  color: var(--navy-ink);
+  margin: 0 0 8px;
+  letter-spacing: -0.01em;
+  line-height: 1.15;
+}
+.legalSubtitle {
+  font-family: "Heebo", Arial, sans-serif;
+  font-size: 14px;
+  color: var(--ink-muted);
+  margin: 0 0 32px;
+}
+.legalProse h2 {
+  font-family: "Heebo", Arial, sans-serif;
+  font-weight: 700;
+  font-size: clamp(20px, 2.2vw, 24px);
+  color: var(--navy-ink);
+  margin: 36px 0 10px;
+  line-height: 1.3;
+}
+.legalProse h3 {
+  font-family: "Heebo", Arial, sans-serif;
+  font-weight: 700;
+  font-size: clamp(17px, 1.8vw, 19px);
+  color: var(--ink);
+  margin: 24px 0 8px;
+  line-height: 1.35;
+}
+.legalProse p {
+  margin: 0 0 14px;
+  text-wrap: pretty;
+}
+.legalProse ul {
+  margin: 0 0 16px;
+  padding-inline-start: 22px;
+  list-style: disc;
+}
+.legalProse li {
+  margin: 0 0 6px;
+  line-height: 1.65;
+}
+.legalProse li::marker { color: var(--gold-deep); }

@@ -1,0 +1,473 @@
+/*
+ * Slice 51 — accessibility-widget styles.
+ *
+ * Two distinct sections in this file:
+ *
+ *   (1) Widget chrome — `.widgetRoot` / `.launcher` / `.panel` / etc.
+ *       Mounted via React Portal to `document.body` (sibling of the React
+ *       tree) so the widget's DOM sits OUTSIDE any `body.lp-a11y-*` filter
+ *       cascade. All color values are HARDCODED hex — the widget mounts
+ *       in the root layout, OUTSIDE `.landingRoot`, so we cannot reference
+ *       any `var(--navy-ink)` etc. design tokens (those are scoped to
+ *       `.landingRoot`).
+ *
+ *   (2) Global override rules — the seven `:global(html.lp-a11y-*)` /
+ *       `:global(body.lp-a11y-*)` selectors that translate the user's
+ *       active preferences into actual page mutations. CRITICAL: every
+ *       such rule includes `:not(.a11yWidget, .a11yWidget *)` so the
+ *       widget itself remains visible/operable even when ALL controls
+ *       are on simultaneously (Gemini "widget itself" requirement). The
+ *       widget root also sets `isolation: isolate` + `filter: none
+ *       !important` as belt-and-suspenders against any filter cascade
+ *       that slips through.
+ *
+ * Contrast & touch targets pass Gemini's widget-itself checklist:
+ *   - launcher 56×56 (> SC 2.5.5 44×44 floor).
+ *   - launcher bg #0F1F4F + white icon ≈ 15.6:1 (>> SC 1.4.3 4.5:1 floor).
+ *   - panel buttons 44×44 minimum, navy text on white bg = 15.6:1.
+ *   - focus ring: solid blue 3px (#005FCC) + 2px offset, visible against
+ *     every internal surface (white, navy, gold).
+ */
+
+/* ───────────────────────────────────────────────────────────────────────
+   1) Widget chrome
+   ─────────────────────────────────────────────────────────────────── */
+
+.widgetRoot {
+  /* Layout */
+  position: fixed;
+  bottom: 24px;
+  left: 24px;
+  z-index: 9999;
+  /* `isolation: isolate` creates a new compositor stacking context so
+     any `body.lp-a11y-monochrome { filter: grayscale(1) }` rule that
+     might cascade from a future Phase-B control doesn't drag the
+     widget into the grayscale layer. */
+  isolation: isolate;
+  filter: none !important;
+  /* `dir: rtl` inherited from `<html dir="rtl">` — no override needed.
+     The launcher itself is icon-only so direction is irrelevant; the
+     panel layout uses physical bottom/left positioning per the
+     Gemini RTL placement spec. */
+  font-family: "Heebo", Arial, "Noto Sans Hebrew", sans-serif;
+  font-size: 14px;
+  line-height: 1.4;
+  color: #0F1F4F;
+}
+
+/* ─── Launcher button ─── */
+.launcher {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 56px;
+  height: 56px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: #0F1F4F;
+  color: #FFFFFF;
+  cursor: pointer;
+  opacity: 0.7;
+  box-shadow: 0 8px 24px rgba(15, 31, 79, 0.32);
+  transition: opacity 0.18s ease, box-shadow 0.18s ease, transform 0.18s ease;
+}
+.launcher:hover,
+.launcher:focus-visible {
+  opacity: 1;
+  box-shadow: 0 12px 32px rgba(15, 31, 79, 0.42);
+  transform: translateY(-1px);
+}
+.launcher:focus-visible {
+  outline: 4px solid #FFFFFF;
+  outline-offset: 2px;
+}
+.launcher svg {
+  width: 28px;
+  height: 28px;
+}
+
+/* ─── Panel (the modal dialog) ─── */
+.panel {
+  position: absolute;
+  bottom: 72px;
+  left: 0;
+  width: min(340px, calc(100vw - 32px));
+  max-height: min(72vh, 620px);
+  overflow-y: auto;
+  background: #FFFFFF;
+  color: #0F1F4F;
+  border: 1px solid #D4D0C3;
+  border-radius: 16px;
+  box-shadow: 0 18px 55px rgba(15, 31, 79, 0.28);
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.panelHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid #E8E5DC;
+}
+.panelTitle {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 800;
+  color: #0F1F4F;
+}
+.panelClose {
+  min-width: 44px;
+  min-height: 44px;
+  padding: 8px 14px;
+  border: 1px solid #D4D0C3;
+  border-radius: 10px;
+  background: #F4F1E8;
+  color: #0F1F4F;
+  font-family: inherit;
+  font-weight: 700;
+  font-size: 14px;
+  cursor: pointer;
+  transition: background 0.18s ease, border-color 0.18s ease;
+}
+.panelClose:hover { background: #FBF6E4; border-color: #C9A149; }
+.panelClose:focus-visible {
+  outline: 3px solid #005FCC;
+  outline-offset: 2px;
+}
+
+/* ─── Section grouping ─── */
+.section { display: flex; flex-direction: column; gap: 8px; }
+.sectionTitle {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 0.01em;
+  color: #4B5563;
+}
+.grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+/* ─── Toggle button — semantic <button> with aria-pressed ─── */
+.toggle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  padding: 10px 8px;
+  border: 1px solid #D4D0C3;
+  border-radius: 10px;
+  background: #FBFAF7;
+  color: #0F1F4F;
+  font-family: inherit;
+  font-weight: 700;
+  font-size: 14px;
+  line-height: 1.25;
+  text-align: center;
+  cursor: pointer;
+  transition: background 0.18s ease, border-color 0.18s ease, color 0.18s ease;
+}
+.toggle:hover {
+  background: #FBF6E4;
+  border-color: #C9A149;
+}
+.toggle:focus-visible {
+  outline: 3px solid #005FCC;
+  outline-offset: 2px;
+}
+.toggle[aria-pressed="true"] {
+  background: #0F1F4F;
+  border-color: #0F1F4F;
+  color: #FFFFFF;
+}
+
+/* ─── Reset (single action, full width, navy ink) ─── */
+.reset {
+  margin-top: 4px;
+  min-height: 44px;
+  padding: 12px 16px;
+  border: 1px solid #0F1F4F;
+  border-radius: 10px;
+  background: #0F1F4F;
+  color: #FFFFFF;
+  font-family: inherit;
+  font-weight: 800;
+  font-size: 14px;
+  cursor: pointer;
+  transition: filter 0.18s ease;
+}
+.reset:hover { filter: brightness(1.1); }
+.reset:focus-visible {
+  outline: 3px solid #005FCC;
+  outline-offset: 2px;
+}
+
+/* ─── Off-screen aria-live region ─── */
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* ─── Slice 52 Phase B — overlay elements mounted inside the portal
+       (custom tooltip / reading guide / focus mask). They live as
+       siblings of the launcher + panel so the no-override exclusions
+       (`:not(.a11yWidget *)`) keep them legible under every override.
+       Position is updated imperatively in the client island via
+       requestAnimationFrame-throttled mousemove / focusin handlers. */
+
+.tooltip {
+  position: fixed;
+  z-index: 10000;
+  max-width: 280px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: #0F1F4F;
+  color: #FFFFFF;
+  font-family: "Heebo", Arial, "Noto Sans Hebrew", sans-serif;
+  font-size: 13px;
+  line-height: 1.4;
+  box-shadow: 0 6px 22px rgba(15, 31, 79, 0.32);
+  pointer-events: none;
+  /* Default hidden via inline `display: none` on the element; the client
+     island flips it to `block` only when a target is present. */
+}
+
+.readingGuide {
+  position: fixed;
+  left: 0;
+  right: 0;
+  height: 40px;
+  z-index: 9998;
+  pointer-events: none;
+  background: rgba(255, 235, 0, 0.18);
+  border-top: 2px solid #B8860B;
+  border-bottom: 2px solid #B8860B;
+  /* Y position is driven by `transform: translateY(...)` in the JS
+     handler so we hit the GPU compositor instead of layout. */
+  will-change: transform;
+}
+
+.focusMaskTop,
+.focusMaskBottom {
+  position: fixed;
+  left: 0;
+  right: 0;
+  z-index: 9997;
+  background: rgba(0, 0, 0, 0.55);
+  pointer-events: none;
+  will-change: transform, height;
+}
+.focusMaskTop { top: 0; }
+.focusMaskBottom { bottom: 0; }
+
+/* ─── Mobile ─── */
+@media (max-width: 600px) {
+  .widgetRoot { bottom: 16px; left: 16px; }
+  .launcher { width: 54px; height: 54px; }
+  .panel { bottom: 68px; }
+}
+/* Touch-device guard for the cursor-tracking overlays. On a coarse
+   pointer (phone/tablet) "mousemove" is meaningless — hide them so they
+   don't sit fixed at the top of the screen blocking content. */
+@media (pointer: coarse) {
+  .readingGuide,
+  .focusMaskTop,
+  .focusMaskBottom,
+  .tooltip { display: none !important; }
+}
+
+/* ───────────────────────────────────────────────────────────────────────
+   2) Global override rules (CSS-Modules :global() so they apply page-wide
+      when the matching class lands on <html> or <body>).
+      EVERY rule excludes the widget DOM via `:not(.a11yWidget,
+      .a11yWidget *)` so the widget itself never gets inverted, hidden,
+      filtered, or font-rewritten by its own controls.
+   ─────────────────────────────────────────────────────────────────── */
+
+/* 1. text-l: +25% root font-size. Headings + body scale via rem. */
+:global(html.lp-a11y-text-l):not(.a11yWidget *) { font-size: 125%; }
+/* 2. text-xl: +50%. The button UI enforces mutual-exclusion with text-l,
+      but if both classes somehow land (cookie tamper), this wins via
+      source order — that's intentional, the larger size is always the
+      safer fallback for a user who toggled them quickly. */
+:global(html.lp-a11y-text-xl):not(.a11yWidget *) { font-size: 150%; }
+
+/* 3. contrast-high: black-on-white universal !important override.
+      `:not(.a11yWidget, .a11yWidget *)` keeps the widget's gold/navy
+      palette legible even when high-contrast is on. Borders forced to
+      black for shape preservation. */
+:global(body.lp-a11y-contrast-high) :not(.a11yWidget, .a11yWidget *) {
+  color: #000000 !important;
+  background-color: #FFFFFF !important;
+  border-color: #000000 !important;
+}
+:global(body.lp-a11y-contrast-high) a:not(.a11yWidget *),
+:global(body.lp-a11y-contrast-high) button:not(.a11yWidget *) {
+  color: #00007A !important;
+  text-decoration: underline !important;
+}
+
+/* 4. contrast-dark: white-on-black. Same widget exclusion. */
+:global(body.lp-a11y-contrast-dark) :not(.a11yWidget, .a11yWidget *) {
+  color: #FFFFFF !important;
+  background-color: #000000 !important;
+  border-color: #FFFFFF !important;
+}
+:global(body.lp-a11y-contrast-dark) a:not(.a11yWidget *),
+:global(body.lp-a11y-contrast-dark) button:not(.a11yWidget *) {
+  color: #FFFF66 !important;
+  text-decoration: underline !important;
+}
+
+/* 5. readable-font: Heebo + dyslexia-friendly heuristics (letter-spacing,
+      line-height, weight). Hebrew label is "גופן קריא יותר". The widget's
+      OWN font is unaffected — its `.widgetRoot { font-family: ... }`
+      remains overriden by this rule only outside the exclusion zone. */
+:global(body.lp-a11y-readable-font) :not(.a11yWidget, .a11yWidget *) {
+  font-family: "Heebo", Arial, "Noto Sans Hebrew", sans-serif !important;
+  letter-spacing: 0.06em !important;
+  line-height: 1.85 !important;
+  font-weight: 500 !important;
+}
+
+/* 6. line-height-lg: global 1.7 line-height. Lighter than readable-font's
+      1.85 so the two can stack without becoming airy. */
+:global(body.lp-a11y-line-height-lg) :not(.a11yWidget, .a11yWidget *) {
+  line-height: 1.7 !important;
+}
+
+/* 7. stop-motion: kill all animations + transitions. Videos are paused
+      programmatically by the client island via HTMLVideoElement.pause().
+      `scroll-behavior: auto` is included so a Phase-A user with vestibular
+      sensitivity also escapes smooth-scroll. */
+:global(body.lp-a11y-stop-motion) *:not(.a11yWidget, .a11yWidget *),
+:global(body.lp-a11y-stop-motion) *:not(.a11yWidget, .a11yWidget *)::before,
+:global(body.lp-a11y-stop-motion) *:not(.a11yWidget, .a11yWidget *)::after {
+  animation: none !important;
+  transition: none !important;
+  scroll-behavior: auto !important;
+}
+
+/* ───────────────────────────────────────────────────────────────────────
+   Slice 52 — Phase B override rules (12 controls).
+   ─────────────────────────────────────────────────────────────────────
+
+   IMPORTANT: filter-based controls (8, 9, 10, 11) CANNOT use the same
+   `body :not(.a11yWidget *)` selector pattern as Phase A — `filter` on
+   `body` cascades through the compositor and would invert / grayscale
+   the widget too, even though `isolation: isolate` is set on the
+   widget root (filter cascades INTO new stacking contexts).
+
+   The workaround: apply the filter to `body > *:not(.a11yWidget)` —
+   i.e., to every top-level child of `<body>` EXCEPT the widget portal
+   root. Next.js renders all page content under one or more top-level
+   children of body, and the widget is a sibling of those via
+   createPortal — so the filter lands on the page tree only. */
+
+/* 8. invert: 100% color inversion + 180° hue rotation. Counter-inverts
+      media (img / picture / video) so photographs stay legible — the
+      double-inverse cancels out for raster content. The MUTEX in the
+      client toggle handler ensures only ONE of invert / grayscale /
+      saturate-high / saturate-low is active at a time. */
+:global(body.lp-a11y-invert) > *:not(.a11yWidget) {
+  filter: invert(100%) hue-rotate(180deg) !important;
+}
+:global(body.lp-a11y-invert) > *:not(.a11yWidget) img,
+:global(body.lp-a11y-invert) > *:not(.a11yWidget) picture,
+:global(body.lp-a11y-invert) > *:not(.a11yWidget) video {
+  filter: invert(100%) hue-rotate(180deg);
+}
+
+/* 9. grayscale: full desaturation. Filter on body's content children
+      only (widget exempt via the > *:not pattern above). */
+:global(body.lp-a11y-grayscale) > *:not(.a11yWidget) {
+  filter: grayscale(100%) !important;
+}
+
+/* 10. saturate-high: 200% saturation boost. Helps users with mild colour
+       vision deficiencies distinguish hues. */
+:global(body.lp-a11y-saturate-high) > *:not(.a11yWidget) {
+  filter: saturate(200%) !important;
+}
+
+/* 11. saturate-low: 50% saturation — gentler than grayscale's full
+       desaturation but useful for some sensory profiles. */
+:global(body.lp-a11y-saturate-low) > *:not(.a11yWidget) {
+  filter: saturate(50%) !important;
+}
+
+/* 12. highlight-links: yellow-on-black for every <a>. ~19:1 contrast
+       passes SC 1.4.6 AAA-large with margin. Widget links exempt. */
+:global(body.lp-a11y-highlight-links) a:not(.a11yWidget *) {
+  text-decoration: underline !important;
+  font-weight: 700 !important;
+  color: #FFFF00 !important;
+  background-color: #000000 !important;
+  padding: 0 2px;
+}
+
+/* 13. larger-focus-rings: amber outline + slight halo so keyboard focus
+       reads from across the room. Applied to every :focus-visible
+       outside the widget tree. The amber #FFB800 is high-contrast on
+       both light and dark backgrounds (≥ 3:1 against white per
+       SC 1.4.11 non-text contrast). */
+:global(body.lp-a11y-larger-focus-rings) *:focus-visible:not(.a11yWidget *) {
+  outline: 4px solid #FFB800 !important;
+  outline-offset: 3px !important;
+  box-shadow: 0 0 0 6px rgba(255, 184, 0, 0.25) !important;
+}
+
+/* 14. big-cursor: high-contrast cursor (white fill, black outline) sized
+       up to 48×48. The data URL holds the SVG arrow shape; the `6 6`
+       suffix is the hotspot (tip of the arrow). Falls back to `auto`
+       when the SVG is rejected. Applied to every element outside the
+       widget tree so descendants inherit the cursor too. */
+:global(body.lp-a11y-big-cursor) > *:not(.a11yWidget),
+:global(body.lp-a11y-big-cursor) > *:not(.a11yWidget) * {
+  cursor: url("data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI0OCIgaGVpZ2h0PSI0OCIgdmlld0JveD0iMCAwIDQ4IDQ4Ij48cGF0aCBkPSJNNiA2IEw2IDM2IEwxNCAyOCBMMTkgNDAgTDIzIDM4IEwxOCAyNiBMMjggMjYgWiIgZmlsbD0id2hpdGUiIHN0cm9rZT0iYmxhY2siIHN0cm9rZS13aWR0aD0iMiIgc3Ryb2tlLWxpbmVqb2luPSJyb3VuZCIvPjwvc3ZnPg==") 6 6, auto !important;
+}
+
+/* 15. hide-images: CONSERVATIVE scope per PM lock — hides only
+       DECORATIVE imagery:
+         * `aria-hidden="true"` on img / picture / svg (explicit
+            decorative).
+         * `img` with no `alt` AND no `aria-label` (implicit decorative,
+            heuristic).
+         * `picture` / `svg` with no `aria-label` (no `alt` on these so
+            we lean on aria-label only).
+       Meaningful icons with descriptive alt/aria-label stay visible.
+       `visibility: hidden` preserves layout (vs `display: none` which
+       reflows). Widget icons exempt. */
+:global(body.lp-a11y-hide-images) > *:not(.a11yWidget) img[aria-hidden="true"],
+:global(body.lp-a11y-hide-images) > *:not(.a11yWidget) picture[aria-hidden="true"],
+:global(body.lp-a11y-hide-images) > *:not(.a11yWidget) svg[aria-hidden="true"],
+:global(body.lp-a11y-hide-images) > *:not(.a11yWidget) img:not([alt]):not([aria-label]),
+:global(body.lp-a11y-hide-images) > *:not(.a11yWidget) picture:not([aria-label]),
+:global(body.lp-a11y-hide-images) > *:not(.a11yWidget) svg:not([aria-label]) {
+  visibility: hidden !important;
+}
+
+/* The remaining Phase-B controls have no global CSS — they're JS-driven
+   and their state is tracked via the body class only so the cookie
+   round-trips correctly:
+     * tooltips-on-hover  → JS delegated listeners (see client island).
+     * reading-guide      → JS mousemove handler + the `.readingGuide`
+                            overlay above.
+     * focus-mask         → JS mousemove handler + the two
+                            `.focusMaskTop` / `.focusMaskBottom`
+                            overlays above.
+     * pause-autoplay     → JS once-pass + MutationObserver. */
