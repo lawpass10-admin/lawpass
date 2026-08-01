@@ -38,6 +38,30 @@ import {
   signOutAction as signOutFallback,
 } from "@/app/(auth)/_actions";
 
+// ============================================================================
+// [VERIFY-EXPRESS] TEMPORARY — Next.js server-action fallback DISABLED
+// REPO-WIDE. This banner is the canonical explanation; every other disabled
+// site points back here. Search the repo for `[VERIFY-EXPRESS]` to find them.
+//
+// The frontend now talks EXCLUSIVELY to the Express API (lawpass_server) —
+// there is no code path left that reaches the Next.js server actions, so a
+// working feature PROVES Express served it (no silent fallback).
+//
+// Disabled sites:
+//   • lib/api/auth.ts        — the 8 fallback lines below (all auth flows)
+//   • lib/api/client.ts      — the `apiAction` factory (21 practice/exam
+//                              gameplay actions in practice/practice-play/exam)
+//   • lib/api/admin.ts       — the shared `dualPost` (all 7 admin actions)
+//   • lib/api/bookmarks.ts, mistakes.ts, notes.ts (×2), qa.ts
+//   • app/(app)/dashboard/_lib/queries.ts — `apiOr` now THROWS instead of
+//     silently degrading to the in-app DB helpers
+//   (account.ts + early-access.ts were already hard Express-only pilots.)
+//
+// ⚠️ While disabled the app REQUIRES the Express server in EVERY environment
+//    incl. production (NEXT_PUBLIC_API_BASE_URL must be set) — DO NOT DEPLOY.
+// ⚠️ To REVERT: uncomment every `[VERIFY-EXPRESS]`-marked block repo-wide.
+// ============================================================================
+
 type OkOrError = { ok: true } | { ok: false; error: string };
 type OkUrlOrError = { ok: true; url: string } | { ok: false; error: string };
 
@@ -69,7 +93,7 @@ async function persistSession(session: unknown): Promise<void> {
 export async function signInAction(
   ...args: Parameters<typeof signInFallback>
 ): Promise<OkOrError> {
-  if (!apiEnabled()) return signInFallback(...args);
+  // [VERIFY-EXPRESS] if (!apiEnabled()) return signInFallback(...args);
   try {
     const data = await apiPostJson("/api/auth/signin", args[0], {
       auth: false,
@@ -89,7 +113,7 @@ export async function signInAction(
 export async function signUpAction(
   ...args: Parameters<typeof signUpFallback>
 ): Promise<OkOrError> {
-  if (!apiEnabled()) return signUpFallback(...args);
+  // [VERIFY-EXPRESS] if (!apiEnabled()) return signUpFallback(...args);
   try {
     const body = { ...args[0], intendedPlan: args[1]?.intendedPlan ?? undefined };
     const data = await apiPostJson("/api/auth/signup", body, { auth: false });
@@ -107,7 +131,7 @@ export async function signUpAction(
 export async function verifyOtpAction(
   ...args: Parameters<typeof verifyOtpFallback>
 ): Promise<OkUrlOrError> {
-  if (!apiEnabled()) return verifyOtpFallback(...args);
+  // [VERIFY-EXPRESS] if (!apiEnabled()) return verifyOtpFallback(...args);
   try {
     const data = await apiPostJson("/api/auth/verify-otp", args[0], {
       auth: false,
@@ -129,7 +153,7 @@ export async function verifyOtpAction(
 export async function resendOtpAction(
   ...args: Parameters<typeof resendOtpFallback>
 ): Promise<OkOrError> {
-  if (!apiEnabled()) return resendOtpFallback(...args);
+  // [VERIFY-EXPRESS] if (!apiEnabled()) return resendOtpFallback(...args);
   try {
     const data = await apiPostJson("/api/auth/resend-otp", args[0], {
       auth: false,
@@ -145,7 +169,7 @@ export async function resendOtpAction(
 export async function requestPasswordResetAction(
   ...args: Parameters<typeof requestPasswordResetFallback>
 ): Promise<OkOrError> {
-  if (!apiEnabled()) return requestPasswordResetFallback(...args);
+  // [VERIFY-EXPRESS] if (!apiEnabled()) return requestPasswordResetFallback(...args);
   try {
     const data = await apiPostJson(
       "/api/auth/request-password-reset",
@@ -167,7 +191,7 @@ export async function requestPasswordResetAction(
 export async function resetPasswordAction(
   ...args: Parameters<typeof resetPasswordFallback>
 ): Promise<OkOrError> {
-  if (!apiEnabled()) return resetPasswordFallback(...args);
+  // [VERIFY-EXPRESS] if (!apiEnabled()) return resetPasswordFallback(...args);
   try {
     const data = await apiPostJson("/api/auth/reset-password", args[0], {
       auth: false,
@@ -186,7 +210,7 @@ export async function resetPasswordAction(
 export async function completeGoogleOAuthSignup(
   ...args: Parameters<typeof completeGoogleFallback>
 ): Promise<OkUrlOrError> {
-  if (!apiEnabled()) return completeGoogleFallback(...args);
+  // [VERIFY-EXPRESS] if (!apiEnabled()) return completeGoogleFallback(...args);
   try {
     const data = await apiPostJson(
       "/api/auth/complete-google-signup",
@@ -207,7 +231,7 @@ export async function completeGoogleOAuthSignup(
 
 // --- Sign out: revokes server-side, clears the browser session, navigates.
 export async function signOutAction(): Promise<OkOrError> {
-  if (!apiEnabled()) return signOutFallback();
+  // [VERIFY-EXPRESS] if (!apiEnabled()) return signOutFallback();
   const supabase = createClient();
   let url = "/login";
   try {

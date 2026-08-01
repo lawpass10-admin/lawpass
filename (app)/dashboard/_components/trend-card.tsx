@@ -183,10 +183,10 @@ export function TrendCard({ data }: Props) {
           </defs>
 
           {/* Grid lines + y-axis labels */}
-          {gridValues.map((v) => {
+          {gridValues.map((v, i) => {
             const y = gridY(v);
             return (
-              <g key={v}>
+              <g key={i}>
                 <line
                   x1={X_LEFT}
                   x2={X_RIGHT}

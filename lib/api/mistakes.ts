@@ -17,9 +17,10 @@ type ActionResult = { ok: true } | { ok: false; error: string };
 const FALLBACK_ERROR = "שגיאה — נסה שוב";
 
 export async function removeMistake(input: unknown): Promise<ActionResult> {
-  if (!apiEnabled()) {
-    return removeMistakeAction(input);
-  }
+  // [VERIFY-EXPRESS] fallback disabled — see the banner in lib/api/auth.ts.
+  // if (!apiEnabled()) {
+  //   return removeMistakeAction(input);
+  // }
   try {
     const data = await apiPostJson("/api/mistakes/remove", input, {
       auth: true,

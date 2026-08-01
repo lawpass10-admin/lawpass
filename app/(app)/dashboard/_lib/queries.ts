@@ -38,15 +38,25 @@ async function apiOr<T>(
   field: string,
   fallback: () => Promise<T>
 ): Promise<T> {
-  if (apiEnabledServer()) {
-    try {
-      const data = await apiGetJsonServer(path);
-      if (data.ok === true) return data[field] as T;
-    } catch {
-      // fall through to the in-app helper
-    }
-  }
-  return fallback();
+  // [VERIFY-EXPRESS] TEMPORARY — in-app fallback DISABLED (see the banner in
+  // lib/api/auth.ts). The dashboard now reads EXCLUSIVELY through Express.
+  // Note this one was a SILENT fallback (it degraded to the Next.js DB
+  // helpers on ANY error), so it would have masked a broken API — it now
+  // THROWS instead, making "the dashboard renders" mean "Express served it".
+  // To REVERT: restore the commented-out original below.
+  const data = await apiGetJsonServer(path);
+  if (data.ok === true) return data[field] as T;
+  throw new Error(`[VERIFY-EXPRESS] dashboard API failed for ${path}`);
+
+  // if (apiEnabledServer()) {
+  //   try {
+  //     const data = await apiGetJsonServer(path);
+  //     if (data.ok === true) return data[field] as T;
+  //   } catch {
+  //     // fall through to the in-app helper
+  //   }
+  // }
+  // return fallback();
 }
 
 export const getKpiData = cache(async (userId: string) => {

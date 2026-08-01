@@ -25,6 +25,25 @@ export function apiEnabled(): boolean {
 }
 
 /**
+ * Dev tracing for the server extraction. Logs each request to the Express
+ * API and the response it returns, so you can confirm in the browser
+ * console that the call actually hit lawpass_server (port 4000) and see the
+ * server's `{ ok, ... }` envelope. Only active when the API is enabled
+ * (NEXT_PUBLIC_API_BASE_URL set → local dev); on Vercel/prod it's a no-op.
+ * Never logs the request body (auth bodies carry passwords/OTP codes).
+ */
+function logReq(method: string, path: string): void {
+  console.log(`[api →] ${method} ${apiBaseUrl()}${path}`);
+}
+
+function logRes(method: string, path: string, res: Response, body: JsonRecord): void {
+  console.log(
+    `[api ←] ${method} ${path} status=${res.status} ok=${String(body.ok)}` +
+      (typeof body.error === "string" ? ` error=${body.error}` : "")
+  );
+}
+
+/**
  * The user's Supabase access token for the Authorization: Bearer header
  * that the server's `authenticate` middleware expects. Read from the
  * browser Supabase session. Returns null when there is no session (the
@@ -60,13 +79,16 @@ export async function apiPostJson(
     if (token) headers.Authorization = `Bearer ${token}`;
   }
 
+  logReq("POST", path);
   const res = await fetch(`${apiBaseUrl()}${path}`, {
     method: "POST",
     headers,
     body: JSON.stringify(body),
   });
 
-  return (await res.json()) as JsonRecord;
+  const data = (await res.json()) as JsonRecord;
+  logRes("POST", path, res, data);
+  return data;
 }
 
 /**
@@ -86,13 +108,16 @@ export async function apiPostForm(
     if (token) headers.Authorization = `Bearer ${token}`;
   }
 
+  logReq("POST", path);
   const res = await fetch(`${apiBaseUrl()}${path}`, {
     method: "POST",
     headers,
     body: formData,
   });
 
-  return (await res.json()) as JsonRecord;
+  const data = (await res.json()) as JsonRecord;
+  logRes("POST", path, res, data);
+  return data;
 }
 
 /**
@@ -109,12 +134,15 @@ export async function apiGetJson(
     if (token) headers.Authorization = `Bearer ${token}`;
   }
 
+  logReq("GET", path);
   const res = await fetch(`${apiBaseUrl()}${path}`, {
     method: "GET",
     headers,
   });
 
-  return (await res.json()) as JsonRecord;
+  const data = (await res.json()) as JsonRecord;
+  logRes("GET", path, res, data);
+  return data;
 }
 
 /**
@@ -134,13 +162,16 @@ export async function apiDeleteJson(
     if (token) headers.Authorization = `Bearer ${token}`;
   }
 
+  logReq("DELETE", path);
   const res = await fetch(`${apiBaseUrl()}${path}`, {
     method: "DELETE",
     headers,
     body: JSON.stringify(body),
   });
 
-  return (await res.json()) as JsonRecord;
+  const data = (await res.json()) as JsonRecord;
+  logRes("DELETE", path, res, data);
+  return data;
 }
 
 /**
@@ -163,9 +194,10 @@ export function apiAction<TArgs extends unknown[], TResult>(
   const method = opts.method ?? "POST";
   const fallbackError = opts.fallbackError ?? "invalid_input";
   return async (...args: TArgs): Promise<TResult> => {
-    if (!apiEnabled()) {
-      return action(...args);
-    }
+    // [VERIFY-EXPRESS] fallback disabled — see the banner in lib/api/auth.ts.
+    // if (!apiEnabled()) {
+    //   return action(...args);
+    // }
     try {
       const body = args.length > 0 ? args[0] : {};
       const data =

@@ -256,7 +256,7 @@ export async function signUpAction(
     : undefined;
 
   const supabase = await createClient();
-  const { error } = await supabase.auth.signUp({
+  const { data: signUpData, error } = await supabase.auth.signUp({
     email: data.email,
     password: data.password,
     options: {
@@ -288,6 +288,17 @@ export async function signUpAction(
 
   if (error) {
     return { ok: false, error: mapAuthError(error) };
+  }
+
+  // Duplicate-email guard. With email confirmations ON, Supabase's
+  // enumeration protection returns a FAKE success (no error) when the email
+  // already exists — signalled by an EMPTY `identities` array on the
+  // returned user. Surface "already registered" instead of sending them to
+  // /verify-email for an OTP that will never arrive. (Kept in parity with
+  // the Express controller's signUp.)
+  const identities = signUpData.user?.identities;
+  if (Array.isArray(identities) && identities.length === 0) {
+    return { ok: false, error: "כתובת המייל כבר רשומה במערכת" };
   }
 
   redirect(`/verify-email?email=${encodeURIComponent(data.email)}`);

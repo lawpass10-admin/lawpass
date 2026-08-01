@@ -22,6 +22,17 @@ const { userMetadataSchema } = require("../validators/auth");
 // =============================================================================
 
 /**
+ * Trace helper for the auth extraction. Prints a distinctive `[auth]` line
+ * so you can confirm in the Express terminal that the request reached THIS
+ * server (not the Next.js server) and see the outcome. Never logs
+ * passwords, tokens, or OTP codes — only the endpoint, the (non-secret)
+ * email when useful, and the ok/error result.
+ */
+function logAuth(fn, detail) {
+  console.info(`[auth] ${fn}${detail ? ` — ${detail}` : ""}`);
+}
+
+/**
  * Maps Supabase AuthError codes/messages to Hebrew strings. Login + reset
  * paths intentionally bypass this for failures (generic strings, no email
  * enumeration — SPEC §6.4/§6.5).
@@ -131,12 +142,13 @@ async function hasActiveSubscription(supabase, userId) {
  */
 async function signUp(req, res) {
   const data = req.valid;
+  logAuth("signUp", `email=${data.email}`);
   const intendedPlan = isValidPlanId(req.body?.intendedPlan)
     ? req.body.intendedPlan
     : undefined;
 
   const supabase = anonClient();
-  const { error } = await supabase.auth.signUp({
+  const { data: signUpData, error } = await supabase.auth.signUp({
     email: data.email,
     password: data.password,
     options: {
@@ -155,9 +167,24 @@ async function signUp(req, res) {
   });
 
   if (error) {
+    logAuth("signUp", `FAIL email=${data.email} code=${error.code ?? "unknown"}`);
     return res.json({ ok: false, error: mapAuthError(error) });
   }
 
+  // Duplicate-email guard. With email confirmations ON, Supabase's
+  // enumeration protection returns a FAKE success (no error) when the email
+  // is already registered — the tell is an EMPTY `identities` array on the
+  // returned user. Without this check the user is sent to /verify-email to
+  // wait for an OTP that never comes. Surfacing "already registered" here is
+  // a deliberate, signup-only enumeration trade-off (login/reset stay
+  // generic per SPEC §6.4/§6.5).
+  const identities = signUpData?.user?.identities;
+  if (Array.isArray(identities) && identities.length === 0) {
+    logAuth("signUp", `DUPLICATE email=${data.email}`);
+    return res.json({ ok: false, error: "כתובת המייל כבר רשומה במערכת" });
+  }
+
+  logAuth("signUp", `OK email=${data.email} → /verify-email`);
   return res.json({
     ok: true,
     url: `/verify-email?email=${encodeURIComponent(data.email)}`,
@@ -170,6 +197,7 @@ async function signUp(req, res) {
  */
 async function verifyOtp(req, res) {
   const data = req.valid;
+  logAuth("verifyOtp", `email=${data.email}`);
 
   const supabase = anonClient();
   const { data: verifyData, error } = await supabase.auth.verifyOtp({
@@ -179,6 +207,7 @@ async function verifyOtp(req, res) {
   });
 
   if (error) {
+    logAuth("verifyOtp", `FAIL email=${data.email} code=${error.code ?? "unknown"}`);
     return res.json({ ok: false, error: mapAuthError(error, "הקוד פג תוקף או שגוי") });
   }
 
@@ -225,6 +254,7 @@ async function verifyOtp(req, res) {
       ? `/checkout?plan=${intendedPlan}`
       : "/pricing";
 
+  logAuth("verifyOtp", `OK user=${userId} subscribed=${subscribed} → ${url}`);
   return res.json({
     ok: true,
     url,
@@ -239,13 +269,16 @@ async function verifyOtp(req, res) {
  */
 async function resendOtp(req, res) {
   const { email } = req.valid;
+  logAuth("resendOtp", `email=${email}`);
 
   const supabase = anonClient();
   const { error } = await supabase.auth.resend({ type: "signup", email });
 
   if (error) {
+    logAuth("resendOtp", `FAIL email=${email} code=${error.code ?? "unknown"}`);
     return res.json({ ok: false, error: mapAuthError(error) });
   }
+  logAuth("resendOtp", `OK email=${email}`);
   return res.json({ ok: true });
 }
 
@@ -256,6 +289,7 @@ async function resendOtp(req, res) {
  */
 async function signIn(req, res) {
   const data = req.valid;
+  logAuth("signIn", `email=${data.email}`);
 
   const supabase = anonClient();
   const { data: signInData, error } = await supabase.auth.signInWithPassword({
@@ -265,15 +299,18 @@ async function signIn(req, res) {
 
   if (error) {
     if (error.code === "email_not_confirmed") {
+      logAuth("signIn", `UNVERIFIED email=${data.email} → /verify-email`);
       return res.json({
         ok: true,
         url: `/verify-email?email=${encodeURIComponent(data.email)}`,
         session: null,
       });
     }
+    logAuth("signIn", `FAIL email=${data.email} code=${error.code ?? "unknown"}`);
     return res.json({ ok: false, error: "פרטי ההתחברות שגויים" });
   }
 
+  logAuth("signIn", `OK email=${data.email} → /dashboard`);
   return res.json({
     ok: true,
     url: "/dashboard",
@@ -287,6 +324,7 @@ async function signIn(req, res) {
  */
 async function requestPasswordReset(req, res) {
   const { email } = req.valid;
+  logAuth("requestPasswordReset", `email=${email} → /reset-password`);
 
   const supabase = anonClient();
   await supabase.auth.resetPasswordForEmail(email);
@@ -303,6 +341,7 @@ async function requestPasswordReset(req, res) {
  */
 async function resetPassword(req, res) {
   const data = req.valid;
+  logAuth("resetPassword", `email=${data.email}`);
 
   // One client instance for the whole flow: verifyOtp puts the recovery
   // session in memory, authorizing the subsequent updateUser.
@@ -313,6 +352,7 @@ async function resetPassword(req, res) {
     type: "recovery",
   });
   if (verifyError) {
+    logAuth("resetPassword", `FAIL(verify) email=${data.email} code=${verifyError.code ?? "unknown"}`);
     return res.json({
       ok: false,
       error: mapAuthError(verifyError, "הקוד פג תוקף או שגוי"),
@@ -323,10 +363,12 @@ async function resetPassword(req, res) {
     password: data.password,
   });
   if (updateError) {
+    logAuth("resetPassword", `FAIL(update) email=${data.email} code=${updateError.code ?? "unknown"}`);
     await supabase.auth.signOut();
     return res.json({ ok: false, error: mapAuthError(updateError) });
   }
 
+  logAuth("resetPassword", `OK email=${data.email} → /login`);
   await supabase.auth.signOut();
   return res.json({ ok: true, url: "/login?reset=1" });
 }
@@ -344,6 +386,7 @@ async function completeGoogleSignup(req, res) {
   const data = req.valid;
   const supabase = req.supabase;
   const user = req.user;
+  logAuth("completeGoogleSignup", `user=${user.id}`);
 
   // Merge guard — Supabase may auto-merge this OAuth login into an
   // existing email-flow account (SPEC §6.2 step 4).
@@ -353,6 +396,7 @@ async function completeGoogleSignup(req, res) {
     .eq("id", user.id)
     .maybeSingle();
   if (existing) {
+    logAuth("completeGoogleSignup", `EXISTS user=${user.id} → /dashboard`);
     return res.json({ ok: true, url: "/dashboard" });
   }
 
@@ -375,11 +419,14 @@ async function completeGoogleSignup(req, res) {
   }
 
   const subscribed = await hasActiveSubscription(supabase, user.id);
-  return res.json({ ok: true, url: subscribed ? "/dashboard" : "/pricing" });
+  const url = subscribed ? "/dashboard" : "/pricing";
+  logAuth("completeGoogleSignup", `OK user=${user.id} subscribed=${subscribed} → ${url}`);
+  return res.json({ ok: true, url });
 }
 
 /** Signs the user out (revokes the session server-side). Returns /login. */
 async function signOut(req, res) {
+  logAuth("signOut", `user=${req.user?.id ?? "unknown"}`);
   await req.supabase.auth.signOut();
   return res.json({ ok: true, url: "/login" });
 }

@@ -14,8 +14,10 @@ app.use(cors({ origin: env.corsOrigins, credentials: true }));
 app.use(express.json({ limit: "1mb" }));
 
 // Lightweight request log. Replace with structured logging in Slice 7.
+// The `:<port>` makes it obvious in the terminal that the request actually
+// reached THIS Express server (port 4000 in dev), not the Next.js server.
 app.use((req, _res, next) => {
-  console.info(`[server] ${req.method} ${req.originalUrl}`);
+  console.info(`[server] :${env.port} ${req.method} ${req.originalUrl}`);
   next();
 });
 

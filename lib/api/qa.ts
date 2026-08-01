@@ -31,9 +31,10 @@ export async function submitQaReport(
   input: unknown,
   screenshot: File | null = null
 ): Promise<SubmitResult> {
-  if (!apiEnabled()) {
-    return submitQaReportAction(input, screenshot);
-  }
+  // [VERIFY-EXPRESS] fallback disabled — see the banner in lib/api/auth.ts.
+  // if (!apiEnabled()) {
+  //   return submitQaReportAction(input, screenshot);
+  // }
   try {
     const inp = input as SubmitQaInput;
     const fd = new FormData();

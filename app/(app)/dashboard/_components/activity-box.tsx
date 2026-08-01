@@ -119,10 +119,10 @@ export function ActivityBox({ points }: { points: SparklinePoint[] }) {
         </defs>
 
         {/* Gridlines + y-axis labels — three rows: yMax / yMax/2 / 0. */}
-        {gridValues.map((v) => {
+        {gridValues.map((v, i) => {
           const y = gridY(v);
           return (
-            <g key={v}>
+            <g key={i}>
               <line
                 x1={X_LEFT}
                 x2={X_RIGHT}

@@ -35,9 +35,10 @@ async function dualPost(
   input: unknown,
   fallback: (input: unknown) => Promise<ActionResult>
 ): Promise<ActionResult> {
-  if (!apiEnabled()) {
-    return fallback(input);
-  }
+  // [VERIFY-EXPRESS] fallback disabled — see the banner in lib/api/auth.ts.
+  // if (!apiEnabled()) {
+  //   return fallback(input);
+  // }
   try {
     const data = await apiPostJson(path, input, { auth: true });
     if (data.ok === true) return { ok: true };

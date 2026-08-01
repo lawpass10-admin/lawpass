@@ -18,9 +18,10 @@ type ActionResult = { ok: true } | { ok: false; error: string };
 const FALLBACK_ERROR = "שגיאה — נסה שוב";
 
 export async function removeBookmark(input: unknown): Promise<ActionResult> {
-  if (!apiEnabled()) {
-    return removeBookmarkAction(input);
-  }
+  // [VERIFY-EXPRESS] fallback disabled — see the banner in lib/api/auth.ts.
+  // if (!apiEnabled()) {
+  //   return removeBookmarkAction(input);
+  // }
   try {
     const data = await apiPostJson("/api/bookmarks/remove", input, {
       auth: true,

@@ -21,9 +21,10 @@ type SaveResult = Awaited<ReturnType<typeof saveNoteFromBankAction>>;
 type LoadResult = Awaited<ReturnType<typeof loadNoteByIdentityAction>>;
 
 export async function saveNoteFromBank(input: unknown): Promise<SaveResult> {
-  if (!apiEnabled()) {
-    return saveNoteFromBankAction(input);
-  }
+  // [VERIFY-EXPRESS] fallback disabled — see the banner in lib/api/auth.ts.
+  // if (!apiEnabled()) {
+  //   return saveNoteFromBankAction(input);
+  // }
   try {
     const data = await apiPostJson("/api/notes/save", input, { auth: true });
     // Server returns the same { ok, updatedAt | error } envelope.
@@ -34,9 +35,10 @@ export async function saveNoteFromBank(input: unknown): Promise<SaveResult> {
 }
 
 export async function loadNoteByIdentity(input: unknown): Promise<LoadResult> {
-  if (!apiEnabled()) {
-    return loadNoteByIdentityAction(input);
-  }
+  // [VERIFY-EXPRESS] fallback disabled — see the banner in lib/api/auth.ts.
+  // if (!apiEnabled()) {
+  //   return loadNoteByIdentityAction(input);
+  // }
   try {
     const data = await apiPostJson("/api/notes/load", input, { auth: true });
     // Server returns the same { ok, note | error } envelope.
