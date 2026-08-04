@@ -6,9 +6,12 @@
   "main": "app.js",
   "scripts": {
     "start": "node app.js",
-    "dev": "node --watch app.js"
+    "dev": "node --watch app.js",
+    "test": "node --test lib/ai/quote-bank.test.js",
+    "generate:open-question": "node scripts/generate-open-question.js"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.115.0",
     "@supabase/supabase-js": "^2.105.1",
     "cors": "^2.8.5",
     "dotenv": "^17.4.2",
@@ -16,7 +19,6 @@
     "multer": "^2.2.0",
     "zod": "4.4.3"
   },
-  "devDependencies": {},
   "keywords": [],
   "author": "",
   "license": "ISC"
