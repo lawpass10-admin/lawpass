@@ -18,7 +18,7 @@ const {
 
 const FIXTURE = path.resolve(
   __dirname,
-  "../../../scripts/ingestion/open_questions/2025-12-part1-writing.json"
+  "../../../scripts/ingestion/open_questions/sources/2025-12-part1-writing.json"
 );
 
 const data = JSON.parse(fs.readFileSync(FIXTURE, "utf8"));

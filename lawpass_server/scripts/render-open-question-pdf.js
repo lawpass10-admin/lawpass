@@ -4,6 +4,13 @@
 //
 //   node scripts/render-open-question-pdf.js <generated-or-rejected.json> <source-questions.json>
 //
+// Example:
+//   node scripts/render-open-question-pdf.js \
+//     ../scripts/ingestion/open_questions/generated/2025-D-W-Q1-A.generated.json \
+//     ../scripts/ingestion/open_questions/sources/2025-12-part1-writing.json
+//
+// The .html and .pdf are written beside the input JSON, i.e. in generated/.
+//
 // Produces the candidate-facing paper only: the scenario, the task, and the
 // attached sources. The exam-writer fields (legal_topic_analysis,
 // model_answer_outline, common_pitfall) are deliberately excluded.
@@ -17,43 +24,9 @@
 
 const fs = require("node:fs");
 const path = require("node:path");
-const { execFileSync } = require("node:child_process");
 
 const { buildBank, renderTokens } = require("../lib/ai/quote-bank");
-
-const BROWSERS = [
-  "C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe",
-  "C:/Program Files/Microsoft/Edge/Application/msedge.exe",
-  "C:/Program Files/Google/Chrome/Application/chrome.exe",
-  "C:/Program Files (x86)/Google/Chrome/Application/chrome.exe",
-];
-
-function findBrowser() {
-  const found = BROWSERS.find((p) => fs.existsSync(p));
-  if (!found) {
-    throw new Error(
-      "no Chromium browser found for PDF printing (looked for Edge and Chrome)"
-    );
-  }
-  return found;
-}
-
-function esc(s) {
-  return String(s)
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;");
-}
-
-/** Blank-line separated text -> <p> blocks, preserving the paper's paragraphing. */
-function paragraphs(text, className = "") {
-  return String(text)
-    .split(/\n\s*\n/)
-    .map((p) => p.trim())
-    .filter(Boolean)
-    .map((p) => `<p class="${className}">${esc(p).replace(/\n/g, "<br>")}</p>`)
-    .join("\n");
-}
+const { esc, paragraphs, printHtmlToPdf } = require("../lib/pdf/print");
 
 function buildHtml({ question, bank, label }) {
   // Placeholders in candidate-facing text resolve to citations; the sources
@@ -212,25 +185,11 @@ function main() {
 
   const html = buildHtml({ question, bank, label });
 
-  const base = path.basename(generatedPath).replace(/\.json$/, "");
-  const outDir = path.dirname(path.resolve(generatedPath));
-  const htmlPath = path.join(outDir, `${base}.html`);
-  const pdfPath = path.join(outDir, `${base}.pdf`);
-
-  fs.writeFileSync(htmlPath, html, "utf8");
-
-  const browser = findBrowser();
-  execFileSync(
-    browser,
-    [
-      "--headless",
-      "--disable-gpu",
-      "--no-pdf-header-footer",
-      `--print-to-pdf=${pdfPath}`,
-      `file:///${htmlPath.replace(/\\/g, "/")}`,
-    ],
-    { stdio: "pipe" }
+  const base = path.join(
+    path.dirname(path.resolve(generatedPath)),
+    path.basename(generatedPath).replace(/[.]json$/, "")
   );
+  const { htmlPath, pdfPath } = printHtmlToPdf(html, base);
 
   console.log(`sources printed verbatim from bank: ${bank.map((q) => q.id).join(", ")}`);
   console.log(`html : ${htmlPath}`);

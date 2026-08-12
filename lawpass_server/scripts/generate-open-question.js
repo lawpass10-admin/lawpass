@@ -6,11 +6,11 @@
 //
 // Example:
 //   node scripts/generate-open-question.js \
-//     ../scripts/ingestion/open_questions/2025-12-part1-writing.json 2025-D-W-Q1 A
+//     ../scripts/ingestion/open_questions/sources/2025-12-part1-writing.json 2025-D-W-Q1 A
 //
-// Writes <source_external_id>-<letter>.generated.json next to the input and prints
-// the rendered Hebrew for review. Nothing is written to the database — generated
-// questions are drafts for a human to approve.
+// Writes to <workspace>/generated/ (or generated/rejected/ if the quote lock
+// fails) and prints the rendered Hebrew for review. Nothing is written to the
+// database — generated questions are drafts for a human to approve.
 
 const fs = require("node:fs");
 const path = require("node:path");
@@ -38,6 +38,26 @@ const {
 } = require("../lib/ai/generate-open-question");
 
 const DEFAULT_PARAMS_FILE = "llm-params.json";
+
+// Workspace layout (see open_questions/README.md):
+//   <root>/exams/      source exam PDFs
+//   <root>/sources/    JSON extracted from those PDFs
+//   <root>/generated/  LLM output, with rejected/ beneath it
+//   <root>/llm-params.json
+//
+// The questions JSON lives in sources/, but the params file and the output
+// folders hang off the root — so walk up to find it rather than assuming
+// everything shares one directory.
+function findWorkspaceRoot(startDir) {
+  let dir = path.resolve(startDir);
+  for (let i = 0; i < 5; i++) {
+    if (fs.existsSync(path.join(dir, DEFAULT_PARAMS_FILE))) return dir;
+    const parent = path.dirname(dir);
+    if (parent === dir) break;
+    dir = parent;
+  }
+  return path.resolve(startDir); // standalone file: keep everything beside it
+}
 
 /** Previously generated angles for this source, so the model doesn't repeat itself. */
 function loadExistingAngles(dir, sourceId, skipLetter) {
@@ -100,11 +120,9 @@ function checkParamKeys(params) {
   return warnings;
 }
 
-/** Read the params file that sits next to the questions JSON (or --params=...). */
-function loadParams(jsonPath, explicitPath) {
-  const p =
-    explicitPath ||
-    path.join(path.dirname(path.resolve(jsonPath)), DEFAULT_PARAMS_FILE);
+/** Read the params file from the workspace root (or --params=...). */
+function loadParams(root, explicitPath) {
+  const p = explicitPath || path.join(root, DEFAULT_PARAMS_FILE);
   if (!fs.existsSync(p)) {
     console.warn(`no params file at ${p} — using built-in defaults`);
     return { params: {}, paramsPath: null };
@@ -144,7 +162,11 @@ async function main() {
   const flag = (name) =>
     flags.find((f) => f.startsWith(`--${name}=`))?.split("=").slice(1).join("=");
 
-  const { params, paramsPath } = loadParams(jsonPath, flag("params"));
+  const root = findWorkspaceRoot(path.dirname(path.resolve(jsonPath)));
+  const generatedDir = path.join(root, "generated");
+  const rejectedDir = path.join(generatedDir, "rejected");
+
+  const { params, paramsPath } = loadParams(root, flag("params"));
 
   // CLI flags win over the params file, so a one-off experiment doesn't require
   // editing (and then remembering to revert) the committed configuration.
@@ -170,11 +192,7 @@ async function main() {
 
   // Angles already produced for this source. Without these the model has no way
   // to know what it already wrote, and angle B drifts back toward angle A.
-  const existingAngles = loadExistingAngles(
-    path.dirname(path.resolve(jsonPath)),
-    sourceId,
-    angleLetter
-  );
+  const existingAngles = loadExistingAngles(generatedDir, sourceId, angleLetter);
 
   const effective = mergeParams(params);
   console.log(`source : ${sourceId} — ${source.title}`);
@@ -216,13 +234,12 @@ async function main() {
       `out ${u.output_tokens ?? "?"} tokens\n`
   );
 
-  const outDir = path.dirname(path.resolve(jsonPath));
-
   // A rejected generation still cost time and money. Always persist it so the
   // failure can be inspected and the prompt tuned — never silently discard.
   if (!result.validation.ok) {
+    fs.mkdirSync(rejectedDir, { recursive: true });
     const rejectedPath = path.join(
-      outDir,
+      rejectedDir,
       `${sourceId}-${angleLetter}.rejected.json`
     );
     fs.writeFileSync(
@@ -272,7 +289,8 @@ async function main() {
     rendered_preview: result.rendered,
   };
 
-  const outPath = path.join(outDir, `${sourceId}-${angleLetter}.generated.json`);
+  fs.mkdirSync(generatedDir, { recursive: true });
+  const outPath = path.join(generatedDir, `${sourceId}-${angleLetter}.generated.json`);
   fs.writeFileSync(outPath, JSON.stringify(out, null, 2) + "\n", "utf8");
 
   const r = result.rendered;

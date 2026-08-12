@@ -7,8 +7,11 @@
   "scripts": {
     "start": "node app.js",
     "dev": "node --watch app.js",
-    "test": "node --test lib/ai/quote-bank.test.js",
-    "generate:open-question": "node scripts/generate-open-question.js"
+    "test": "node --test lib/ai/*.test.js",
+    "generate:open-question": "node scripts/generate-open-question.js",
+    "generate:open-answer": "node scripts/generate-open-answer.js",
+    "render:open-question": "node scripts/render-open-question-pdf.js",
+    "render:open-answer": "node scripts/render-open-answer-pdf.js"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.115.0",
