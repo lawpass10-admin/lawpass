@@ -1,0 +1,208 @@
+{
+  "rejected_at": "2026-08-12T14:24:00.125Z",
+  "model": "claude-opus-5",
+  "prompt_version": "open-answer/1",
+  "effort": "high",
+  "max_tokens": 24000,
+  "leak_shingle_size": 7,
+  "authoring": {
+    "header_block": "RULE 1 — every answer opens with the caption block. The court name, the case number, then the two parties: OUR CLIENT FIRST labelled המשיב/התובע, a centred -נגד-, then the other side labelled המבקש/הנתבע. Take both names from the question's facts. Leave the advocate's own details as ??? placeholders — ב\"כ עו\"ד ??? (מ\"ר ???) מרחוב ??? טל': ???; פקס: ???; דוא\"ל: ??? — the candidate fills those in. Beneath the parties give מועד המצאת הבקשה and מועד אחרון להגשת תגובה, using the dates the question states and ??? where it does not. Then the underlined title of the pleading.",
+    "facts_discipline": "RULE 2 — the עובדות section carries only facts the legal argument needs. Every superfluous detail costs marks: if a passer-by noted the licence plate and nothing turns on it, leave it out. State what happened to our client, what it required of him, and what documents prove it.",
+    "exhibits_style": "RULE 2 (cont.) — where a fact rests on a document, put the exhibit line immediately beneath that paragraph, in this exact form: העתק <what the document shows> מצ\"ב כנספח <N>. Number the exhibits in order of first appearance. Never gather exhibits into a list at the end — an exhibit with no anchor in the text loses marks.",
+    "party_perspective": "RULE 3 — the pleading is written on behalf of our client alone. Refer to him as המשיב throughout and to the other side as המבקש, consistently. Describe the other side's position only as far as is needed to answer it; never add background, motive or colour about המבקש that the facts do not require.",
+    "argument_pattern": "RULE 4 — build each legal point in three short moves, not one long passage. (1) State the rule and give the source a short name: בהתאם לסעיף 5 לחוק ההתיישנות, תשי\"ח-1958 (להלן: \"חוק ההתיישנות\"), תקופת ההתיישנות... (2) State what the authority held, in ONE sentence of your own words: ברע\"א 123-23 אמנון נ' סלמון (להלן: \"עניין אמנון\") קבע בית המשפט כי... (3) Apply it in a fresh paragraph opening with בענייננו, ending in the consequence: רק בשל כך יש לדחות את הבקשה. One statement of the holding serves both the statute and the case — do not cite the point twice, and do not reproduce long stretches of the source. Once a short name is defined, use it thereafter.",
+    "adverse_authority": "RULE 5 — an authority attached to the question is material that must be made to serve our client. Never write that our client relies on an authority that helps the other side, and never assert as fact anything the question's facts do not state. Where an authority cuts against us, introduce it with its short name, say briefly what was decided there, then open a new paragraph with אלא שענייננו שונה לחלוטין מ<short name> מהטעמים הבאים: and enumerate the distinctions ראשית, שנית, שלישית — closing with ואם לא די בכל אלה where a final point remains.",
+    "register": "",
+    "structure": "Follow the exemplars: the caption block, then הרקע/העובדות, then הטענות המשפטיות with a bold sub-heading per argument, then לסיכום with the relief sought. Number the paragraphs continuously.",
+    "citation_style": "Cite each authority in full the first time it appears, exactly as printed in the question, and define a short name in brackets at that point. Use the short name afterwards. A placeholder already carries the whole citation including any section number — write בהתאם ל{{L1}} and never בהתאם לסעיף 5 ל{{L1}}, which would print the section twice.",
+    "length": "match_exemplars",
+    "extra_instructions": ""
+  },
+  "question_external_id": "2025-D-W-Q1-A",
+  "usage": {
+    "input_tokens": 39,
+    "cache_creation_input_tokens": 20400,
+    "cache_read_input_tokens": 0,
+    "cache_creation": {
+      "ephemeral_5m_input_tokens": 20400,
+      "ephemeral_1h_input_tokens": 0
+    },
+    "output_tokens": 5825,
+    "service_tier": "standard",
+    "inference_geo": "global"
+  },
+  "errors": [
+    {
+      "type": "quote_leak",
+      "detail": "sections[1].paragraphs[1].text reproduces V1 inline instead of using {{V1.text}}: \"סילוק תביעה על הסף הוא צעד חריג\""
+    }
+  ],
+  "generated": {
+    "document_type": "תגובה לבקשה לסילוק על הסף",
+    "court": "בבית המשפט השלום בחיפה",
+    "case_number": "ת\"א 456-02-26",
+    "parties": {
+      "client_name": "איתמר בן-חורין",
+      "client_role": "התובע – המשיב",
+      "opposing_name": "סאמר חלבי",
+      "opposing_role": "הנתבע – המבקש"
+    },
+    "service_date": "10.4.2026",
+    "response_deadline": "20.5.2026",
+    "opening": "בית המשפט הנכבד מתבקש לדחות את בקשת המבקש לסילוק התביעה על הסף, ולהורות על המשך ניהול ההליך לגופו, מן הטעמים שיפורטו להלן: התביעה הוגשה בתוך תקופת ההתיישנות הקבועה בדין, ואין בשיהוי הנטען – שאף לא הוכח – כדי להצדיק את הסעד החריג שנתבקש.",
+    "sections": [
+      {
+        "heading": "הרקע לתגובה",
+        "paragraphs": [
+          {
+            "text": "ביום 14.2.2019 נפגע המשיב מרכב מסחרי שהיה נהוג בידי המבקש בעת שחצה את הכביש; המבקש נמלט מן המקום ולא עצר. בעקבות הפגיעה נחבל המשיב בכתפו ובאגנו, אושפז שלושה ימים, וסבל לאחר מכן מכאבים ומהגבלת תנועה שחייבו טיפולים ממושכים.",
+            "exhibit_description": "מסמכים רפואיים המעידים על אשפוז המשיב ועל הטיפולים שנדרשו לו בעקבות התאונה",
+            "exhibit_marker": "1"
+          },
+          {
+            "text": "האירוע הותיר במשיב טראומה נפשית, ובכללה התקפי חרדה בעת חציית כבישים, אשר בעטיה נמנע במשך שנים מנקיטת הליך כלשהו – בין הליך פלילי ובין הליך אזרחי.",
+            "exhibit_description": "",
+            "exhibit_marker": ""
+          },
+          {
+            "text": "בחודש נובמבר 2024 שלח המשיב אל המבקש מכתב דרישה שבו עמד על פיצוי בגין התאונה. המבקש לא השיב בכתב, אלא הכחיש בעל פה בפני השליח את עצם ידיעתו על האירוע. בחודש מרץ 2025 הגיש המשיב תלונה במשטרה בגין הפקרה לאחר פגיעה, והמתין להחלטת התביעה המשטרתית, שלא ניתנה עד היום.",
+            "exhibit_description": "מכתב הדרישה מיום נובמבר 2024 והתלונה שהוגשה במשטרה בגין הפקרה לאחר פגיעה",
+            "exhibit_marker": "2"
+          },
+          {
+            "text": "התביעה שבכותרת הוגשה לבית המשפט ביום 11.2.2026, בטרם חלפו שבע שנים מיום התאונה, וכתב התביעה הומצא למבקש ביום 18.2.2026.",
+            "exhibit_description": "אישור הגשת כתב התביעה לבית המשפט ביום 11.2.2026",
+            "exhibit_marker": "3"
+          },
+          {
+            "text": "ביום 10.4.2026 הגיש המבקש כתב הגנה ולצידו את הבקשה שבכותרת, ובה שלושה טעמים: התיישנות בשל מועד ההמצאה; שיהוי; ונזק ראייתי שנגרם לו, לטענתו, בעקבות מחיקת גיבוי מצלמות הדרך והשמדת יומני הרכב בשנת 2022. כל הטעמים דינם דחייה.",
+            "exhibit_description": "",
+            "exhibit_marker": ""
+          }
+        ]
+      },
+      {
+        "heading": "הטיעון המשפטי",
+        "paragraphs": [
+          {
+            "text": "א. התביעה הוגשה בתוך תקופת ההתיישנות – מרוץ ההתיישנות נפסק במועד ההגשה ולא במועד ההמצאה. בהתאם ל{{L1}} (להלן: \"חוק ההתיישנות\"), תקופת ההתיישנות בתביעה שאינה במקרקעין היא שבע שנים, והיא נמנית עד להגשת התובענה.",
+            "exhibit_description": "",
+            "exhibit_marker": ""
+          },
+          {
+            "text": "ברע\"א 123-23 אמנון נ' סלמון (להלן: \"עניין אמנון\") נקבע כי מרוץ ההתיישנות נעצר עם הגשת התובענה לבית המשפט, אף אם הנתבע כלל לא ידע עליה במועד זה, וכי סילוק תביעה על הסף הוא צעד חריג הפוגע בזכות הגישה לערכאות, מקל וחומר כאשר התביעה הוגשה בתוך התקופה שקבע המחוקק.",
+            "exhibit_description": "",
+            "exhibit_marker": ""
+          },
+          {
+            "text": "בענייננו, התאונה אירעה ביום 14.2.2019 והתביעה הוגשה ביום 11.2.2026 – שלושה ימים בטרם תום שבע השנים. מועד ההמצאה, 18.2.2026, אינו רלוונטי כלל לחישוב תקופת ההתיישנות, ולפי הלכת עניין אמנון די בהגשה בתוך התקופה כדי לחסום את הטענה. רק בשל כך יש לדחות את הטעם הראשון שבבקשה.",
+            "exhibit_description": "",
+            "exhibit_marker": ""
+          },
+          {
+            "text": "ב. אין בהשתהות המשיב שיהוי – הימנעות נפגע עבירה מנקיטת הליכים בשל טראומה אינה ויתור על זכות התביעה. בע\"א 8877/16 פלונית נ' רשות הנמלים (להלן: \"עניין פלונית\") נקבע כי נפגעי עבירה נדרשים לעיתים לזמן ממושך לעיבוד הטראומה ולהתמודדות עם השלכותיה הבירוקרטיות והמשפטיות, וכי אין לראות בהשתהותם ויתור, שינה על הזכויות או יצירת ציפייה אצל הנתבע.",
+            "exhibit_description": "",
+            "exhibit_marker": ""
+          },
+          {
+            "text": "בענייננו, המשיב נפגע ממי שהפקיר אותו לאחר הפגיעה, ולפי הנטען בכתב התביעה מדובר בעבירה פלילית; הטראומה שחווה, שהתבטאה בהתקפי חרדה בעת חציית כבישים, היא שמנעה ממנו לפנות למשטרה או לנקוט הליך אזרחי. בהתאם לעניין פלונית, אין לפרש שתיקה זו כמחילה, ואף אין לזקוף לחובת המשיב את הציפייה שגיבש המבקש לעצמו. כפי שנפסק שם, \"{{V2.text}}\" – ודברים אלה נכתבו כמו לנסיבות שלפנינו.",
+            "exhibit_description": "",
+            "exhibit_marker": ""
+          },
+          {
+            "text": "יתר על כן, המשיב לא זנח את זכותו: בחודש נובמבר 2024 שלח מכתב דרישה מפורש בגין התאונה, ובחודש מרץ 2025 הגיש תלונה במשטרה בגין הפקרה. ממועד מכתב הדרישה שוב אין למבקש כל בסיס לטענה כי הניח שאין נגדו טענה, ובהמתנה להחלטת התביעה המשטרתית – שנעשתה בעצת בא כוחו של המשיב – אין כל חוסר תום לב.",
+            "exhibit_description": "",
+            "exhibit_marker": ""
+          },
+          {
+            "text": "ג. הטענה לנזק ראייתי אינה מקימה שיהוי בנסיבות אלה. המבקש מבקש להיבנות מת\"א 2233-14 אלמוג נ' הדולפין בע\"מ (להלן: \"עניין אלמוג\"), שבו סולקה תביעה על הסף מחמת שיהוי לאחר שהנתבעת הוכיחה כי מהתנהלות התובע הניחה שמחל על החוב, וכי בשל הסתמכות זו לא שמרה תיעוד קונקרטי הדרוש להגנתה, שלא היה לה כל צורך אחר לשמרו.",
+            "exhibit_description": "",
+            "exhibit_marker": ""
+          },
+          {
+            "text": "אלא שענייננו שונה לחלוטין מעניין אלמוג מהטעמים הבאים: ראשית, בעניין אלמוג נסבה התביעה על חוב כספי שבין הצדדים, שהתובע עצמו טען כי היה עליו לפנות בגינו – בעוד שכאן מדובר בנפגע עבירה שהמבקש הפקירו, ולפי עניין פלונית אין לראות בהשתהותו מחילה או יצירת ציפייה. שנית, בעניין אלמוג לא נטען דבר במשך שש שנים וחצי, בעוד שהמשיב פנה בכתב דרישה בנובמבר 2024 והגיש תלונה במשטרה במרץ 2025, כך שלא נעצם עיניו של המבקש. שלישית, בעניין אלמוג נדרשה הנתבעת להוכיח – והוכיחה – שהתיעוד שלא נשמר היה קונקרטי, חיוני להגנתה ושלא היה לה טעם אחר לשמרו; בענייננו מודה המבקש כי צילומי מצלמות הדרך ויומני הנסיעות והטיפולים נשמרו אצלו לצרכים תפעוליים שוטפים בלבד, ומחיקתם בשנת 2022 היא פועל יוצא של התנהלותו העסקית ולא של הסתמכות על שתיקת המשיב. ואם לא די בכל אלה – המבקש נמלט ממקום התאונה ולא דיווח עליה, וממילא לא ניתן לו לבנות טענת הסתמכות על שתיקת הנפגע שאותו הפקיר.",
+            "exhibit_description": "",
+            "exhibit_marker": ""
+          },
+          {
+            "text": "ד. סילוק על הסף הוא סעד חריג. כאמור בעניין אמנון, סילוק תביעה על הסף פוגע בזכות הגישה לערכאות ויש לנקוט בו במשורה. בענייננו, משהוגשה התביעה בתוך תקופת ההתיישנות שקבע חוק ההתיישנות, וכל טענות המבקש בדבר הסתמכותו ובדבר הנזק הראייתי הנטען הן טענות עובדתיות הטעונות הוכחה, מקומן – ככל שיש בהן ממש – במסגרת בירור התביעה לגופה ובמשקל הראיות, ולא בשלב מקדמי זה.",
+            "exhibit_description": "",
+            "exhibit_marker": ""
+          }
+        ]
+      },
+      {
+        "heading": "לסיכום",
+        "paragraphs": [
+          {
+            "text": "אשר על כן מתבקש בית המשפט הנכבד לדחות את הבקשה לסילוק התביעה על הסף על כל שלושת טעמיה, לקבוע כי התביעה הוגשה בתוך תקופת ההתיישנות, ולהורות על המשך ניהול ההליך לגופו. כן מתבקש בית המשפט לחייב את המבקש בהוצאות התגובה.",
+            "exhibit_description": "",
+            "exhibit_marker": ""
+          }
+        ]
+      }
+    ],
+    "closing": "התגובה נסמכת בעיקרה על טעמים משפטיים; ככל שהעובדות שבחלק הראשון טעונות אימות, נתמכת התגובה בתצהיר המשיב המצורף לה.",
+    "signature_line": "________ [שם עוה\"ד] ב\"כ התובע/המשיב",
+    "sources_used": [
+      {
+        "quote_id": "L1",
+        "role": "מקור הכלל בדבר תקופת התיישנות של שבע שנים בתביעה שאינה במקרקעין, ובסיס לטענה כי התביעה הוגשה במועד"
+      },
+      {
+        "quote_id": "V1",
+        "role": "אסמכתא לכך שמרוץ ההתיישנות נפסק בהגשת התובענה ולא בהמצאתה, ולחריגות סעד הסילוק על הסף"
+      },
+      {
+        "quote_id": "V2",
+        "role": "אסמכתא לכך שהשתהות נפגע עבירה בשל טראומה אינה ויתור על זכות התביעה ואינה יוצרת ציפייה אצל הנתבע"
+      },
+      {
+        "quote_id": "V3",
+        "role": "אסמכתא הפועלת לרעת המשיב, המובחנת מנסיבות ענייננו"
+      }
+    ],
+    "rubric_coverage": [
+      {
+        "dimension": "לשון",
+        "requirement": "משלב משפטי מדויק, אחידות מונחים והימנעות מהשפה הדבורה שבשאלה",
+        "how_met": "הצדדים מכונים \"המשיב\" ו\"המבקש\" באופן עקבי; תיאור העובדות נוסח מחדש בלשון כתב טענות (\"נמלט מן המקום\", \"הכחיש בעל פה\") בלא העתקת הניסוח הדבור שבמטלה"
+      },
+      {
+        "dimension": "לשון",
+        "requirement": "הפניה מלאה לחקיקה ולפסיקה בהזכרה ראשונה וקביעת שם מקוצר",
+        "how_met": "חוק ההתיישנות ושלושת פסקי הדין צוטטו במלואם בהופעתם הראשונה, ולכל אחד נקבע שם מקוצר (\"עניין אמנון\", \"עניין פלונית\", \"עניין אלמוג\") שנעשה בו שימוש לאחר מכן"
+      },
+      {
+        "dimension": "ארגון",
+        "requirement": "מבנה כתב טענות: כותרת, רקע, טיעון משפטי בכותרות ביניים, סיכום עם הסעד",
+        "how_met": "המסמך נחלק ל\"הרקע לתגובה\", \"הטיעון המשפטי\" עם ארבעה תת-פרקים ממוספרים לפי שלושת טעמי הבקשה ולסעד החריג, ו\"לסיכום\" הכולל את הסעד המבוקש"
+      },
+      {
+        "dimension": "ארגון",
+        "requirement": "נספחים מעוגנים בטקסט ולא כרשימה",
+        "how_met": "שלושה נספחים בלבד, כל אחד סמוך לפסקה שהוא מבסס (מסמכים רפואיים, מכתב הדרישה והתלונה, אישור ההגשה), ללא צירוף כתב ההגנה או מסמכים שאינם דרושים"
+      },
+      {
+        "dimension": "תוכן",
+        "requirement": "סינון עובדות – רק הפרטים הדרושים לטיעון",
+        "how_met": "הושמטו פרטי עוברי האורח ומספר הרישוי, זהות רואה החשבון והזמנות ההובלה כשלעצמן; נותרו מועד התאונה, ההפקרה, הפגיעה והטיפולים, הטראומה, מכתב הדרישה, התלונה ומועדי ההגשה וההמצאה"
+      },
+      {
+        "dimension": "תוכן",
+        "requirement": "הצגת הכלל המשפטי ויישומו על העובדות, ולא ציטוט כתחליף לטיעון",
+        "how_met": "כל טיעון בנוי בשלושה מהלכים – כלל, הלכה במשפט אחד, ויישום הפותח ב\"בענייננו\" ומסתיים בתוצאה; ציטוט מלא נעשה פעם אחת בלבד, מעניין פלונית, במקום שבו הלשון עצמה נושאת את הטענה"
+      },
+      {
+        "dimension": "תוכן",
+        "requirement": "התמודדות עם אסמכתא הפועלת לרעת הלקוח",
+        "how_met": "עניין אלמוג הוצג בקצרה כפי שהוכרע, ולאחריו פסקת הבחנה נפרדת המונה ראשית/שנית/שלישית ומסתיימת ב\"ואם לא די בכל אלה\", בדגש על הודאת המבקש כי התיעוד נשמר לצרכים תפעוליים בלבד"
+      },
+      {
+        "dimension": "תוכן",
+        "requirement": "הגדרת הסעד המבוקש במפורש",
+        "how_met": "פסקת הפתיחה והסיכום מגדירות את הסעד: דחיית הבקשה על שלושת טעמיה, קביעה כי התביעה הוגשה בתוך תקופת ההתיישנות, המשך ניהול ההליך והוצאות"
+      }
+    ]
+  }
+}

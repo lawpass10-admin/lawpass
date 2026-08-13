@@ -9,9 +9,10 @@
 //     ../scripts/ingestion/open_questions/generated/2025-D-W-Q1-A.answer.json \
 //     ../scripts/ingestion/open_questions/sources/2025-12-part1-writing.json
 //
-// Layout follows the real Bar Association model answers (פתרון): case number and
-// court at the head, the party block, the pleading title, numbered paragraphs
-// under sub-headings, exhibits, and a signature line.
+// Layout follows the marking rules in llm-params-answers.json:
+//   RULE 1 — caption table: court, case number, our client first, -נגד-, then
+//            the other side; the advocate's details stay as ??? placeholders.
+//   RULE 2 — each exhibit line sits directly beneath the paragraph it supports.
 //
 // Quotes are rendered from the quote bank, not from the stored preview — the PDF
 // is generated from the locked source every time, same as the question renderer.
@@ -22,27 +23,40 @@ const path = require("node:path");
 const { buildBank, renderTokens } = require("../lib/ai/quote-bank");
 const { esc, printHtmlToPdf } = require("../lib/pdf/print");
 
+// RULE 1: the advocate's own details stay as ??? for the candidate to fill in.
+const ADVOCATE =
+  'באמצעות ב"כ עו"ד ??? (מ"ר ???) מרחוב ???<br>' +
+  "טל': ???; פקס: ???; דוא\"ל: ???";
+
 function buildHtml({ answer, bank, label }) {
   const r = (s) => esc(renderTokens(s ?? "", bank));
 
-  // Paragraphs run continuously across sections, as in the real answers.
+  // Paragraphs are numbered continuously across sections, as in the real
+  // answers. RULE 2: an exhibit line follows the paragraph that relies on it.
   let n = 0;
   const sections = (answer.sections || [])
-    .map((s) => {
-      const items = (s.paragraphs || [])
-        .map((p) => `<li><span class="num">${++n}.</span> ${r(p)}</li>`)
-        .join("\n");
-      return `
-      <h2>${esc(s.heading)}</h2>
-      <ol class="para">${items}</ol>`;
-    })
-    .join("\n");
+    .map((sec) => {
+      const items = (sec.paragraphs || [])
+        .map((para) => {
+          const isPlain = typeof para === "string";
+          const text = isPlain ? para : para.text;
+          const desc = isPlain ? "" : para.exhibit_description;
+          const marker = isPlain ? "" : para.exhibit_marker;
 
-  const exhibits = (answer.exhibits || []).length
-    ? `<ul class="exhibits">${(answer.exhibits || [])
-        .map((x) => `<li>${r(x.description)} ומסומן ${esc(x.marker)}</li>`)
-        .join("\n")}</ul>`
-    : "";
+          const exhibit =
+            desc && String(desc).trim()
+              ? `<div class="exhibit">***&#9;העתק ${r(desc)} מצ"ב <b>כנספח ${esc(
+                  marker
+                )}</b>.</div>`
+              : "";
+
+          return `<li><span class="num">${++n}.</span> ${r(text)}${exhibit}</li>`;
+        })
+        .join("");
+
+      return `<h2>${esc(sec.heading)}</h2><ol class="para">${items}</ol>`;
+    })
+    .join("");
 
   const p = answer.parties || {};
 
@@ -62,14 +76,14 @@ function buildHtml({ answer, bank, label }) {
     margin: 0;
   }
 
-  .caseline { font-weight: bold; margin-bottom: 1mm; }
-  .court { font-weight: bold; margin: 4mm 0 5mm 0; }
+  /* RULE 1 — the caption block */
+  table.caption { width: 100%; border-collapse: collapse; margin-bottom: 5mm; }
+  table.caption td { border: .8pt solid #000; padding: 2mm 2.5mm; vertical-align: top; }
+  table.caption td.side { width: 26%; }
+  table.caption td.mid { width: 22%; text-align: center; vertical-align: middle; }
+  table.caption td.main { width: 52%; }
 
-  .party { margin-bottom: 2.5mm; }
-  .versus { text-align: center; font-weight: bold; letter-spacing: 2pt; margin: 3mm 0; }
-  .roles { margin: 3mm 0 6mm 0; }
-  .roles div { display: flex; gap: 4mm; }
-  .roles .k { min-width: 26mm; }
+  .dates { margin: 4mm 0 2mm 0; }
 
   h1 {
     font-size: 12pt;
@@ -92,9 +106,8 @@ function buildHtml({ answer, bank, label }) {
   ol.para li { margin-bottom: 3mm; break-inside: avoid; }
   ol.para .num { font-weight: bold; margin-left: 1.5mm; }
 
-  ul.exhibits { list-style: none; padding: 0; margin: 3mm 0 3mm 6mm; }
-  ul.exhibits li { margin-bottom: 1.5mm; }
-  ul.exhibits li::before { content: "• "; font-weight: bold; }
+  /* RULE 2 — exhibit line, anchored under its paragraph */
+  .exhibit { margin: 2mm 0 0 0; }
 
   /* Closing and signature travel together — a signature stranded alone on a
      trailing page reads as an unfinished document. */
@@ -115,17 +128,37 @@ function buildHtml({ answer, bank, label }) {
 </head>
 <body>
 
-  <div class="caseline">${esc(answer.case_number)}</div>
-  <div class="court">${esc(answer.court)}</div>
+  <table class="caption">
+    <tr>
+      <td class="side"></td>
+      <td class="mid"></td>
+      <td class="main"><b>${esc(answer.court)}</b></td>
+    </tr>
+    <tr>
+      <td class="side">${esc(answer.case_number)}</td>
+      <td class="mid"></td>
+      <td class="main"></td>
+    </tr>
+    <tr>
+      <td class="side"><u>${esc(p.client_role)}</u></td>
+      <td class="mid"></td>
+      <td class="main">${esc(p.client_name)}<br>${ADVOCATE}</td>
+    </tr>
+    <tr>
+      <td class="side"></td>
+      <td class="mid"><b>-נגד-</b></td>
+      <td class="main"></td>
+    </tr>
+    <tr>
+      <td class="side"><u>${esc(p.opposing_role)}</u></td>
+      <td class="mid"></td>
+      <td class="main">${esc(p.opposing_name)}<br>${ADVOCATE}</td>
+    </tr>
+  </table>
 
-  <div class="party">${esc(p.applicant)} באמצעות ב"כ עו"ד ____________ שכתובתה ___________________
-    טלפון: ________ פקס: ________ דוא"ל: ________</div>
-  <div class="versus">- נ ג ד -</div>
-  <div class="party">${esc(p.respondent)}</div>
-
-  <div class="roles">
-    <div><span class="k">${esc(p.applicant_role)}</span></div>
-    <div><span class="k">${esc(p.respondent_role)}</span></div>
+  <div class="dates">
+    <div>מועד המצאת הבקשה: ${esc(answer.service_date)}</div>
+    <div>מועד אחרון להגשת תגובה: ${esc(answer.response_deadline)}</div>
   </div>
 
   <h1>${esc(answer.document_type)}</h1>
@@ -133,8 +166,6 @@ function buildHtml({ answer, bank, label }) {
   <p class="opening">${r(answer.opening)}</p>
 
   ${sections}
-
-  ${exhibits}
 
   <div class="tail">
     <p class="closing">${r(answer.closing)}</p>
@@ -148,10 +179,10 @@ function buildHtml({ answer, bank, label }) {
 }
 
 function main() {
-  const [answerPath, sourcePath] = process.argv.slice(2);
+  const [answerPath, sourcePath, sourceIdArg] = process.argv.slice(2);
   if (!answerPath || !sourcePath) {
     console.error(
-      "usage: node scripts/render-open-answer-pdf.js <answer.json> <source-questions.json>"
+      "usage: node scripts/render-open-answer-pdf.js <answer.json> <source-questions.json> [source_external_id]"
     );
     process.exit(2);
   }
@@ -161,12 +192,35 @@ function main() {
   if (!answer) throw new Error(`no answer found in ${answerPath}`);
 
   const question = payload.questions?.[0] || {};
-  const sourceId =
+  // A generated angle carries generated_from/parent; a CORE question is its own
+  // source and has neither, so fall back to the ids the answer itself records.
+  const recordedId =
+    sourceIdArg ||
     payload.generated_from?.source_external_id ||
     question.parent_question_id ||
-    payload.question_external_id;
+    payload.question_external_id ||
+    answer.question_external_id ||
+    question.external_id;
 
   const sourceData = JSON.parse(fs.readFileSync(sourcePath, "utf8"));
+
+  // A rejected payload records the ANGLE id (2025-D-W-Q1-A), but quotes are
+  // keyed by the SOURCE id (2025-D-W-Q1). Fall back to the parent rather than
+  // failing — a rejected answer is exactly what you want to look at.
+  const known = new Set(sourceData.quotes.map((q) => q.question_external_id));
+  let sourceId = recordedId;
+  if (!known.has(sourceId)) {
+    const parent = String(sourceId || "").replace(/-[A-Za-z0-9]+$/, "");
+    if (known.has(parent)) {
+      sourceId = parent;
+    } else {
+      throw new Error(
+        `no quotes for ${recordedId} (or ${parent}) in ${path.basename(sourcePath)}. ` +
+          `Known: ${[...known].join(", ")}. Pass the source id as a third argument.`
+      );
+    }
+  }
+
   const bank = buildBank(sourceData.quotes, sourceId);
 
   const isDraft = Boolean(payload.answers);

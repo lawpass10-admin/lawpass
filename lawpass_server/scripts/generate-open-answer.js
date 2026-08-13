@@ -29,14 +29,19 @@ const envFile = [
 if (envFile) dotenv.config({ path: envFile });
 
 const { buildBank } = require("../lib/ai/quote-bank");
+const { startTimer, mmss } = require("../lib/progress");
+
+// Stamped at load, so even a run that dies reports how long it cost.
+const RUN_STARTED = Date.now();
 const { generateAnswer } = require("../lib/ai/generate-open-answer");
 
-const PARAMS_FILE = "llm-params.json";
+const QUESTION_PARAMS_FILE = "llm-params.json";
+const ANSWER_PARAMS_FILE = "llm-params-answers.json";
 
 function findWorkspaceRoot(startDir) {
   let dir = path.resolve(startDir);
   for (let i = 0; i < 5; i++) {
-    if (fs.existsSync(path.join(dir, PARAMS_FILE))) return dir;
+    if (fs.existsSync(path.join(dir, QUESTION_PARAMS_FILE))) return dir;
     const parent = path.dirname(dir);
     if (parent === dir) break;
     dir = parent;
@@ -103,10 +108,38 @@ async function main() {
   const generatedDir = path.join(root, "generated");
   const rejectedDir = path.join(generatedDir, "rejected");
 
-  const paramsPath = path.join(root, PARAMS_FILE);
-  const params = fs.existsSync(paramsPath)
-    ? JSON.parse(fs.readFileSync(paramsPath, "utf8"))
+  // Answer settings come from llm-params-answers.json; anything it omits falls
+  // back to the question file, so only the differences need stating.
+  const questionParamsPath = path.join(root, QUESTION_PARAMS_FILE);
+  const answerParamsPath = path.join(root, ANSWER_PARAMS_FILE);
+
+  const questionParams = fs.existsSync(questionParamsPath)
+    ? JSON.parse(fs.readFileSync(questionParamsPath, "utf8"))
     : {};
+
+  let params;
+  if (fs.existsSync(answerParamsPath)) {
+    const answerParams = JSON.parse(fs.readFileSync(answerParamsPath, "utf8"));
+    params = {
+      ...answerParams,
+      model: { ...(questionParams.model || {}), ...(answerParams.model || {}) },
+      generation: {
+        ...(questionParams.generation || {}),
+        ...(answerParams.generation || {}),
+      },
+      validation: {
+        ...(questionParams.validation || {}),
+        ...(answerParams.validation || {}),
+      },
+      // Names to keep out of the answer are a property of the source question.
+      forbidden_terms: answerParams.forbidden_terms || questionParams.forbidden_terms || {},
+    };
+  } else {
+    console.warn(
+      `no ${ANSWER_PARAMS_FILE} at ${root} — falling back to ${QUESTION_PARAMS_FILE}`
+    );
+    params = questionParams;
+  }
   params.model = params.model || {};
   if (flag("effort")) params.model.effort = flag("effort");
   if (flag("model")) params.model.id = flag("model");
@@ -119,10 +152,12 @@ async function main() {
   const question = payload.questions?.[0] || payload.generated;
   if (!question) throw new Error(`no question found in ${questionPath}`);
 
+  // A core question is its own source: no generated_from, no parent.
   const sourceId =
     payload.generated_from?.source_external_id ||
     question.parent_question_id ||
-    payload.source_external_id;
+    payload.source_external_id ||
+    question.external_id;
 
   const sourceData = JSON.parse(fs.readFileSync(sourcePath, "utf8"));
   const bank = buildBank(sourceData.quotes, sourceId);
@@ -135,9 +170,12 @@ async function main() {
   console.log(`rubric   : ${rubricText.length} chars`);
   console.log(`exemplars: ${exemplars.map((e) => e.name).join(", ")}`);
   console.log(`from     : ${dir}`);
+  console.log(
+    `params   : ${fs.existsSync(answerParamsPath) ? answerParamsPath : questionParamsPath}`
+  );
   console.log(`\nwriting the answer — this can take a few minutes...\n`);
 
-  const started = Date.now();
+  const stopTimer = startTimer("writing");
   const result = await generateAnswer({
     question,
     bank,
@@ -146,11 +184,11 @@ async function main() {
     forbiddenTerms,
     params,
   });
-  const seconds = Math.round((Date.now() - started) / 1000);
+  const seconds = stopTimer();
 
   const u = result.usage || {};
   console.log(
-    `done in ${seconds}s — in ${u.input_tokens ?? "?"} | ` +
+    `model call: ${mmss(seconds * 1000)} (${seconds}s) — in ${u.input_tokens ?? "?"} | ` +
       `cache write ${u.cache_creation_input_tokens ?? 0} | ` +
       `cache read ${u.cache_read_input_tokens ?? 0} | ` +
       `out ${u.output_tokens ?? "?"} tokens\n`
@@ -173,6 +211,7 @@ async function main() {
     console.error("VALIDATION FAILED — not promoted to a draft:\n");
     for (const e of result.validation.errors) console.error(`  [${e.type}] ${e.detail}`);
     console.error(`\noutput saved for inspection: ${rejectedPath}`);
+    console.error(`total time: ${mmss(Date.now() - RUN_STARTED)}`);
     process.exit(1);
   }
 
@@ -182,7 +221,7 @@ async function main() {
   const merged = {
     generated_from: {
       ...(payload.generated_from || {}),
-      answer: { ...result.meta, generated_at: new Date().toISOString() },
+      answer: { ...result.meta, usage: u, generated_at: new Date().toISOString() },
       rubric_source: "answers/",
       exemplars: exemplars.map((e) => e.name),
     },
@@ -215,9 +254,11 @@ async function main() {
   }
   console.log("─".repeat(72));
   console.log(`\nwritten to ${outPath}`);
+  console.log(`total time: ${mmss(Date.now() - RUN_STARTED)}`);
 }
 
 main().catch((err) => {
   console.error(err.message || err);
+  console.error(`total time: ${mmss(Date.now() - RUN_STARTED)}`);
   process.exit(1);
 });

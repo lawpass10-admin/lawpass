@@ -12,7 +12,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 
 const { buildBank } = require("./quote-bank");
-const { foreignCitations } = require("./generate-open-answer");
+const { foreignCitations, findIncompleteAnswer } = require("./generate-open-answer");
 
 const OQ = path.resolve(__dirname, "../../../scripts/ingestion/open_questions");
 const source = JSON.parse(
@@ -54,4 +54,53 @@ test("a bank citation is not flagged by a shorter foreign one it contains", () =
   const answer = { body: "כפי שנקבע ברע\"א 123-23 אמנון נ' סלמון, מרוץ ההתיישנות נעצר בהגשה." };
   const hits = findForeignCitations(answer, ['ע"א 123-23']);
   assert.deepStrictEqual(hits, [], "citing our own רע\"א must not match the foreign ע\"א");
+});
+
+test("a truncated answer is rejected, a complete one passes", () => {
+  // The real failure: generation stopped after the facts, leaving הטיעון המשפטי
+  // empty. Structured output kept the JSON valid, so only a content check sees it.
+  //
+  // The damaged shape is built here rather than read from the run that produced
+  // it — that file gets regenerated, and a test must not depend on a bad output
+  // staying bad.
+  const complete = JSON.parse(
+    fs.readFileSync(path.join(OQ, "generated/2025-D-W-Q1-A.answer.json"), "utf8")
+  ).answers[0];
+
+  assert.deepStrictEqual(
+    findIncompleteAnswer(complete),
+    [],
+    "a finished answer must pass"
+  );
+
+  const truncated = JSON.parse(JSON.stringify(complete));
+  truncated.sections[truncated.sections.length - 1].paragraphs = [];
+  truncated.closing = "";
+  truncated.signature_line = "";
+  truncated.sources_used = [];
+  truncated.rubric_coverage = [];
+
+  const bad = findIncompleteAnswer(truncated);
+  assert.ok(bad.length > 0, "an answer with an empty section must be rejected");
+  assert.ok(bad.every((e) => e.type === "truncated_output"));
+  assert.ok(bad.some((e) => /has no paragraphs/.test(e.detail)));
+  assert.ok(bad.some((e) => /closing is empty/.test(e.detail)));
+});
+
+test("a punctuation exhibit marker is treated as truncation", () => {
+  // The run also produced "exhibit_marker": "," — a field caught mid-write.
+  const g = {
+    sections: [
+      {
+        heading: "העובדות",
+        paragraphs: [{ text: "טקסט", exhibit_description: "", exhibit_marker: "," }],
+      },
+    ],
+    closing: "x",
+    signature_line: "x",
+    sources_used: [{}],
+    rubric_coverage: [{}],
+  };
+  const bad = findIncompleteAnswer(g);
+  assert.ok(bad.some((e) => /not a usable exhibit number/.test(e.detail)));
 });

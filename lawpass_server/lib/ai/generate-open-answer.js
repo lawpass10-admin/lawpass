@@ -21,7 +21,6 @@ const {
   renderGenerated,
   normalize,
 } = require("./quote-bank");
-const { mergeParams } = require("./generate-open-question");
 
 const PROMPT_VERSION = "open-answer/1";
 
@@ -37,7 +36,7 @@ Refer to a source only through its placeholder:
 - {{V1}}       renders as the citation
 - {{V1.text}}  renders as the verbatim quoted text
 
-Never type a source's words yourself. Output containing seven consecutive words from any source is rejected in full.
+Prefer the placeholder over typing a source's words. Reproducing the wording exactly is accepted and recorded — it is accurate. Reproducing it ALMOST exactly, with a word altered, is rejected: a misstated holding that reads as binding authority is worse than no quotation at all. If unsure of the wording, use {{V1.text}} or paraphrase properly, in clearly different words.
 
 Prefer {{V1}} with the rule stated in your own words, and apply it to these facts. The rubric penalises copying quotations in place of argument, so quote verbatim only where the exact wording carries the point.
 
@@ -61,6 +60,86 @@ Hebrew, in the register of a filed pleading. Every paragraph must do work — st
 
 Where the answer depends on a document the client would attach, name it as an exhibit rather than inventing its contents.`;
 
+// Answer-side defaults. The tunable file is
+// scripts/ingestion/open_questions/llm-params-answers.json.
+const DEFAULT_ANSWER_PARAMS = {
+  model: { id: "claude-opus-5", max_tokens: 24000, effort: "high" },
+  generation: { prompt_version: PROMPT_VERSION, prompt_cache: true },
+  authoring: {
+    header_block: "",
+    facts_discipline: "",
+    exhibits_style: "",
+    party_perspective: "",
+    argument_pattern: "",
+    adverse_authority: "",
+    register: "",
+    structure: "",
+    citation_style: "",
+    length: "match_exemplars",
+    extra_instructions: "",
+  },
+  validation: {
+    leak_shingle_size: 7,
+    enforce_forbidden_terms: true,
+    reject_foreign_citations: true,
+    misquote_window: 8,
+    misquote_max_edits: 2,
+  },
+  forbidden_terms: {},
+};
+
+function mergeAnswerParams(overrides = {}) {
+  const merged = {};
+  for (const section of Object.keys(DEFAULT_ANSWER_PARAMS)) {
+    merged[section] = {
+      ...DEFAULT_ANSWER_PARAMS[section],
+      ...(overrides[section] || {}),
+    };
+  }
+  return merged;
+}
+
+const LENGTH_RULE = {
+  match_exemplars: "Aim for the length of the exemplar answers.",
+  shorter: "Keep it tighter than the exemplars — every paragraph must earn its place.",
+  longer: "You may run longer than the exemplars where the extra reasoning is doing real work.",
+};
+
+/**
+ * Authoring direction for answers, from llm-params-answers.json.
+ *
+ * The numbered rules come first and under their own heading: they are the
+ * marking criteria taken from a reviewed answer, and they decide the score.
+ * Style preferences follow.
+ */
+function buildAnswerSystemPrompt(authoring) {
+  const rules = [
+    authoring.header_block,
+    authoring.facts_discipline,
+    authoring.exhibits_style,
+    authoring.party_perspective,
+    authoring.argument_pattern,
+    authoring.adverse_authority,
+  ].filter((s) => s && String(s).trim());
+
+  const style = [
+    authoring.structure,
+    authoring.citation_style,
+    LENGTH_RULE[authoring.length] || LENGTH_RULE.match_exemplars,
+    authoring.register ? `Register: ${authoring.register}` : "",
+    authoring.extra_instructions,
+  ].filter((s) => s && String(s).trim());
+
+  let out = CORE_RULES;
+  if (rules.length) {
+    out += `\n\n## Marking rules — these decide the score\n\n${rules.join("\n\n")}`;
+  }
+  if (style.length) {
+    out += `\n\n## Authoring direction\n\n${style.join("\n\n")}`;
+  }
+  return out;
+}
+
 const ANSWER_SCHEMA = {
   type: "object",
   additionalProperties: false,
@@ -69,9 +148,10 @@ const ANSWER_SCHEMA = {
     "court",
     "case_number",
     "parties",
+    "service_date",
+    "response_deadline",
     "opening",
     "sections",
-    "exhibits",
     "closing",
     "signature_line",
     "sources_used",
@@ -84,13 +164,22 @@ const ANSWER_SCHEMA = {
     parties: {
       type: "object",
       additionalProperties: false,
-      required: ["applicant", "respondent", "applicant_role", "respondent_role"],
+      description: "Our client comes first in the caption block (RULE 1).",
+      required: ["client_name", "client_role", "opposing_name", "opposing_role"],
       properties: {
-        applicant: { type: "string" },
-        respondent: { type: "string" },
-        applicant_role: { type: "string", description: "e.g. התובע / המשיב" },
-        respondent_role: { type: "string", description: "e.g. הנתבע / המבקש" },
+        client_name: { type: "string", description: "Our client, from the question's facts" },
+        client_role: { type: "string", description: "e.g. המשיב/התובע" },
+        opposing_name: { type: "string", description: "The other side, from the question's facts" },
+        opposing_role: { type: "string", description: "e.g. המבקש/הנתבע" },
       },
+    },
+    service_date: {
+      type: "string",
+      description: "מועד המצאת הבקשה — the date from the question, or ??? if it does not say",
+    },
+    response_deadline: {
+      type: "string",
+      description: "מועד אחרון להגשת תגובה — the date from the question, or ??? if it does not say",
     },
     opening: { type: "string", description: "The opening sentence stating what the court is asked to do" },
     sections: {
@@ -105,21 +194,25 @@ const ANSWER_SCHEMA = {
           paragraphs: {
             type: "array",
             description: "Numbered on render — do not write the numbers yourself.",
-            items: { type: "string" },
+            items: {
+              type: "object",
+              additionalProperties: false,
+              required: ["text", "exhibit_description", "exhibit_marker"],
+              properties: {
+                text: { type: "string", description: "The paragraph, in Hebrew" },
+                exhibit_description: {
+                  type: "string",
+                  description:
+                    "RULE 2: what the attached document shows, e.g. מסמכים המעידים על אשפוז המשיב. " +
+                    "Empty string when this paragraph rests on no document.",
+                },
+                exhibit_marker: {
+                  type: "string",
+                  description: "The exhibit number, e.g. 1. Empty string when there is no exhibit.",
+                },
+              },
+            },
           },
-        },
-      },
-    },
-    exhibits: {
-      type: "array",
-      description: "Documents to attach. Empty if the pleading rests on law alone.",
-      items: {
-        type: "object",
-        additionalProperties: false,
-        required: ["marker", "description"],
-        properties: {
-          marker: { type: "string", description: "e.g. 1" },
-          description: { type: "string" },
         },
       },
     },
@@ -197,6 +290,67 @@ function findForeignCitations(generated, foreign) {
     }));
 }
 
+/**
+ * Reject an answer that stopped halfway.
+ *
+ * Structured output guarantees VALID json, not FINISHED json. When generation
+ * runs long the model can close the object early, leaving empty sections and
+ * empty tail fields — a document that parses, renders, and is useless. That is
+ * exactly what a truncated pleading looks like, and `stop_reason` does not
+ * always report it, so the content itself has to be checked.
+ */
+function findIncompleteAnswer(g) {
+  const errors = [];
+  const empty = (v) => !v || !String(v).trim();
+
+  (g.sections || []).forEach((s, i) => {
+    const paras = s.paragraphs || [];
+    if (paras.length === 0) {
+      errors.push({
+        type: "truncated_output",
+        detail: `section "${s.heading}" has no paragraphs — generation stopped before writing it. Raise model.max_tokens (or lower model.effort, which shares the same budget) and retry.`,
+      });
+    }
+    paras.forEach((p, j) => {
+      if (empty(typeof p === "string" ? p : p.text)) {
+        errors.push({
+          type: "truncated_output",
+          detail: `sections[${i}].paragraphs[${j}] is empty — generation stopped mid-document.`,
+        });
+      }
+      // a marker is a number or a letter; punctuation means a half-written field
+      const marker = typeof p === "string" ? "" : p.exhibit_marker;
+      if (marker && !/^[\w֐-׿]+$/.test(String(marker).trim())) {
+        errors.push({
+          type: "truncated_output",
+          detail: `sections[${i}].paragraphs[${j}].exhibit_marker is "${marker}", which is not a usable exhibit number.`,
+        });
+      }
+    });
+  });
+
+  if (!g.sections || g.sections.length === 0) {
+    errors.push({ type: "truncated_output", detail: "the answer has no sections at all" });
+  }
+  for (const field of ["closing", "signature_line"]) {
+    if (empty(g[field])) {
+      errors.push({
+        type: "truncated_output",
+        detail: `${field} is empty — the pleading has no ending. Generation stopped early.`,
+      });
+    }
+  }
+  for (const field of ["sources_used", "rubric_coverage"]) {
+    if (!Array.isArray(g[field]) || g[field].length === 0) {
+      errors.push({
+        type: "truncated_output",
+        detail: `${field} is empty — generation stopped before completing the answer.`,
+      });
+    }
+  }
+  return errors;
+}
+
 async function generateAnswer({
   question,
   bank,
@@ -206,7 +360,8 @@ async function generateAnswer({
   params: paramsOverride = {},
 }) {
   const client = getClient();
-  const params = mergeParams(paramsOverride);
+  const params = mergeAnswerParams(paramsOverride);
+  const systemPrompt = buildAnswerSystemPrompt(params.authoring);
 
   const stable = JSON.stringify(
     {
@@ -236,7 +391,7 @@ async function generateAnswer({
   const stream = client.messages.stream({
     model: params.model.id,
     max_tokens: params.model.max_tokens,
-    system: [{ type: "text", text: CORE_RULES }, stableBlock],
+    system: [{ type: "text", text: systemPrompt }, stableBlock],
     output_config: {
       effort: params.model.effort,
       format: { type: "json_schema", schema: ANSWER_SCHEMA },
@@ -268,12 +423,21 @@ async function generateAnswer({
   const validation = validateGenerated(generated, bank, {
     forbiddenTerms: params.validation.enforce_forbidden_terms ? forbiddenTerms : [],
     shingleSize: params.validation.leak_shingle_size,
+    misquoteWindow: params.validation.misquote_window,
+    misquoteMaxEdits: params.validation.misquote_max_edits,
   });
 
-  const foreign = findForeignCitations(
-    generated,
-    foreignCitations(exemplars.map((e) => e.text || ""), bank)
-  );
+  for (const e of findIncompleteAnswer(generated)) {
+    validation.ok = false;
+    validation.errors.push(e);
+  }
+
+  const foreign = params.validation.reject_foreign_citations
+    ? findForeignCitations(
+        generated,
+        foreignCitations(exemplars.map((e) => e.text || ""), bank)
+      )
+    : [];
   if (foreign.length) {
     validation.ok = false;
     validation.errors.push(...foreign);
@@ -286,9 +450,11 @@ async function generateAnswer({
     usage: message.usage,
     meta: {
       model: params.model.id,
-      prompt_version: PROMPT_VERSION,
+      prompt_version: params.generation.prompt_version,
       effort: params.model.effort,
       max_tokens: params.model.max_tokens,
+      leak_shingle_size: params.validation.leak_shingle_size,
+      authoring: params.authoring,
       question_external_id: question.external_id,
     },
   };
@@ -296,6 +462,10 @@ async function generateAnswer({
 
 module.exports = {
   generateAnswer,
+  findIncompleteAnswer,
+  mergeAnswerParams,
+  buildAnswerSystemPrompt,
+  DEFAULT_ANSWER_PARAMS,
   foreignCitations,
   findForeignCitations,
   PROMPT_VERSION,

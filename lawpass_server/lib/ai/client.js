@@ -19,7 +19,15 @@ function getClient() {
     );
   }
 
-  client = new Anthropic({ apiKey });
+  client = new Anthropic({
+    apiKey,
+    // 529 "overloaded" is transient and retryable. The default of 2 retries is
+    // thin for these calls: a generation runs for minutes, so losing one to a
+    // brief capacity dip means starting the whole thing over.
+    maxRetries: 6,
+    // Long thinking + a long answer can exceed the default request timeout.
+    timeout: 15 * 60 * 1000,
+  });
   return client;
 }
 

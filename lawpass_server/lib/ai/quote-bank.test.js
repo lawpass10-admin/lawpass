@@ -51,19 +51,67 @@ test("unknown placeholder is rejected, not silently dropped", () => {
   assert.strictEqual(errors[0].type, "unknown_placeholder");
 });
 
-test("a model that retypes quote text is caught", () => {
-  // a genuine 12-word run lifted out of V1 — exactly the failure mode we fear
+test("verbatim source text is detected", () => {
   const lifted = V1.text.split(" ").slice(0, 12).join(" ");
   const leaks = findQuoteLeaks(lifted, bank);
   assert.strictEqual(leaks.length, 1);
   assert.strictEqual(leaks[0].quote_id, "V1");
+});
 
-  const { ok, errors } = validateGenerated(
+test("a word-for-word reproduction passes, and is recorded as verified", () => {
+  // Accurate law. Rejecting it threw away correct work; it is recorded instead
+  // so a reviewer can see which spans came from the source.
+  const lifted = V1.text.split(" ").slice(0, 12).join(" ");
+  const { ok, errors, verified } = validateGenerated(
     { legal_topic_analysis: `כפי שנפסק, ${lifted}` },
     bank
   );
+  assert.deepStrictEqual(errors, []);
+  assert.strictEqual(ok, true);
+  assert.strictEqual(verified.length, 1);
+  assert.strictEqual(verified[0].quote_id, "V1");
+});
+
+test("a MISQUOTE — the holding with one word altered — is rejected", () => {
+  // The dangerous case: it reads as binding authority but misstates it.
+  const altered = V1.text.replace("חריג", "נדיר");
+  const { ok, errors } = validateGenerated({ analysis: altered }, bank);
   assert.strictEqual(ok, false);
-  assert.ok(errors.some((e) => e.type === "quote_leak"));
+  const m = errors.find((e) => e.type === "misquote");
+  assert.ok(m, "an altered holding must be rejected");
+  assert.match(m.detail, /V1/);
+});
+
+test("a connective joined to a quote is not mistaken for a misquote", () => {
+  // "וסילוק" for "סילוק" differs only at the window edge — normal legal writing.
+  const joined = "ו" + V1.text.slice(V1.text.indexOf("סילוק"));
+  const { ok, errors } = validateGenerated({ analysis: joined }, bank);
+  assert.deepStrictEqual(errors, []);
+  assert.strictEqual(ok, true);
+});
+
+test("lead-in words before a quotation are not a misquote", () => {
+  // The real false positive: the model wrote its own "...במועד זה, וכי" before
+  // reproducing the holding. Those differ from the source's "...תומכים בכך",
+  // but they sit outside the quotation, not inside it.
+  const holding = V1.text.slice(V1.text.indexOf("סילוק"));
+  const { ok, errors } = validateGenerated(
+    { analysis: `אף אם הנתבע כלל לא ידע עליה במועד זה, וכי ${holding}` },
+    bank
+  );
+  assert.deepStrictEqual(errors, []);
+  assert.strictEqual(ok, true);
+});
+
+test("a genuine paraphrase is left alone", () => {
+  const { ok } = validateGenerated(
+    {
+      analysis:
+        "סילוק על הסף שמור למקרים נדירים בלבד, שכן הוא חוסם את דרכו של תובע לבית המשפט",
+    },
+    bank
+  );
+  assert.strictEqual(ok, true);
 });
 
 test("the same content via a placeholder passes", () => {

@@ -8,39 +8,46 @@
     "lib/ai/generate-open-question.js because weakening them would silently",
     "break quote fidelity instead of failing loudly."
   ],
-
   "version": 1,
-
   "model": {
     "id": "claude-opus-5",
     "max_tokens": 24000,
     "effort": "low"
   },
-
   "generation": {
     "prompt_version": "open-question-angle/2",
     "prompt_cache": true
   },
-
   "authoring": {
     "difficulty": "match_source",
     "fact_pattern_length": "match_source",
     "setting_variety": "Vary the milieu between angles — workplace, commercial, municipal, family, road-accident — rather than reusing the source's social setting.",
-    "register": "",
-    "extra_instructions": "Build the facts so that distinguishing ת\"א 2233-14 (V3) is the hardest part of the answer: the defendant must have a genuinely arguable reliance claim, not a weak one."
-
+    "register": "SCOPE THIS TO THE SCENARIO ONLY. Write fact_pattern in plain, everyday Hebrew — the way a client actually tells the story when they walk into the office. Short sentences, ordinary words, concrete human detail (what was said, what it cost, who stopped answering the phone). Do not name the legal doctrine, do not analyse, do not signpost which source applies: the candidate's job is to spot that. Use a legal term only where the facts genuinely require one (כתב הגנה, בקשה לסילוק על הסף, המצאה) and then use it plainly, without explaining it. Everything else — task_instructions, legal_topic_analysis, model_answer_outline, common_pitfall — stays in precise legal Hebrew.",
+    "extra_instructions": "Build the facts so that distinguishing ת\"א 2233-14 (V3) is the hardest part of the answer: the defendant must have a genuinely arguable reliance claim, not a weak one. Keep the dates, sums and intervals exact even though the telling is casual — the arithmetic is the question. WORDING: introduce every specific calendar date with בתאריך, never with ביום — write \"בתאריך 12.3.2019\", not \"ביום 12.3.2019\". This applies wherever a date appears: fact_pattern, timeline events, task_instructions and the analysis fields. Leave the fixed expression בו ביום (meaning 'that same day') alone — it carries no date and must not be rewritten."
   },
-
   "validation": {
     "leak_shingle_size": 7,
-    "enforce_forbidden_terms": true
+    "enforce_forbidden_terms": true,
+    "misquote_window": 12,
+    "misquote_max_edits": 2,
+    "misquote_min_flank": 4
   },
-
   "forbidden_terms": {
-    "2025-D-W-Q1": ["ריף", "ימאי", "גל", "דקר", "שונית"],
-    "2025-D-W-Q2": ["שושנה", "חבצלת", "שרוני", "שלמה", "חוח"]
+    "2025-D-W-Q1": [
+      "ריף",
+      "ימאי",
+      "גל",
+      "דקר",
+      "שונית"
+    ],
+    "2025-D-W-Q2": [
+      "שושנה",
+      "חבצלת",
+      "שרוני",
+      "שלמה",
+      "חוח"
+    ]
   },
-
   "_options": {
     "model.id": "any current Claude model id; claude-opus-5 recommended for legal Hebrew",
     "model.max_tokens": "hard ceiling on thinking + answer together. Raise if output truncates",
@@ -50,6 +57,9 @@
     "authoring.fact_pattern_length": "match_source | shorter | longer",
     "authoring.register": "free text, e.g. 'formal, third person, no humour'",
     "authoring.extra_instructions": "free text appended to the prompt — the main tweaking knob",
-    "validation.leak_shingle_size": "consecutive words from a source that count as a leak. Lower = stricter"
+    "validation.leak_shingle_size": "consecutive words matching a source that count as a quotation. Exact matches are ALLOWED and recorded as verified — they are accurate law",
+    "validation.misquote_window": "words compared when hunting a misquotation (default 12)",
+    "validation.misquote_max_edits": "how many altered words still count as a misquotation rather than a paraphrase (default 2). This is the check that REJECTS: a holding reproduced with a word changed reads as binding authority while misstating it",
+    "validation.misquote_min_flank": "matching source words required on BOTH sides of an altered word (default 4). This is what separates an altered quote from the writer's own words wrapping a short phrase — lowering it causes false rejections"
   }
 }

@@ -60,7 +60,7 @@ HEBREW = "֐-׿"
 # Characters that legitimately appear besides Hebrew: ASCII, punctuation, dashes.
 # Includes the targets of GLYPH_REPAIRS — otherwise a repaired character gets
 # re-flagged as suspicious on the very next check.
-EXPECTED_EXTRA = set("–—‘’“”…€₪°×•§¶") | set(GLYPH_REPAIRS.values())
+EXPECTED_EXTRA = set("–—‘’“”…€₪°×•§¶·") | set(GLYPH_REPAIRS.values())
 
 
 def strip_bidi(text: str) -> str:
@@ -215,10 +215,29 @@ def find_reversed_numbers(text: str):
 # Poppler renders "שאלה 1:" as "שאלה :1" (the colon crosses the RTL boundary).
 QUESTION_MARKER = re.compile(r"שאלה\s*:?\s*(\d+)\s*:?")
 
-# The attached sources always follow the answer-limit sentence that closes the
-# task instructions. Anchoring on this is far more reliable than hunting for
-# citations, because the fact pattern itself cites case numbers (e.g. "ת״א 1234-03-26").
-SOURCES_ANCHOR = re.compile(r"תשובתך\s+מוגבלת[^.]*\.")
+# Where the attached sources begin. Anchoring on a marker is far more reliable
+# than hunting for citations, because the fact pattern itself cites case numbers
+# (e.g. "ת״א 1234-03-26").
+#
+# Two layouts seen so far:
+#   Bar Association papers close the task with an answer-limit sentence.
+#   Other papers use an explicit "המקורות המשפטיים" heading.
+#
+# Note "המקורות המצורפים" is NOT usable — it appears inside the task instructions
+# themselves ("יש לבסס אך ורק על המקורות המצורפים") and would cut in the wrong place.
+SOURCES_ANCHORS = [
+    re.compile(r"תשובתך\s+מוגבלת[^.]*\."),
+    re.compile(r"^[ \t]*ה?מקורות\s+(?:ה)?משפטיים[ \t]*:?[ \t]*$", re.MULTILINE),
+]
+
+
+def find_sources_anchor(text: str):
+    """First anchor that matches, so the Bar layout keeps priority."""
+    for rx in SOURCES_ANCHORS:
+        m = rx.search(text)
+        if m:
+            return m
+    return None
 
 # "מתוך" optionally precedes a statute/regulation heading.
 # The leading boundary is essential: without it "תא" matches the tail of פלוגתא
@@ -226,7 +245,8 @@ SOURCES_ANCHOR = re.compile(r"תשובתך\s+מוגבלת[^.]*\.")
 CITATION_START = re.compile(
     r"(?:(?<=^)|(?<=\s))(?:מתוך\s+)?("
     r"חוק\s|תקנות\s|פקודת\s|צו\s|"
-    r'ע"א\s|רע"א\s|ת"א\s|תא\s|בג"ץ\s|בש"א\s|רע"פ\s|ע"פ\s|ה"פ\s|תמ"ש\s|בר"ע\s|דנ"א\s|ע"ר\s'
+    r'ע"א\s|רע"א\s|ת"א\s|תא\s|בג"ץ\s|בג"צ\s|בש"א\s|רע"פ\s|ע"פ\s|ה"פ\s|תמ"ש\s|בר"ע\s|דנ"א\s|ע"ר\s|'
+    r'עת"ם\s|עע"ם\s|עמ"נ\s|עת"א\s'
     r")"
 )
 
@@ -291,13 +311,33 @@ def segment(pages, exam_id):
             page_of.setdefault(int(m.group(1)), pno)
 
     marks = list(QUESTION_MARKER.finditer(full))
-    if not marks:
+
+    # A paper carrying a single question often has no "שאלה N" header at all. If
+    # it still has a sources marker it is a question paper, so treat the whole
+    # document as question 1 rather than giving up.
+    single = None
+    if not marks and find_sources_anchor(full):
+        warnings.append(
+            "no 'שאלה N' header found, but a sources marker is present — treating the "
+            "whole document as a single question."
+        )
+        single = True
+    elif not marks:
         warnings.append(
             "no 'שאלה N' markers found — this does not look like an exam question paper "
             "(a model answer or rubric?). The cleaned per-page text in `pages` is still "
             "correct and is the useful output here; `questions`/`quotes` are empty."
         )
         return [], [], warnings, ""
+
+    if single:
+        # one synthetic mark covering the whole document
+        class _M:
+            def __init__(self, t): self._t = t
+            def group(self, _): return "1"
+            def start(self): return 0
+            def end(self): return 0
+        marks = [_M(full)]
 
     lead = full[: marks[0].start()].strip().splitlines()
     global_instructions = next(
@@ -312,13 +352,13 @@ def segment(pages, exam_id):
 
         # The sources begin after the answer-limit sentence, which may sit
         # mid-line. Anything before it is the scenario + task instructions.
-        anchor = SOURCES_ANCHOR.search(fold(body))
+        anchor = find_sources_anchor(fold(body))
         if anchor:
             prose, sources_region = body[: anchor.end()], body[anchor.end():]
         else:
             prose, sources_region = body, ""
             warnings.append(
-                f"{external_id}: answer-limit sentence not found — sources could not be separated"
+                f"{external_id}: no sources marker found (neither the answer-limit sentence nor a \"המקורות המשפטיים\" heading) — sources could not be separated"
             )
 
         prose = prose.strip()

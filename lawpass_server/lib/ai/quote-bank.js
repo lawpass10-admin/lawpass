@@ -11,9 +11,14 @@
 // So fidelity is structural, not probabilistic: the quote text in the output is
 // the same bytes we read out of the PDF, because the model never typed it.
 //
-// Two failure modes are guarded:
-//   1. an unknown placeholder id            -> render throws
-//   2. the model retyping a quote inline    -> findQuoteLeaks flags it
+// Source text in the output is always one of three things:
+//   1. substituted from a placeholder  -> safe by construction
+//   2. byte-identical to the bank      -> verified, recorded, allowed through
+//   3. almost identical to the bank    -> a MISQUOTATION, rejected
+//
+// (3) is the case that matters. A holding reproduced perfectly is correct law; a
+// holding reproduced with one word changed reads as binding authority while
+// misstating it. An unknown placeholder id makes render throw.
 
 const TOKEN = /\{\{\s*([A-Za-z][A-Za-z0-9_]*)\s*(\.text)?\s*\}\}/g;
 
@@ -112,6 +117,72 @@ function findQuoteLeaks(str, bank, shingleSize = 7) {
   return leaks;
 }
 
+/**
+ * Find spans that are ALMOST a source quote — the source's sentence with a word
+ * swapped inside it.
+ *
+ * This is the dangerous case, and the exact-match check cannot see it. A model
+ * that reproduces a holding perfectly has produced correct law; one that
+ * reproduces it with a word altered has produced a misquotation of binding
+ * authority, which is worse than no quotation at all.
+ *
+ * The altered word must fall in the window's INTERIOR. A difference at the edge
+ * is nearly always a connective joining the quote into the surrounding sentence
+ * — "וסילוק" for "סילוק" — and flagging those would reject correct writing.
+ *
+ * Detects substitutions, not insertions or deletions: an inserted word shifts
+ * every position after it, which reads as wholesale difference rather than as a
+ * near-miss. Substitution is the realistic failure mode for a recalled holding.
+ */
+function findMisquotes(str, bank, options = {}) {
+  const { windowSize = 12, maxEdits = 2, minFlank = 4 } = options;
+
+  let candidate = String(str).replace(TOKEN, " ");
+  for (const q of bank) {
+    const cite = normalize(q.citation);
+    if (cite) candidate = normalize(candidate).split(cite).join(" ");
+  }
+  const cw = words(candidate);
+  if (cw.length < windowSize) return [];
+
+  const hits = [];
+  for (const q of bank) {
+    const qw = words(q.text);
+    if (qw.length < windowSize) continue;
+
+    let found = null;
+    for (let i = 0; i + windowSize <= cw.length && !found; i++) {
+      for (let j = 0; j + windowSize <= qw.length; j++) {
+        const diffs = [];
+        for (let k = 0; k < windowSize; k++) {
+          if (cw[i + k] !== qw[j + k]) {
+            diffs.push(k);
+            if (diffs.length > maxEdits) break;
+          }
+        }
+        if (diffs.length === 0 || diffs.length > maxEdits) continue;
+
+        // An alteration of the quote sits INSIDE a long matching run: several of
+        // the source's words on one side, several on the other. Differences near
+        // either edge are the surrounding sentence — the words leading into the
+        // quotation, or out of it — and flagging those rejects correct writing.
+        if (diffs[0] < minFlank) continue;
+        if (diffs[diffs.length - 1] > windowSize - 1 - minFlank) continue;
+
+        found = {
+          quote_id: q.id,
+          edits: diffs.length,
+          written: cw.slice(i, i + windowSize).join(" "),
+          source: qw.slice(j, j + windowSize).join(" "),
+        };
+        break;
+      }
+    }
+    if (found) hits.push(found);
+  }
+  return hits;
+}
+
 /** Walk every string in the tree, applying fn(path, value). */
 function walkStrings(value, fn, path = "") {
   if (typeof value === "string") {
@@ -126,13 +197,31 @@ function walkStrings(value, fn, path = "") {
 }
 
 /**
- * Gate a generated question before anything downstream touches it.
- * Returns { ok, errors } — never throws on model output, only on programmer error.
+ * Gate generated output before anything downstream touches it.
+ *
+ * Returns { ok, errors, verified } — never throws on model output, only on
+ * programmer error.
+ *
+ * On source text the rule is: substituted, or verified, or rejected.
+ *   - a placeholder is substituted from the bank        -> safe by construction
+ *   - a span that matches the bank exactly is verified  -> safe, and recorded
+ *   - a span that ALMOST matches is a misquotation      -> rejected
+ *
+ * Rejecting exact matches (the old behaviour) had it backwards: it threw away
+ * correct work while leaving the one genuinely dangerous case — a holding
+ * reproduced with a word altered — completely undetected.
  */
 function validateGenerated(generated, bank, options = {}) {
-  const { forbiddenTerms = [], shingleSize = 7 } = options;
+  const {
+    forbiddenTerms = [],
+    shingleSize = 7,
+    misquoteWindow = 12,
+    misquoteMaxEdits = 2,
+    misquoteMinFlank = 4,
+  } = options;
   const knownIds = new Set(bank.map((q) => q.id));
   const errors = [];
+  const verified = [];
 
   // 1. every placeholder resolves
   for (const id of collectTokenIds(generated)) {
@@ -141,12 +230,32 @@ function validateGenerated(generated, bank, options = {}) {
     }
   }
 
-  // 2. no quote text was retyped
+  // 2. source text reproduced verbatim — correct, but record it for review
   walkStrings(generated, (path, value) => {
     for (const leak of findQuoteLeaks(value, bank, shingleSize)) {
+      verified.push({
+        type: "verified_quotation",
+        quote_id: leak.quote_id,
+        path,
+        detail: `${path} reproduces ${leak.quote_id} word for word: "${leak.excerpt}" — byte-identical to the bank, so it is accurate`,
+      });
+    }
+  });
+
+  // 3. source text reproduced ALMOST verbatim — a misquotation of binding authority
+  walkStrings(generated, (path, value) => {
+    for (const m of findMisquotes(value, bank, {
+      windowSize: misquoteWindow,
+      maxEdits: misquoteMaxEdits,
+      minFlank: misquoteMinFlank,
+    })) {
       errors.push({
-        type: "quote_leak",
-        detail: `${path} reproduces ${leak.quote_id} inline instead of using {{${leak.quote_id}.text}}: "${leak.excerpt}"`,
+        type: "misquote",
+        detail:
+          `${path} misquotes ${m.quote_id} (${m.edits} word(s) changed).\n` +
+          `      wrote : "${m.written}"\n` +
+          `      source: "${m.source}"\n` +
+          `      Use {{${m.quote_id}.text}} to quote it, or paraphrase further from the source's wording.`,
       });
     }
   });
@@ -167,7 +276,7 @@ function validateGenerated(generated, bank, options = {}) {
     });
   }
 
-  return { ok: errors.length === 0, errors };
+  return { ok: errors.length === 0, errors, verified };
 }
 
 /** Substitute placeholders across the whole tree, returning a rendered copy. */
@@ -184,6 +293,7 @@ function renderGenerated(generated, bank) {
 
 module.exports = {
   buildBank,
+  findMisquotes,
   bankForPrompt,
   renderTokens,
   renderGenerated,

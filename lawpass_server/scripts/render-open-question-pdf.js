@@ -171,17 +171,24 @@ function main() {
   if (!question) {
     throw new Error("no question found in the input file");
   }
+  // A core question is rendered from its own file and has no parent, so fall
+  // back to its own id rather than failing.
   const sourceId =
-    payload.generated_from?.source_external_id || payload.source_external_id;
+    payload.generated_from?.source_external_id ||
+    payload.source_external_id ||
+    question.parent_question_id ||
+    question.external_id;
   const bank = buildBank(sourceData.quotes, sourceId);
 
   // The id is Latin/digits inside an RTL line — isolate it, or bidi reorders it
   // on screen (the same class of bug that corrupted the source PDF's case number).
+  const isCore = question.origin === "core";
   const isDraft = Boolean(payload.questions);
   const state = isDraft ? "טיוטה לבדיקה" : "לא אושרה";
-  const label =
-    `שאלת תרגול · נוצרה אוטומטית · ${state} · ` +
-    `מבוססת על <bdi dir="ltr">${esc(sourceId)}</bdi>`;
+  const label = isCore
+    ? `שאלה מקורית · הנוסח כלשונו במסמך המקור · <bdi dir="ltr">${esc(sourceId)}</bdi>`
+    : `שאלת תרגול · נוצרה אוטומטית · ${state} · ` +
+      `מבוססת על <bdi dir="ltr">${esc(sourceId)}</bdi>`;
 
   const html = buildHtml({ question, bank, label });
 

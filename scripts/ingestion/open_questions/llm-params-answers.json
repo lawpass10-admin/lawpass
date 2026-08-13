@@ -1,0 +1,72 @@
+{
+  "_readme": [
+    "Tunable settings for ANSWER generation (scripts/generate-open-answer.js).",
+    "Question generation has its own file: llm-params.json.",
+    "",
+    "Each section appears EXACTLY ONCE. Edit values in place — do not paste a",
+    "whole section inside another one.",
+    "",
+    "Anything omitted here falls back to llm-params.json, so you only need to",
+    "state what should differ for answers.",
+    "",
+    "The authoring.* entries below encode the marking rules taken from a reviewed",
+    "answer. Each is free text: edit the wording to change the rule.",
+    "",
+    "NOT tunable here, by design: the quote-locking rules and the ban on citing",
+    "authorities that were not attached to the question. Both live in",
+    "lib/ai/generate-open-answer.js because weakening them would produce a",
+    "confidently wrong answer with no visible error."
+  ],
+  "version": 1,
+  "model": {
+    "id": "claude-opus-5",
+    "max_tokens": 40000,
+    "effort": "high"
+  },
+  "generation": {
+    "prompt_version": "open-answer/2",
+    "prompt_cache": true
+  },
+  "authoring": {
+    "header_block": "RULE 1 — every answer opens with the caption block. The court name, the case number, then the two parties: OUR CLIENT FIRST labelled המשיב/התובע, a centred -נגד-, then the other side labelled המבקש/הנתבע. Take both names from the question's facts. Leave the advocate's own details as ??? placeholders — ב\"כ עו\"ד ??? (מ\"ר ???) מרחוב ??? טל': ???; פקס: ???; דוא\"ל: ??? — the candidate fills those in. Beneath the parties give מועד המצאת הבקשה and מועד אחרון להגשת תגובה, using the dates the question states and ??? where it does not. Then the underlined title of the pleading.",
+    "facts_discipline": "RULE 2 — the עובדות section carries only facts the legal argument needs. Every superfluous detail costs marks: if a passer-by noted the licence plate and nothing turns on it, leave it out. State what happened to our client, what it required of him, and what documents prove it.",
+    "exhibits_style": "RULE 2 (cont.) — where a fact rests on a document, put the exhibit line immediately beneath that paragraph, in this exact form: העתק <what the document shows> מצ\"ב כנספח <N>. Number the exhibits in order of first appearance. Never gather exhibits into a list at the end — an exhibit with no anchor in the text loses marks.",
+    "party_perspective": "RULE 3 — the pleading is written on behalf of our client alone. Refer to him as המשיב throughout and to the other side as המבקש, consistently. Describe the other side's position only as far as is needed to answer it; never add background, motive or colour about המבקש that the facts do not require.",
+    "argument_pattern": "RULE 4 — build each legal point in three short moves, not one long passage. (1) State the rule and give the source a short name: בהתאם לסעיף 5 לחוק ההתיישנות, תשי\"ח-1958 (להלן: \"חוק ההתיישנות\"), תקופת ההתיישנות... (2) State what the authority held, in ONE sentence of your own words: ברע\"א 123-23 אמנון נ' סלמון (להלן: \"עניין אמנון\") קבע בית המשפט כי... (3) Apply it in a fresh paragraph opening with בענייננו, ending in the consequence: רק בשל כך יש לדחות את הבקשה. One statement of the holding serves both the statute and the case — do not cite the point twice, and do not reproduce long stretches of the source. Once a short name is defined, use it thereafter.",
+    "adverse_authority": "RULE 5 — an authority attached to the question is material that must be made to serve our client. Never write that our client relies on an authority that helps the other side, and never assert as fact anything the question's facts do not state. Where an authority cuts against us, introduce it with its short name, say briefly what was decided there, then open a new paragraph with אלא שענייננו שונה לחלוטין מ<short name> מהטעמים הבאים: and enumerate the distinctions ראשית, שנית, שלישית — closing with ואם לא די בכל אלה where a final point remains.",
+    "register": "",
+    "structure": "Follow the exemplars: the caption block, then הרקע/העובדות, then הטענות המשפטיות with a bold sub-heading per argument, then לסיכום with the relief sought. Number the paragraphs continuously.",
+    "citation_style": "Cite each authority in full the first time it appears, exactly as printed in the question, and define a short name in brackets at that point. Use the short name afterwards. A placeholder already carries the whole citation including any section number — write בהתאם ל{{L1}} and never בהתאם לסעיף 5 ל{{L1}}, which would print the section twice.",
+    "length": "match_exemplars",
+    "extra_instructions": ""
+  },
+  "validation": {
+    "leak_shingle_size": 7,
+    "enforce_forbidden_terms": true,
+    "reject_foreign_citations": true,
+    "misquote_window": 12,
+    "misquote_max_edits": 2,
+    "misquote_min_flank": 4
+  },
+  "_options": {
+    "model.effort": "low | medium | high | xhigh | max — answers are longer than questions, so this costs more",
+    "generation.prompt_cache": "true caches the rubric + exemplars prefix; the 2nd answer onward is much cheaper",
+    "authoring.header_block": "RULE 1 — the caption block at the top of every answer",
+    "authoring.facts_discipline": "RULE 2 — what belongs in the facts section and what loses marks",
+    "authoring.exhibits_style": "RULE 2 — the נספח line format and where it sits",
+    "authoring.party_perspective": "RULE 3 — whose side the pleading is written from",
+    "authoring.argument_pattern": "RULE 4 — rule / holding / application, short, with defined short names",
+    "authoring.adverse_authority": "RULE 5 — how to handle an authority that cuts against the client",
+    "authoring.register": "free text — the voice of the pleading",
+    "authoring.structure": "free text — which sub-headings and in what order",
+    "authoring.citation_style": "free text — how authorities are introduced and repeated",
+    "authoring.length": "match_exemplars | shorter | longer",
+    "authoring.extra_instructions": "free text appended last — the general-purpose knob",
+    "validation.leak_shingle_size": "consecutive words matching a source that count as a quotation. Exact matches are ALLOWED and recorded as verified — they are accurate law",
+    "validation.reject_foreign_citations": "reject an answer citing an authority from the exemplar answers rather than this question's own sources. Leave true.",
+    "validation.misquote_window": "words compared when hunting a misquotation (default 12)",
+    "validation.misquote_max_edits": "how many altered words still count as a misquotation rather than a paraphrase (default 2). This is the check that REJECTS: a holding reproduced with a word changed reads as binding authority while misstating it",
+    "model.max_tokens": "thinking + answer share this budget. Answers are long; 24000 truncated a real run, so 40000 is the floor at effort=high",
+    "validation.misquote_min_flank": "matching source words required on BOTH sides of an altered word (default 4). This is what separates an altered quote from the writer's own words wrapping a short phrase — lowering it causes false rejections"
+  }
+}

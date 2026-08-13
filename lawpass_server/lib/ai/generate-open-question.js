@@ -25,7 +25,12 @@ const DEFAULT_PARAMS = {
     register: "",
     extra_instructions: "",
   },
-  validation: { leak_shingle_size: 7, enforce_forbidden_terms: true },
+  validation: {
+    leak_shingle_size: 7,
+    enforce_forbidden_terms: true,
+    misquote_window: 8,
+    misquote_max_edits: 2,
+  },
   forbidden_terms: {},
 };
 
@@ -66,7 +71,7 @@ RIGHT — the same sentence, both halves delegated:
 
 Default to the citation form {{V1}} on its own and state the legal rule in your own words. Reach for {{V1.text}} only where the exact wording is what the argument turns on.
 
-This is checked mechanically: output containing seven consecutive words from any source is rejected in full and nothing is saved. The check does not care whether your reproduction was accurate — the point is that the source's words come from storage, never from you.
+This is checked mechanically. Reproducing a source's wording exactly is accepted and recorded — it is accurate. Reproducing it ALMOST exactly, with a word altered, is rejected outright: a holding that reads as binding authority but misstates it is worse than no quotation at all. If you are not certain of the wording, use the placeholder or paraphrase properly, in clearly different words.
 
 ## What to preserve
 
@@ -260,6 +265,8 @@ async function generateAngle({
   const validation = validateGenerated(generated, bank, {
     forbiddenTerms: params.validation.enforce_forbidden_terms ? forbiddenTerms : [],
     shingleSize: params.validation.leak_shingle_size,
+    misquoteWindow: params.validation.misquote_window,
+    misquoteMaxEdits: params.validation.misquote_max_edits,
   });
   const rendered = validation.ok ? renderGenerated(generated, bank) : null;
 

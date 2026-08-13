@@ -31,6 +31,10 @@ const envFile = [
 if (envFile) dotenv.config({ path: envFile });
 
 const { buildBank } = require("../lib/ai/quote-bank");
+const { startTimer, mmss } = require("../lib/progress");
+
+// Stamped at load, so even a run that dies reports how long it cost.
+const RUN_STARTED = Date.now();
 const {
   generateAngle,
   mergeParams,
@@ -215,7 +219,7 @@ async function main() {
   );
   console.log(`\ngenerating with ${effective.model.id} — this can take a few minutes...\n`);
 
-  const started = Date.now();
+  const stopTimer = startTimer("generating");
   const result = await generateAngle({
     source,
     bank,
@@ -224,11 +228,11 @@ async function main() {
     existingAngles,
     params,
   });
-  const seconds = Math.round((Date.now() - started) / 1000);
+  const seconds = stopTimer();
 
   const u = result.usage || {};
   console.log(
-    `done in ${seconds}s — in ${u.input_tokens ?? "?"} | ` +
+    `model call: ${mmss(seconds * 1000)} (${seconds}s) — in ${u.input_tokens ?? "?"} | ` +
       `cache write ${u.cache_creation_input_tokens ?? 0} | ` +
       `cache read ${u.cache_read_input_tokens ?? 0} | ` +
       `out ${u.output_tokens ?? "?"} tokens\n`
@@ -263,6 +267,7 @@ async function main() {
       console.error(`  [${e.type}] ${e.detail}`);
     }
     console.error(`\noutput saved for inspection: ${rejectedPath}`);
+    console.error(`total time: ${mmss(Date.now() - RUN_STARTED)}`);
     process.exit(1);
   }
 
@@ -273,6 +278,7 @@ async function main() {
       source_external_id: sourceId,
       source_file: path.basename(jsonPath),
       ...result.meta,
+      usage: u,
       generated_at: new Date().toISOString(),
     },
     questions: [
@@ -302,9 +308,11 @@ async function main() {
   console.log("\n== ניתוח (עם המקורות המשובצים) ==\n" + r.legal_topic_analysis);
   console.log("─".repeat(72));
   console.log(`\nwritten to ${outPath}`);
+  console.log(`total time: ${mmss(Date.now() - RUN_STARTED)}`);
 }
 
 main().catch((err) => {
   console.error(err.message || err);
+  console.error(`total time: ${mmss(Date.now() - RUN_STARTED)}`);
   process.exit(1);
 });
