@@ -87,6 +87,37 @@ test("a truncated answer is rejected, a complete one passes", () => {
   assert.ok(bad.some((e) => /closing is empty/.test(e.detail)));
 });
 
+test("a חוות דעת is not rejected for having no signature block", () => {
+  // The official 2021 winter answer to question 2 is an opinion for the client,
+  // not a filed pleading: no court, no parties, no relief, no signature, ending
+  // at מסקנות. The pleading tail check would otherwise reject it as truncated.
+  const para = { text: "טקסט", exhibit_description: "", exhibit_marker: "" };
+  const opinion = {
+    document_type: "חוות דעת בעניין עיכוב ביצוע פסק הדין",
+    court: "",
+    sections: [
+      { heading: "רקע ועובדות המקרה", paragraphs: [para] },
+      { heading: "מן הכלל אל הפרט", paragraphs: [para] },
+      { heading: "מסקנות", paragraphs: [para] },
+    ],
+    closing: "",
+    signature_line: "",
+    sources_used: [{}],
+    rubric_coverage: [{}],
+  };
+  assert.deepStrictEqual(findIncompleteAnswer(opinion), [], "an opinion must pass");
+
+  // A pleading still has to carry both — the relaxation is scoped, not general.
+  const pleading = {
+    ...opinion,
+    document_type: "בקשה לעיכוב הליכים",
+    court: "בבית משפט השלום",
+  };
+  const bad = findIncompleteAnswer(pleading);
+  assert.ok(bad.some((e) => /signature_line is empty/.test(e.detail)));
+  assert.ok(bad.some((e) => /closing is empty/.test(e.detail)));
+});
+
 test("a punctuation exhibit marker is treated as truncation", () => {
   // The run also produced "exhibit_marker": "," — a field caught mid-write.
   const g = {

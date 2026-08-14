@@ -19,6 +19,14 @@ defect handled here was found in a real Bar Association paper:
      interleaves RTL runs into unreadable word salad. Poppler applies bidi
      correctly, so pdftotext is the extractor and PyMuPDF is used only to render
      page images for human review.
+  5. A letter mapped to a glyph poppler DISCARDS. The 2022 winter answer papers
+     map נ to U+00AA, which poppler normalises to a space: "תקנה" comes out as
+     "תק ה" and the letter is gone beyond recovery. Defect 1 is loud (you see ð);
+     this one is silent. Extraction warns when a very common letter is missing
+     from the whole document; --glyph-boxes then re-extracts from PyMuPDF word
+     boxes, which keep the glyph, and rebuilds reading order geometrically
+     (group by line, then right-to-left) instead of trusting either extractor's
+     span order.
 
 WHAT IT GUARANTEES vs WHAT IT GUESSES
 -------------------------------------
@@ -36,6 +44,7 @@ import json
 import os
 import re
 import shutil
+import statistics
 import subprocess
 import sys
 import tempfile
@@ -53,6 +62,9 @@ BIDI_CONTROLS = dict.fromkeys(
 # correct character against a rendered page image.
 GLYPH_REPAIRS = {
     "ð": "נ",       # U+00F0 — the letter נ in the Bar Association exam papers
+    "ª": "נ",       # U+00AA — the letter נ in the 2022 winter answer papers.
+                    # Poppler turns this one into a space, so it survives only
+                    # on the --glyph-boxes path (defect 5).
     "": "•",  # U+F0B7 — Symbol-font bullet, from Word-generated documents
 }
 
@@ -152,6 +164,122 @@ def extract_pages(pdf_path: Path):
         raw = out.read_text(encoding="utf-8")
 
     return [p for p in raw.split("\f")][:-1] or [raw]
+
+
+def extract_pages_boxes(pdf_path: Path):
+    """
+    Per-page text rebuilt from PyMuPDF word boxes — the fallback for defect 5.
+
+    Poppler is the better extractor whenever it can see the characters at all;
+    this path exists only for fonts whose ToUnicode maps a letter to something
+    poppler drops. PyMuPDF keeps that glyph but orders spans as they are stored,
+    so the order is rebuilt from geometry instead: group boxes into lines by y,
+    then read each line right-to-left.
+
+    The dropped letter also comes back as its OWN word box, so "תקנה" arrives as
+    three boxes. They are re-joined by the gap between them — a real word space
+    is several times wider than the gap between two glyphs of one word, and the
+    split point is taken from the page rather than hard-coded, since it scales
+    with the font size.
+    """
+    try:
+        import fitz  # PyMuPDF
+    except ImportError as exc:
+        raise RuntimeError(
+            "--glyph-boxes needs PyMuPDF (pip install pymupdf)"
+        ) from exc
+
+
+    def lines_of(page, y_tol=3.0):
+        lines = []
+        words = [w for w in page.get_text("words") if w[4].strip()]
+        for w in sorted(words, key=lambda w: (round(w[1], 1), -w[0])):
+            y = (w[1] + w[3]) / 2
+            if lines and abs(lines[-1][0] - y) <= y_tol:
+                lines[-1][1].append(w)
+            else:
+                lines.append([y, [w]])
+        for ln in lines:
+            ln[1].sort(key=lambda w: -w[0])  # RTL: rightmost box first
+            ln[1] = unreverse_latin(ln[1])
+        return [ln[1] for ln in lines]
+
+    def unreverse_latin(ws):
+        """
+        Put embedded Latin runs back into left-to-right order.
+
+        Sorting a line right-to-left is correct for Hebrew but reverses any Latin
+        phrase inside it, turning the respondent's name YAKOV AZAR — which תקנה
+        125 requires in Latin letters — into AZAR YAKOV. Only runs containing
+        Latin LETTERS are flipped back; digit groups are left alone, since a case
+        number's parts are already emitted in their stored order.
+        """
+        out, run = [], []
+        for w in ws:
+            if re.search(r"[A-Za-z]", w[4]):
+                run.append(w)
+            else:
+                out += reversed(run)
+                run = []
+                out.append(w)
+        return out + list(reversed(run))
+
+    def gap(a, b):
+        """Horizontal space between two boxes, whichever of them is on the left."""
+        return max(b[0] - a[2], a[0] - b[2])
+
+    def gap_threshold(lines):
+        gaps = [gap(a, b) for ws in lines for a, b in zip(ws, ws[1:])]
+        positive = sorted(g for g in gaps if g > 0)
+        if not positive:
+            return 0.6
+        # Word spaces dominate the positive gaps, so their median sits inside the
+        # word-space cluster; half of it lands between the two populations.
+        return max(0.6, statistics.median(positive) * 0.5)
+
+    pages = []
+    for page in fitz.open(pdf_path):
+        lines = lines_of(page)
+        if not lines:
+            pages.append("")
+            continue
+        thresh = gap_threshold(lines)
+        out = []
+        for ws in lines:
+            buf = ws[0][4]
+            for a, b in zip(ws, ws[1:]):
+                buf += ("" if gap(a, b) < thresh else " ") + b[4]
+            out.append(buf)
+        pages.append("\n".join(out))
+    return pages
+
+
+# Among the most frequent letters in written Hebrew. A document of any real
+# length containing NONE of one of these did not simply avoid it — its font maps
+# that letter to something the extractor discarded (defect 5).
+COMMON_LETTERS = "אבהילמנרשת"
+
+
+def find_dropped_letters(text: str):
+    """
+    Common Hebrew letters the extractor appears to have dropped.
+
+    Tested by frequency, not by absence. An exam paper sets its trailing
+    boilerplate in a second, intact font, so a few survivors of the dropped
+    letter reach the output and a plain `ch not in text` check passes a document
+    that lost the letter everywhere that matters. Every letter here is common
+    enough that its count stays within a small factor of the others; an order of
+    magnitude below the median means the font ate it.
+    """
+    hebrew_chars = sum(1 for ch in text if re.match(f"[{HEBREW}]", ch))
+    if hebrew_chars < 400:
+        return []  # too short for the frequencies to mean anything
+
+    counts = {ch: text.count(ch) for ch in COMMON_LETTERS}
+    median = statistics.median(counts.values())
+    if median <= 0:
+        return []
+    return [ch for ch, n in counts.items() if n < median * 0.1]
 
 
 def render_page_images(pdf_path: Path, out_dir: Path):
@@ -427,13 +555,24 @@ def main():
     ap.add_argument("--exam-id", help="id prefix for questions, e.g. 2026-S-W (default: derived)")
     ap.add_argument("--images", help="also render page PNGs to this directory for review")
     ap.add_argument("--strict", action="store_true", help="exit non-zero if any warning was raised")
+    ap.add_argument(
+        "--glyph-boxes",
+        action="store_true",
+        help="defect 5: rebuild text from PyMuPDF word boxes instead of poppler. "
+        "Use when extraction warns that a common Hebrew letter is missing.",
+    )
     args = ap.parse_args()
 
     pdf_path = Path(args.pdf).resolve()
     if not pdf_path.exists():
         sys.exit(f"not found: {pdf_path}")
 
-    raw_pages = extract_pages(pdf_path)
+    method = (
+        "PyMuPDF word boxes + geometric RTL reorder + glyph repair (hebrew_pdf_to_json.py --glyph-boxes)"
+        if args.glyph_boxes
+        else "poppler pdftotext + bidi strip + glyph repair (hebrew_pdf_to_json.py)"
+    )
+    raw_pages = extract_pages_boxes(pdf_path) if args.glyph_boxes else extract_pages(pdf_path)
 
     pages, all_warnings = [], []
     repaired_total, unknown_pages = {}, {}
@@ -461,6 +600,19 @@ def main():
 
     all_warnings += find_reversed_numbers("\n".join(pages))
 
+    dropped = find_dropped_letters("\n".join(pages))
+    if dropped:
+        all_warnings.append(
+            f"DEFECT 5: the letter(s) {' '.join(dropped)} appear NOWHERE in this document. "
+            + (
+                "That is not a property of Hebrew — the font maps them to something the "
+                "extractor discards. Re-run with --glyph-boxes."
+                if not args.glyph_boxes
+                else "Still missing on the --glyph-boxes path — check a rendered page image; "
+                "the glyph may need a new entry in GLYPH_REPAIRS."
+            )
+        )
+
     exam_id = args.exam_id or re.sub(r"[^A-Za-z0-9]+", "-", pdf_path.stem)[:24].strip("-")
     questions, quotes, seg_warnings, global_instructions = segment(pages, exam_id)
     all_warnings += seg_warnings
@@ -474,7 +626,7 @@ def main():
             "page_count": len(pages),
             "global_instructions": global_instructions,
             "extraction": {
-                "method": "poppler pdftotext + bidi strip + glyph repair (hebrew_pdf_to_json.py)",
+                "method": method,
                 "warnings": all_warnings,
                 "reviewed": False,
             },

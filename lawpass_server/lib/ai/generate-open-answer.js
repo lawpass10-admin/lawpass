@@ -160,26 +160,64 @@ const ANSWER_SCHEMA = {
   properties: {
     document_type: { type: "string", description: "Hebrew title of the pleading, e.g. תגובה לבקשה לסילוק על הסף" },
     court: { type: "string", description: "Hebrew name of the court" },
-    case_number: { type: "string", description: "The case number from the question" },
+    case_number: {
+      type: "string",
+      description:
+        "The case number from the question, e.g. ת\"א 654-11-22. For an interlocutory " +
+        'application inside an existing case, append the application number: "בקשה מספר ___".',
+    },
     parties: {
       type: "object",
       additionalProperties: false,
-      description: "Our client comes first in the caption block (RULE 1).",
+      description:
+        "RULE 1(b): the caption follows the CASE's party order — plaintiff/petitioner " +
+        "first, then -נגד-, then defendant/respondent — whichever side we act for. " +
+        "Our client is NOT moved to the top.",
       required: ["client_name", "client_role", "opposing_name", "opposing_role"],
       properties: {
-        client_name: { type: "string", description: "Our client, from the question's facts" },
-        client_role: { type: "string", description: "e.g. המשיב/התובע" },
-        opposing_name: { type: "string", description: "The other side, from the question's facts" },
-        opposing_role: { type: "string", description: "e.g. המבקש/הנתבע" },
+        client_name: {
+          type: "string",
+          description:
+            "RULE 1(f): the legal person with standing, and nothing else. Where the " +
+            'company holds the right, this is the COMPANY ALONE — חברת "המטמינים" בע"מ, ' +
+            "ח.פ ??? — never its owner and never the two together (משה איבגי, בעליה של " +
+            'חברת "המטמינים" is wrong). An individual, with ת.ז ???, only where the right ' +
+            "is his. Name and identifier ONLY: the renderer prints באמצעות ב\"כ עו\"ד ??? " +
+            "beneath each party itself, so writing it here prints the advocate's line twice.",
+        },
+        client_role: {
+          type: "string",
+          description:
+            "RULE 1(b): the designation(s) for our client. A pleading that OPENS a " +
+            "proceeding carries one (העותרת, התובע). An interlocutory application " +
+            "inside an existing case carries TWO, separated by a newline: the role in " +
+            'the case then the role in this application — "הנתבעת\\nהמבקשת".',
+        },
+        opposing_name: {
+          type: "string",
+          description: "The other side, from the question's facts. Name only — see client_name.",
+        },
+        opposing_role: {
+          type: "string",
+          description:
+            "RULE 1(b): the matching designation(s), same newline convention — " +
+            'e.g. "המשיבות", or "התובע\\nהמשיב" in an interlocutory application.',
+        },
       },
     },
     service_date: {
       type: "string",
-      description: "מועד המצאת הבקשה — the date from the question, or ??? if it does not say",
+      description:
+        "RULE 1(d): מועד המצאת הבקשה. Only a pleading that RESPONDS to something " +
+        "already served on the client has one. Give the date from the question, or " +
+        '??? if it does not say. For an initiating pleading — an עתירה, a כתב תביעה, ' +
+        'any document that opens the proceeding — return "" and the line is omitted.',
     },
     response_deadline: {
       type: "string",
-      description: "מועד אחרון להגשת תגובה — the date from the question, or ??? if it does not say",
+      description:
+        "RULE 1(d): מועד אחרון להגשת תגובה. Same rule as service_date — the date, " +
+        '??? if the question is silent, or "" for an initiating pleading.',
     },
     opening: { type: "string", description: "The opening sentence stating what the court is asked to do" },
     sections: {
@@ -332,7 +370,14 @@ function findIncompleteAnswer(g) {
   if (!g.sections || g.sections.length === 0) {
     errors.push({ type: "truncated_output", detail: "the answer has no sections at all" });
   }
-  for (const field of ["closing", "signature_line"]) {
+  // A חוות דעת is an opinion written for the client, not a document filed in
+  // court: the official 2021 model answer has no court, no parties, no relief
+  // and no signature block, and ends at its מסקנות section. Demanding a closing
+  // and a signature there would reject a correct answer as truncated.
+  const isOpinion =
+    /חוות\s*דעת/.test(String(g.document_type || "")) || empty(g.court);
+
+  for (const field of isOpinion ? [] : ["closing", "signature_line"]) {
     if (empty(g[field])) {
       errors.push({
         type: "truncated_output",

@@ -13,6 +13,8 @@ open_questions/
   exams/            1. source PDFs — the real Bar Association papers
     pages/             page images rendered for human verification
   sources/          2. JSON extracted from those PDFs (the quote bank lives here)
+  answers/          official model answers — the rubric (*tamplete*/*מחוון*) plus
+                    every other .json in here, which are used as style exemplars
   generated/        3. new questions written by the LLM (.json + .pdf + .html)
     rejected/          generations that failed the quote lock, kept for diagnosis
   llm-params.json   tunable model + authoring settings
@@ -36,6 +38,14 @@ Handles the defects these PDFs always have: the letter `נ` mis-mapped to `ð`,
 bidi control characters, and case numbers reversed by bidi. Everything it
 produces is marked `needs_review` — the text extraction is trustworthy, the
 segmentation into questions and quotes is a best-effort skeleton.
+
+If it warns `DEFECT 5: the letter(s) … appear NOWHERE in this document`, that
+font maps a letter to a glyph poppler silently drops (the 2022 winter answer
+papers map `נ` to U+00AA, so `תקנה` extracts as `תק ה`). Re-run with
+`--glyph-boxes`, which rebuilds the text from PyMuPDF word boxes — those keep
+the glyph — and recovers reading order from the box geometry instead. Check the
+result against a rendered page image before using it; poppler remains the
+default because it is the better extractor wherever it can see the characters.
 
 ### 2. Verify the extraction
 

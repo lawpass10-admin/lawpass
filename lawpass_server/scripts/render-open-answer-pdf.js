@@ -10,8 +10,13 @@
 //     ../scripts/ingestion/open_questions/sources/2025-12-part1-writing.json
 //
 // Layout follows the marking rules in llm-params-answers.json:
-//   RULE 1 — caption table: court, case number, our client first, -נגד-, then
-//            the other side; the advocate's details stay as ??? placeholders.
+//   RULE 1 — caption: court name and case number on one line (court right, case
+//            number left), then the party block — role labels on the right,
+//            party details to their left, -נגד- between the two parties; the
+//            advocate's details stay as ??? placeholders. Layout follows the
+//            official model answers in scripts/ingestion/open_questions/answers.
+//            The מועד המצאה / מועד תגובה lines print only for a pleading that
+//            responds to something served — see RULE 1(d) below.
 //   RULE 2 — each exhibit line sits directly beneath the paragraph it supports.
 //
 // Quotes are rendered from the quote bank, not from the stored preview — the PDF
@@ -60,6 +65,30 @@ function buildHtml({ answer, bank, label }) {
 
   const p = answer.parties || {};
 
+  // RULE 1(d) — the two date lines belong only to a pleading that RESPONDS to
+  // something already served. An initiating pleading (עתירה, כתב תביעה) opens
+  // the proceeding: nothing was served and no response is due, so the model
+  // returns "" for both and the block is dropped rather than printed empty.
+  // A responding pleading carries them, with ??? where the question is silent.
+  const dateLine = (label, value) =>
+    String(value ?? "").trim() ? `<div>${label}: ${esc(value)}</div>` : "";
+
+  // RULE 1(b) — an interlocutory application carries TWO designations per party:
+  // the role in the case (התובע/הנתבעת) and the role in this application
+  // (המבקש/המשיב), stacked. The model separates them with a newline. The
+  // official answers underline the first only.
+  const role = (value) => {
+    const parts = String(value ?? "")
+      .split("\n")
+      .map((s) => s.trim())
+      .filter(Boolean);
+    if (!parts.length) return "";
+    return [`<u>${esc(parts[0])}</u>`, ...parts.slice(1).map(esc)].join("<br>");
+  };
+  const dates =
+    dateLine("מועד המצאת הבקשה", answer.service_date) +
+    dateLine("מועד אחרון לתגובה", answer.response_deadline);
+
   return `<!doctype html>
 <html lang="he" dir="rtl">
 <head>
@@ -76,7 +105,17 @@ function buildHtml({ answer, bank, label }) {
     margin: 0;
   }
 
-  /* RULE 1 — the caption block */
+  /* RULE 1 — the caption block. The court name and the case number share one
+     line ABOVE the party block, court on the right and case number on the left.
+     In the party block the party's NAME sits on the right and its role label
+     (העותר / המשיבות) on the left — house style, set by the founder. Note the
+     official Bar Association model answers do it the other way round, label
+     rightmost; do not "correct" this back without asking.
+     The page is dir="rtl", so the first child in source order renders rightmost
+     — hence court before case number, and td.main before td.side. */
+  .topline { display: flex; justify-content: space-between; margin-bottom: 4mm; }
+  .topline .court { font-weight: bold; }
+
   table.caption { width: 100%; border-collapse: collapse; margin-bottom: 5mm; }
   table.caption td { border: .8pt solid #000; padding: 2mm 2.5mm; vertical-align: top; }
   table.caption td.side { width: 26%; }
@@ -128,38 +167,30 @@ function buildHtml({ answer, bank, label }) {
 </head>
 <body>
 
+  <div class="topline">
+    <span class="court">${esc(answer.court)}</span>
+    <span class="case">${esc(answer.case_number)}</span>
+  </div>
+
   <table class="caption">
     <tr>
-      <td class="side"></td>
-      <td class="mid"></td>
-      <td class="main"><b>${esc(answer.court)}</b></td>
-    </tr>
-    <tr>
-      <td class="side">${esc(answer.case_number)}</td>
-      <td class="mid"></td>
-      <td class="main"></td>
-    </tr>
-    <tr>
-      <td class="side"><u>${esc(p.client_role)}</u></td>
-      <td class="mid"></td>
       <td class="main">${esc(p.client_name)}<br>${ADVOCATE}</td>
-    </tr>
-    <tr>
-      <td class="side"></td>
-      <td class="mid"><b>-נגד-</b></td>
-      <td class="main"></td>
-    </tr>
-    <tr>
-      <td class="side"><u>${esc(p.opposing_role)}</u></td>
       <td class="mid"></td>
+      <td class="side">${role(p.client_role)}</td>
+    </tr>
+    <tr>
+      <td class="main"></td>
+      <td class="mid"><b>-נגד-</b></td>
+      <td class="side"></td>
+    </tr>
+    <tr>
       <td class="main">${esc(p.opposing_name)}<br>${ADVOCATE}</td>
+      <td class="mid"></td>
+      <td class="side">${role(p.opposing_role)}</td>
     </tr>
   </table>
 
-  <div class="dates">
-    <div>מועד המצאת הבקשה: ${esc(answer.service_date)}</div>
-    <div>מועד אחרון להגשת תגובה: ${esc(answer.response_deadline)}</div>
-  </div>
+  ${dates ? `<div class="dates">${dates}</div>` : ""}
 
   <h1>${esc(answer.document_type)}</h1>
 
