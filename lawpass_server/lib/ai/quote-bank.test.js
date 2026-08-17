@@ -14,6 +14,7 @@ const {
   renderTokens,
   validateGenerated,
   findQuoteLeaks,
+  repairPlaceholderIds,
 } = require("./quote-bank");
 
 const FIXTURE = path.resolve(
@@ -42,6 +43,61 @@ test("rendered quote text is byte-identical to the bank", () => {
   const rendered = renderTokens("{{V1.text}}", bank);
   assert.ok(rendered.includes(V1.text), "substituted text must match the stored bytes");
   assert.strictEqual(rendered.length, V1.text.length + 2); // + the wrapping quotes
+});
+
+test("hyphenated quote ids render — a bank is per question, so ids carry -Q1", () => {
+  // Sources holding more than one question suffix the ids: L1-Q1, V2-Q1. An id
+  // shape that stops at the hyphen matches nothing, and the placeholder survives
+  // into the rendered question instead of failing loudly.
+  const hy = buildBank(
+    JSON.parse(
+      fs.readFileSync(
+        path.resolve(__dirname, "../../../scripts/ingestion/open_questions/sources/2021-W-Q1.source.json"),
+        "utf8"
+      )
+    ).quotes,
+    "2021-W-Q1"
+  );
+  const L = hy.find((q) => q.id === "L1-Q1");
+  assert.ok(L, "fixture must hold a hyphenated id");
+  assert.strictEqual(renderTokens("ראו {{L1-Q1}}", hy), `ראו ${L.citation}`);
+  assert.strictEqual(renderTokens("{{L1-Q1.text}}", hy), `"${L.text}"`);
+  // and an unknown hyphenated id must still be caught, not passed through
+  assert.throws(() => renderTokens("{{L9-Q9}}", hy), /unknown quote placeholder/);
+  assert.strictEqual(validateGenerated({ a: "{{L9-Q9}}" }, hy).ok, false);
+});
+
+test("an unambiguous short id is repaired; an ambiguous one is not", () => {
+  // The rules teach the syntax with {{V1}}, so against a suffixed bank the model
+  // writes {{L1}} for L1-Q1 and loses the whole generation to a naming slip.
+  const suffixed = [
+    { id: "L1-Q1", citation: "c1", text: "t1" },
+    { id: "V2-Q1", citation: "c2", text: "t2" },
+  ];
+  const { value, repairs } = repairPlaceholderIds(
+    { a: "ראו {{L1}} וגם {{V2.text}}", b: ["{{L1}}"] },
+    suffixed
+  );
+  assert.strictEqual(value.a, "ראו {{L1-Q1}} וגם {{V2-Q1.text}}");
+  assert.strictEqual(value.b[0], "{{L1-Q1}}", "repairs reach nested values");
+  assert.strictEqual(repairs.length, 2);
+  assert.strictEqual(validateGenerated(value, suffixed).ok, true);
+
+  // Two candidates means the reference is genuinely ambiguous — leave it, and
+  // let validation reject it. Guessing here would attach the wrong authority.
+  const twoQuestions = [
+    { id: "L1-Q1", citation: "c1", text: "t1" },
+    { id: "L1-Q2", citation: "c2", text: "t2" },
+  ];
+  const ambiguous = repairPlaceholderIds({ a: "{{L1}}" }, twoQuestions);
+  assert.strictEqual(ambiguous.value.a, "{{L1}}");
+  assert.deepStrictEqual(ambiguous.repairs, []);
+  assert.strictEqual(validateGenerated(ambiguous.value, twoQuestions).ok, false);
+
+  // An id that already resolves is never touched.
+  const intact = repairPlaceholderIds({ a: "{{L1-Q1}}" }, suffixed);
+  assert.strictEqual(intact.value.a, "{{L1-Q1}}");
+  assert.deepStrictEqual(intact.repairs, []);
 });
 
 test("unknown placeholder is rejected, not silently dropped", () => {

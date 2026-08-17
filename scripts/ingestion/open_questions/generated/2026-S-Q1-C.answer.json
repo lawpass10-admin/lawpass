@@ -1,0 +1,459 @@
+{
+  "generated_from": {
+    "source_external_id": "2026-S-Q1",
+    "source_file": "2026-S-Q1.source.json",
+    "model": "claude-opus-5",
+    "prompt_version": "open-question-angle/2",
+    "effort": "low",
+    "max_tokens": 24000,
+    "leak_shingle_size": 7,
+    "authoring": {
+      "difficulty": "match_source",
+      "fact_pattern_length": "match_source",
+      "setting_variety": "Vary the milieu between angles — workplace, commercial, municipal, family, road-accident — rather than reusing the source's social setting.",
+      "register": "SCOPE THIS TO THE SCENARIO ONLY. Write fact_pattern in plain, everyday Hebrew — the way a client actually tells the story when they walk into the office. Short sentences, ordinary words, concrete human detail (what was said, what it cost, who stopped answering the phone). Do not name the legal doctrine, do not analyse, do not signpost which source applies: the candidate's job is to spot that. Use a legal term only where the facts genuinely require one (כתב הגנה, בקשה לסילוק על הסף, המצאה) and then use it plainly, without explaining it. Everything else — task_instructions, legal_topic_analysis, model_answer_outline, common_pitfall — stays in precise legal Hebrew.",
+      "extra_instructions": "Build the facts so that distinguishing ת\"א 2233-14 (V3) is the hardest part of the answer: the defendant must have a genuinely arguable reliance claim, not a weak one. Keep the dates, sums and intervals exact even though the telling is casual — the arithmetic is the question. WORDING: introduce every specific calendar date with בתאריך, never with ביום — write \"בתאריך 12.3.2019\", not \"ביום 12.3.2019\". This applies wherever a date appears: fact_pattern, timeline events, task_instructions and the analysis fields. Leave the fixed expression בו ביום (meaning 'that same day') alone — it carries no date and must not be rewritten."
+    },
+    "angle_letter": "C",
+    "usage": {
+      "input_tokens": 229,
+      "cache_creation_input_tokens": 5504,
+      "cache_read_input_tokens": 0,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 5504,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 4691,
+      "service_tier": "standard",
+      "inference_geo": "global"
+    },
+    "generated_at": "2026-08-17T08:13:57.999Z",
+    "answer": {
+      "model": "claude-opus-5",
+      "prompt_version": "open-answer/7",
+      "effort": "high",
+      "max_tokens": 40000,
+      "leak_shingle_size": 7,
+      "authoring": {
+        "header_block": "RULE 1 — before anything else, decide WHICH INSTRUMENT the question asks for, and write that one. (a) A pleading filed in court — בקשה, תגובה, תשובה, עתירה, כתב תביעה, כתב הגנה — opens with the caption. A חוות דעת does NOT: it is written to the client or to the partner in your firm, and has no court, no case number, no parties block, no relief and no signature block. Return an empty string for court, case_number, service_date, response_deadline and signature_line, and empty strings inside parties, when the question asks for an opinion. Writing an opinion in the dress of a pleading, or a pleading in the shape of an opinion, forfeits the whole answer. (b) A challenge to subordinate legislation or to a minister's act goes to the HCJ: court is בבית המשפט העליון בשבתו כבית משפט גבוה לצדק, case_number is בג\"ץ ____/__, and the instrument is an עתירה למתן צו על תנאי. Its opening does not ask for an order but for the respondent to show cause — בית המשפט הנכבד מתבקש להוציא מלפניו צו על תנאי המופנה אל המשיב ומורה לו להתייצב וליתן טעם מדוע לא ייקבע כי: — followed by the grounds as NUMBERED, SELF-CONTAINED propositions, each closing ולפיכך דינה להתבטל. Those numbered grounds are also the skeleton of the argument section; see RULE 4(b). (c) The caption of a pleading: the court name and the case number on one line (court right, case number left); for an interlocutory application the case number carries בקשה מספר ___ as well. Then the parties in the CASE's order — plaintiff/petitioner first, a centred -נגד-, then defendant/respondent — WHICHEVER SIDE WE ACT FOR. Do not move our client to the top. (d) A pleading that opens a proceeding gives each party one designation (העותרת, המשיב). An interlocutory application inside an existing case gives each party TWO, stacked: the role in the case, then the role in this application — הנתבע above המשיב, התובעת above המבקשת. Return the two separated by a newline in client_role / opposing_role. (e) Where the order sought is directed at someone who is NOT a party to the case — a public authority, a prosecutor's office, a bank holding the file — that person must appear in the caption as an additional respondent to this application (המשיבה בבקשה זו: מדינת ישראל באמצעות פרקליטות מחוז דרום). An order cannot be made against someone who is not before the court. A state respondent is served through its representative: על ידי פרקליטות המדינה. (f) The party is the legal person whose right is at stake, not the human being who walked into your office. Where the client's company bid, lost, is bound or is being sued, the party is the COMPANY ALONE: client_name is חברת \"המטמינים\" בע\"מ, ח.פ ??? and NOTHING ELSE. Do not name the owner, the director or the signatory, and never write the two together — משה איבגי, בעליה של חברת \"המטמינים\" is wrong, and so is חברת \"המטמינים\" בבעלות משה איבגי. The owner is not a party, has no standing here, and mentioning him invites a challenge to the pleading. The same applies in the body: the pleading speaks of the company in the feminine singular throughout, and refers to it only by its designation (העותרת) or its short name. An individual is a party in his own name, with ת.ז ???, only where the right at stake is his, using the number the question gives if it gives one. (g) Where a source imposes IDENTIFICATION requirements for the relief, the caption must carry them as placeholders: תקנה 125 requires the respondent's name in Latin letters, address, ID and passport number for an exit order, and the official answer's caption duly reads YAKOV AZAR, דרכון: ___. (h) client_name and opposing_name carry the party's NAME and identifier ONLY. Do NOT write the advocate's details there: the renderer prints באמצעות ב\"כ עו\"ד ??? (מ\"ר ???) מרחוב ??? טל': ???; פקס: ???; דוא\"ל: ??? beneath each party by itself, and repeating it prints the line twice. (i) מועד המצאת הבקשה and מועד אחרון לתגובה belong only to a pleading that RESPONDS to something already served on the client. A pleading that opens a proceeding has neither — return empty strings. (j) Then the underlined title of the pleading, centred, naming the instrument and the posture: בקשה לצו עיכוב יציאה מן הארץ טרם הגשת תביעה (במעמד צד אחד).",
+        "facts_discipline": "RULE 2 — the facts section carries only what the legal argument needs, stated at the level of legal relevance and no lower, in a handful of short paragraphs. It is not a retelling of the client's meeting. (a) Colour taken from the fact pattern costs marks and can cost the case: where the question describes how the parties know each other, their army service, what they reminisced about, the client's mood or language, write only the operative core — לשניים היכרות מוקדמת — because spelling out a long, warm acquaintance hands the other side the very characterisation its authority needs. (b) What the client says in confidence, and anything that would embarrass or expose them, does not go in the pleading at all. Where the client is furious and says so at length, take the SUBSTANCE and drop the tone: the official answer converts a client's rant about the authority's cheek into two clean points and keeps nothing of the language. (c) The facts section states facts; the inference they support belongs in the legal argument. Do not close a fact paragraph with what the court may therefore do. (d) The one exception: where a fact IS the wrong, name the wrong in legal terms, in one sentence, in a paragraph of its own — עצם הנחת המתנה על שולחנו של המנכ\"ל מהווה ניסיון למתן שוחד — rather than framing it rhetorically. (e) Define a short name for every recurring person, body, instrument and object at its first appearance — (להלן: \"המבקשת\"), (להלן: \"התקנות\"), (להלן: \"הפקודה\"), (להלן: \"הראיה\") — placing the definition AFTER the words that justify it, then use it verbatim everywhere else. (f) Where a date matters to the argument and the question does not give it, leave a blank placeholder rather than inventing one: ביום _______ עבר בכנסת חוק... The same goes for a case number or an amount the question withholds. (g) Where the parties' relationship to each other is itself a fact the argument uses, give it its own short הצדדים section before the narrative, one paragraph per party. (h) Where the client approached the other side or the authority before suing, that correspondence is a fact section of its own — פניות העותרת למשיב — with its exhibits, because it is what makes the claim admissible; see RULE 4(c).",
+        "exhibits_style": "RULE 2 (cont. i) — where a fact rests on a document, anchor the exhibit to that fact, in any of the forms the official answers use: a separate bulleted line beneath the paragraph (העתק <what it shows> מצ\"ב כנספח <N> / <what it is> מצ\"ב ומסומן <N>), or inline in brackets at the point the fact is stated (רצ\"ב העתק מכרטיסי הטיסה כנספח ג'), or as a closing sentence of the paragraph (עותק מן ההתכתבויות מצורף כנספח א' לעתירה זו). Markers may be numbers or Hebrew letters, and a pair of related documents may share a range (מצ\"ב ומסומנים בהתאמה נספחים 2-3). Number them in order of first appearance; never gather them into a list at the end. (cont. j) Close with the attachments the relief itself requires, each named: תצהיר לאימות העובדות המשמשות יסוד לבקשה, כתב התחייבות עצמית, ערובה, ייפוי כח. (cont. k) Where an affidavit would normally be expected and you are not filing one, SAY SO and say why — לבקשה זו לא צורף תצהיר כיוון שהיא מבוססת על טעמים משפטיים. Silence reads as an omission; the sentence reads as a choice. A חוות דעת has no exhibits at all.",
+        "party_perspective": "RULE 3 — who you are writing for depends on the instrument. (a) In a PLEADING you act for our client alone. Use the designation for this pleading in the body (המבקשת/המשיב, העותרת/המשיבות) — not the case designation, which appears in the caption only — and keep grammatical gender and number agreeing with it in every verb and adjective: a corporate המבקשת הגישה, never הגישו. Once a party has a designation and a person a short name, use them: not מציע, not חבר ועדת המכרזים, but המשיבה 2 and המנכ\"ל. A pleading never addresses the client or the reader directly. (b) Describe the other side's position only as far as is needed to answer it, and when you do, mark it as denied in passing so the description is never taken for a concession: הגנת הנתבע נסובה סביב טענתו (המוכחשת) כי מדובר בפרסומי אמת. (c) In a חוות דעת you are not an advocate. It is addressed TO the client, in the second person (פנה אליכן המעסיק, על חשבונכן, סביר שתוכלנה לדרוש), and it appraises rather than argues. State the conclusion the law produces EVEN WHERE IT IS AGAINST THE CLIENT — the 2021 winter opinion ends סיכוייה של בקשת עיכוב ביצוע במקרה שלפנינו נמוכים ביותר. Say plainly where a point is weak, and say how the other side can neutralise it. (d) Where the sources supply no rule that decides the question, SAY THAT — מדובר בסוגיה משפטית מורכבת שאין לה תשובה ברורה וחד משמעית בדין — and then build the best argument available from the general principles the sources DO supply, taking a position of your own on it (עדיין אני סבור שיש עילה טובה כנגד המעסיק). Name the factor that could flip the conclusion (יתכן שהמצב הייחודי של משבר הקורונה... יובילו למסקנות אחרות), and identify the FALLBACK remedy rather than stopping at the question asked (לכל הפחות, גם אם לא נוכל לחייב את המעסיק בהחזר... סביר שתוכלנה לדרוש פיצוי הסתגלות). An opinion that pretends to certainty the sources do not support is as wrong as one that argues the client's case.",
+        "argument_pattern": "RULE 4 — how the legal argument is built. (a) Open the pleading with ONE sentence naming the exact power invoked and the exact order sought, defined OPERATIONALLY rather than by its label — להורות על היפוך סדר הראיות במובן זה שיורה לנתבע להגיש ראיותיו לעניין הפרסום בטרם תעשה זאת התובעת — and close it with ואלה נימוקי הבקשה: / ואלו טעמי הבקשה: / וזאת מהטעמים הבאים:. (b) THE TEST IS THE SKELETON, and it can come from three places. From a STATUTE (תקנה 95(ד) for a temporary remedy); from an AUTHORITY (בבג\"ץ 111/10 אלף נ' שר האוצר נקבעו 3 מבחנים לפסיקת הוצאות כאשר עתירה נמחקה); or, in an עתירה למתן צו על תנאי, from YOUR OWN numbered grounds in the opening — the נימוקים משפטיים section then tracks those grounds one for one, in the same order. Whichever the source, count the conditions, name them, assert in one sentence that they are all met (שלושת המבחנים מתקיימים בענייננו), then give each ONE labelled paragraph citing its exact sub-provision and showing it satisfied on these facts. Say whether the conditions are cumulative or alternative — מדובר בתנאים מצטברים — because that characterisation is itself an argument about the burden the other side must carry. Having named the test in the source's own words, apply THOSE WORDS to the facts, limb by limb. A condition you skip is a mark you lose. (c) THRESHOLD OBJECTIONS COME FIRST, before the merits, each in its own paragraph, because the court will not reach the merits otherwise: מיצוי הליכים, שיהוי, סמכות, standing. An attached authority that states a BAR to relief is there to be pre-empted, not distinguished — the question supplies בג\"ץ 7190/05 לובל precisely so the answer can open העותרת עשתה כל שביכולתה על מנת למצות הליכים טרם הגשת עתירה זו, כדרישת בג\"ץ 7190/05 לובל, בכך שפנתה למשיב 5 פעמים ובקשותיה נדחו על הסף. Plead the facts that satisfy the threshold, with their exhibits. (d) Where the source lays down an EXCEPTION or a threshold that would BAR the relief, show affirmatively that it is not triggered rather than passing over it: תקנה 124(ב)(2) bars an exit order below 100,000 ₪, and the official answer states the claim stands at 150,000 ₪ and clears it. (e) Volunteer the strings the relief carries — an undertaking to file the claim within seven days where the application precedes it (תקנה 95(ג)), תצהיר, כתב התחייבות עצמית and ערובה (תקנה 96), the undertaking to compensate a non-party (תקנה 126) — and justify any special procedural posture in its own paragraph on its own provision (an ex parte hearing under תקנה 97(א), because notice would let the respondent defeat the very order sought). (f) Ground the court's POWER to make this particular order, using every sub-provision that supports it: תקנה 63(ב)(6) for the admissibility of evidence AND 63(ב)(12) for מחיקת כל דבר שאינו דרוש לעניין; סעיף 75 לחוק בתי המשפט for a residual צו עשה. (g) TO ATTACK SUBORDINATE LEGISLATION, three moves: state what the enabling Act authorises, by its PURPOSE (מטרת החוק היא מניעת הפצת נגיף הקורונה בהקשר של תוצרת חקלאית, והוא לא נועד להגביל את חופש הביטוי); state what the regulation actually does; and name the gap — חקיקת משנה יונקת את סמכותה מן החוק המסמיך, ותקנה החורגת מהוראות החוק המסמיך דינה להתבטל. Then add the ordinary administrative grounds, which apply to subordinate legislation too: unreasonableness, disproportionality, extraneous considerations, conflict of interest. (h) Deploy a canon of construction as a PRESUMPTION that shifts the burden: בהעדר הסמכה מפורשת בנוסח החוק, חזקה כי החוק לא נועד להסמיך את המשיב להתקין תקנה שעניינה הגבלת חופש הביטוי וההפגנה שהן חירויות יסוד. Where the sources supply a rule of purposive interpretation, or a presumption favouring basic rights, or a direction to read restrictive terms narrowly, that rule is an argument and not merely background. (i) MINE ONE AUTHORITY FOR EVERY GROUND IT SUPPORTS. בג\"ץ 4790/14 gives both the vires rule and the reasonableness/proportionality grounds, and the official answer cites it twice, for each. An authority used once where it supports two points is half wasted. (j) Read the provisions of one instrument against each other. A weak-sounding label in one section is coloured by the procedural bar in the next: a conviction is only ראיה לכאורה under סעיף 42א, אך למעשה משקלה כבד ביותר because סעיף 42ג lets contrary evidence in only by leave. A qualifier present in one limb and absent from another is likewise an argument. A provision may also extend another's reach — סעיף 61(ב) לחוק החוזים carries good faith across the whole legal system. (k) Where a source DEFINES a term by enumeration, mine the enumeration: תקנה 5 defines אינטרס ציבורי as including both מניעת הכרעות סותרות and חיסכון במשאבי זמן ועלויות, and each becomes a separate applied paragraph. Where an authority says a right SCALES with some factor — היקף הזכויות גדל ככל שהעבירה חמורה יותר — place the client explicitly at the strong end of that scale. (l) Where the governing standard is a balance rather than a list, state it and close that paragraph with a one-sentence roadmap naming the limbs that follow — כאן, מול אינטרס המשיב לנהל הליך במהירות, עומדים זכות המבקשת להתגונן כראוי ואינטרס הציבור — then give each limb its own paragraph opening with a short topic label and a colon. In a חוות דעת the equivalent is a paragraph stating what the client MUST establish to succeed, followed by one paragraph per limb testing whether she can, and saying so when she cannot. (m) Otherwise build each point in three short moves: state the rule and name its source; state what the authority held in ONE sentence of your own words; apply it in a paragraph opening בענייננו and ending in the consequence. (n) Where the default rule is against you, concede it and then produce the provision that displaces it: אכן, ככלל קובע הדין האזרחי כי... (תקנה 66), אולם סעיף 18 לחוק קובע כי.... The concession is what makes the exception credible. (o) Take the KNOCK-OUT point first and argue the merits in the alternative: the respondent never applied for leave at all — וגם אם היה המשיב מגיש בקשה כנדרש, לא היה מקום לקבלה. Plead alternative grounds openly with ו/או where they overlap, and offer the court a proportionate middle option where the point admits one. (p) Where two independent rights lead to the same order, plead both as separate routes: לתובע יש זכות כפולה לעיין בתיק. (q) Show that you sought the remedy from its holder FIRST and were refused, with an exhibit for each step. (r) WHEN RESPONDING to an application, four moves in order: concede expressly whatever you do not need to fight, and attach your condition to the concession (אינה מתנגדת למחיקת העתירה, אך בכפוף לחיוב המשיב בהוצאות); enumerate the other side's grounds in their own terms before answering them; answer each; and where they assert something without support, name the specific document that would exist if it were true and invoke the presumption — חזקה כי לו היו בידי המשיב ראיות התומכות בכך הוא היה מציג אותן. When WE open the proceeding none of this is available: state positively what the facts show. (s) Policy reasoning is legitimate WHEN IT IS THE CITED AUTHORITY'S OWN. Inventing a policy argument of your own that no source supports is not. (t) Say each thing once.",
+        "adverse_authority": "RULE 5 — what to do with an authority that cuts against us depends on the instrument, and first on what kind of obstacle it is. (a) An authority stating a THRESHOLD BAR — no relief without exhausting remedies, no relief after delay — is not distinguished but PRE-EMPTED: plead the facts that satisfy it, before the merits. See RULE 4(c). (b) An authority stating a SUBSTANTIVE rule against us, in a PLEADING: never write that our client relies on it. Introduce it with its short name, say briefly what was decided there, then open a new paragraph with אלא שענייננו שונה לחלוטין מ<short name> מהטעמים הבאים: and enumerate the distinctions ראשית, שנית, שלישית. (c) Every distinction must rest on something the authority's own quoted text actually says, or on a fact this question actually states. An authority SILENT on a point cannot be distinguished on that point: if the quoted passage of עניין ברוך says nothing about whether the acquaintance was concealed from the committee, you may not write that in ברוך it was not concealed. Ask of each distinction: where is that written? If the answer is nowhere, delete it. (d) No distinction built on speculation about what the parties intended or planned. Two or three distinctions that hold are worth far more than five including one you cannot support. Stop after the last one you can defend; no rhetorical closer such as ואם לא די בכל אלה. (e) An old authority the other side may call stale is answered by showing it was recently affirmed, and by whom: סטנדרט ארוך שנים זה אושרר לאחרונה בבית המשפט העליון, אשר הזכיר את פסק הדין בהסכמה. (f) IN A חוות דעת there is nothing to distinguish. State what the adverse authority holds and apply it to the client's position, including where it defeats her, and add how the other side can neutralise her point. (g) A favourable authority is also a template for the ORDER to ask for: פז stayed the claim and fixed the defence at 60 days from the close of the criminal file, and the official answer asks for exactly that remedy in exactly those terms.",
+        "register": "The precise, procedural voice of a filed pleading: describe the step being taken rather than dressing it up (העתירה מוגשת כנגד החלטת ועדת המכרזים, not ההחלטה המותקפת היא), and use the words the statute and the court use rather than coining labels. Short verbatim fragments of a source in quotation marks, woven into your own sentence, are the official style — \"תוך הישמרות מפגיעה בזכויות המתדיינים\" כאמור בעניין פז — though a holding that IS the point may be set out at length. Measured indignation at the OTHER SIDE'S CONDUCT IN THE LITIGATION is proper and the official answers use it — למרבה התדהמה והחוצפה, לא רק שהמשיב התכחש בכתב הגנתו לגניבה... הוא גם צירף ראיה; נסיון המשיב להבנות ממצוקתה הכלכלית של העותרת... הוא בלתי הגון; באמתלה של משבר הקורונה, נמנעה ממנה זכות זו. What is not proper is rhetorical framing standing in place of legal characterisation of a fact (הרי לנו טובת הנאה אישית בשווי כספי ניכר), or colour about the other side that the argument does not need. A חוות דעת is written in the same precise Hebrew but in the appraising voice of counsel advising the client: מהוראות תקנה 145(א) עולה כי..., נמצאנו למדים כי..., ניתן אף להניח ש..., סביר שהפתרון המתאים..., עדיין אני סבור ש.... Every sentence, in either instrument, must be one you could defend if the judge stopped you and asked where it is written. WRITTEN BY A PERSON, NOT ASSEMBLED — this answer will be read alongside one a candidate wrote by hand under time pressure, and it must be indistinguishable from it. (a) Write the Hebrew a practitioner actually writes, abbreviations included: ביהמ\"ש, ב\"כ, עו\"ד, פס\"ד, ס\"ק, תק', רצ\"ב, מצ\"ב, הח\"מ, ₪. Use the connectives the official answers use — משכך, מכאן ש..., ברי כי, ודוק, אכן... אולם, אמנם... אך, כאמור, יוער כי, בתמצית, בפתח הדברים מובהר, למיטב ידיעת הח\"מ, נמצאנו למדים — and never a Hebrew sentence that reads as though it were composed in English and translated. No בנוסף לכך opening three paragraphs in a row, no חשוב לציין כי, no ניתן לסכם ולומר כי, no יש לציין כי as filler. (b) Vary the paragraphs. A real answer sets a one-sentence paragraph beside a six-line one; paragraphs of uniform length and identical shape are the clearest tell of a machine. Signpost once, at the roadmap, then simply argue — not כפי שיפורט להלן and כעת נעבור לבחון at every turn. (c) Do not hedge uniformly. A practitioner is flatly confident where the law is clear — די בכך כדי להורות על ביטול ההחלטה — and hedges only where the question is genuinely open. (d) Let judgement show: a short parenthetical aside such as (המוכחשת) or (אך לא להפך, בשל נטלי ההוכחה השונים), a concession the writer chose to make, a point raised and dropped in one line. (e) Do not enumerate for the sake of completeness. A person makes the two or three points that win and stops; a machine lists every point available. (f) None of this touches a quotation: wording inside quotation marks is reproduced exactly as the source has it, and the humanising applies only to your own sentences.",
+        "structure": "Three shapes, chosen by the instrument the question names. A PLEADING: caption; underlined title; the one-sentence opening stating the relief; a short הצדדים section where the parties' relationship matters; the facts under הרקע לבקשה / הפירוט העובדתי / העובדות, with a separate section for the client's prior approaches where those matter (פניות העותרת למשיב); then the legal argument — either under a single heading (הטיעון המשפטי / הטענות המשפטיות / נימוקים משפטיים / הטעמים לבקשה) with a labelled paragraph per point, or under two or three sub-headings that name the propositions themselves (סמכות בית המשפט להורות על סילוק ראיה; הרשעה פלילית כראיה בהליך אזרחי; ייצוג \"פרו בונו\" אינו פוטר מפסיקת הוצאות). Where some points support rather than decide, group them under שיקולים מחזקים נוספים: so the ranking is visible. Then the closing paragraph repeating the relief — under a לסיכום / סיכום heading or as the last numbered paragraph, all are used — asking for costs and שכר טרחת עו\"ד, and tying the costs to the work the other side's conduct forced. Then the attachment lines, then the signature block. An עתירה למתן צו על תנאי is a pleading with one difference: the numbered show-cause grounds stand in the opening, and the closing asks both for the conditional order and for its conversion — ליתן צו על תנאי המורה למשיב לבוא וליתן טעם מדוע לא תבוטל תקנה 5, ואף להפוך את הצו לצו מוחלט ולהורות על ביטולה. A חוות דעת: a title naming the instrument, then ONE opening sentence stating the question it answers (חוות דעת זו תבקש להעמיק ולהתמקד בשאלת...); עובדות המקרה; הדין הקיים, stating the governing rules and ALL the authorities neutrally, including those against the client, and the rationale behind them where it matters; מן הכלל אל הפרט, applying each to these facts; מסקנות, giving the answer plainly and naming the fallback. No caption, no relief, no signature. Number the paragraphs continuously across the whole document, facts included — an opinion may letter them (א, ב, ג) instead.",
+        "citation_style": "Cite each authority in full the first time it appears, exactly as printed in the question, and define a short name at that point — either (להלן: \"מילפלדר\") or the פרשת <name> / עניין <name> form. Both official citation forms are good: narrative — בת\"א (י-ם) 56-7-21 פז נ' גז קבע... — and parenthetical at the end of the proposition it supports — כלל זה נסוג כשניצבת מולו זכות של בעל דין העלולה להפגע (רע\"א 777-03 נגר נ' בנאי). Afterwards use the short name alone, and never before that first full citation, including in a heading. Signal a supporting reference with ראו לעניין זה, כאמור ב, כפי שעולה מ, אגב עניין. Cite a statutory provision to the precise sub-provision the point rests on — תקנה 95(ד)(3), סעיף 42א(א), סעיף 61(ב) — never to the section at large. Academic writing attached to the question is a citable source and is cited with its page: (פרופ' אורנה בורן, \"לשון הרע – יסודות\" בעמוד 98). A placeholder already carries the whole citation including any section number: write בהתאם ל{{L1}} and never בהתאם לסעיף 5 ל{{L1}}, which would print the section twice.",
+        "length": "shorter",
+        "extra_instructions": "The official answers run to two pages and roughly ten to twenty numbered paragraphs, facts included; the question usually states the two-page limit itself, and it is a marking criterion. Before writing each sentence, ask: where is this written? A sentence supported by neither the question's facts nor a quoted source must be cut, however well it argues. Before finishing, check the sources once more: an attached provision you never used is almost always a condition you failed to address, an attached authority you never cited is almost always the test you were supposed to apply, and an attached authority that bars relief is one you were supposed to pre-empt."
+      },
+      "question_external_id": "2026-S-Q1-C",
+      "usage": {
+        "input_tokens": 3339,
+        "cache_creation_input_tokens": 47439,
+        "cache_read_input_tokens": 0,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 47439
+        },
+        "output_tokens": 5331,
+        "service_tier": "standard",
+        "inference_geo": "global"
+      },
+      "generated_at": "2026-08-17T08:16:00.237Z"
+    },
+    "rubric_source": "answers/",
+    "exemplars": [
+      "2021-summer-q1-answer.json",
+      "2021-summer-q2-answer.json",
+      "2021-winter-q1-answer.json",
+      "2021-winter-q2-answer.json",
+      "2022-winter-q1-answer.json",
+      "2022-winter-q2-answer.json",
+      "2023-summer-q1-answer.json",
+      "2023-summer-q2-answer.json",
+      "2026-summer-q1-answer.json",
+      "2026-summer-q2-answer.json"
+    ]
+  },
+  "questions": [
+    {
+      "external_id": "2026-S-Q1-C",
+      "origin": "generated",
+      "parent_question_id": "2026-S-Q1",
+      "question_type": "open_writing_task",
+      "status": "draft",
+      "quote_ids": [
+        "L1-Q1",
+        "V2-Q1",
+        "V3-Q1"
+      ],
+      "angle_letter": "C",
+      "angle_title": "השתק פלוגתא נגד חברת שילוח בעקבות פסק דין בערעור בעניין \"דמי פיקוח נמל\"",
+      "difficulty_level": "hard",
+      "client_role": "עורך/ת הדין של יבואן ציוד חקלאי, התובע",
+      "deliverable": "בקשה בכתב לבית המשפט המחוזי מרכז-לוד בת\"א 26-01-8877",
+      "fact_pattern": "נדב אלימלך מייבא ציוד חקלאי מטורקיה ומאיטליה. כבר שבע שנים כל המכולות שלו עוברות דרך חברת שילוח גדולה, \"גלים לוגיסטיקה בע\"מ\".\n\n\"בהתחלה זה היה 300 שקל למכולה, קראו לזה דמי פיקוח נמל\", הוא סיפר לך במשרד. \"אחר כך זה קפץ ל-1,400 שקל למכולה, בלי הודעה, בלי כלום. שאלתי את מנהל הלקוחות מה זה, הוא אמר לי 'ככה זה בכל השוק'. יש לי 40-50 מכולות בשנה. בשלוש השנים האחרונות שילמתי על זה 168,000 שקל. מי שלא משלם – המכולה שלו לא משוחררת. ניסיתי פעם לעכב תשלום, החזיקו לי משאבות השקיה שבועיים בנמל אשדוד בשיא העונה, איבדתי שני לקוחות גדולים.\"\n\nבתאריך 4.2.2026 הגשת בשמו תביעה כספית נגד גלים לוגיסטיקה בבית המשפט המחוזי מרכז-לוד (ת\"א 26-01-8877), להשבת הסכומים שנגבו.\n\nבתאריך 18.2.2026 – שבועיים אחרי הגשת התביעה – ניתן פסק דין בערעור אחר לגמרי שאתה ניהלת, של איגוד יבואני חומרי בניין נגד אותה גלים לוגיסטיקה. בית המשפט המחוזי, בהרכב שלושה, קבע פוזיטיבית שהסעיף בתנאי ההובלה של גלים שמכוחו נגבים \"דמי פיקוח נמל\" הוא תנאי מקפח בחוזה אחיד, שהחברה אינה מספקת בפועל שום שירות פיקוח בתמורה לתשלום, ושהגבייה נעשתה שלא כדין. הקביעה הזו הייתה הבסיס לחיוב בהשבה, ולא הערת אגב. גלים הייתה מיוצגת שם על ידי שני משרדי עורכי דין, הביאה שלושה עדים ומומחה מטעמה, וניהלה את התיק שלוש שנים.\n\nבתאריך 15.3.2026 הגישה גלים כתב הגנה בתיק של אלימלך. בכתב ההגנה היא חוזרת בדיוק על אותן טענות: שדמי הפיקוח הם תמורה לשירות אמיתי, שהתנאי סביר ומקובל בענף, ושהלקוח הסכים לו. אין בכתב ההגנה שום מחלוקת על מספר המכולות ועל הסכומים ששולמו – הם מאושרים בנספח החשבוניות שצירפה גלים בעצמה.\n\nבסעיף נפרד בכתב ההגנה נטען שיש להבחין בין המקרים: אלימלך, בשונה מיבואני חומרי הבניין, חתם בתאריך 7.9.2023 על הסכם מסגרת אישי שבו יש תעריף מוזל למכולה, וגלים טוענת שהסכימה להנחה הזו רק משום שאלימלך אישר בכתב את מנגנון דמי הפיקוח, ושהיא בנתה על כך את התמחור שלה מולו.\n\nהתיק נקבע לקדם משפט בתאריך 21.6.2026. אלימלך אומר שהוא לא יכול לחכות עוד שנתיים.",
+      "task_instructions": "עליך לנסח בקשה מתאימה לבית המשפט. את הבקשה יש לבסס אך ורק על המקורות המצורפים ועל הידע המושגי שלך במשפטים. יש להניח כי המקורות משקפים את המצב המשפטי העדכני. יש להתמודד במפורש עם טענת ההבחנה שמעלה המשיבה בדבר הסכם המסגרת מתאריך 7.9.2023. יש לציין את הפרטים העובדתיים הנדרשים לניסוח תקין של הבקשה, אולם אין להרבות בכך מעבר למינימום ההכרחי. ככל שיש לתמוך את הבקשה בנספחים – יש לציין זאת, אך אין צורך לנסח את המסמכים עצמם.",
+      "answer_limit": "עד שני עמודים",
+      "timeline": [
+        {
+          "date": "7.9.2023",
+          "event": "אלימלך חותם עם גלים לוגיסטיקה על הסכם מסגרת אישי הכולל תעריף מוזל למכולה"
+        },
+        {
+          "date": "4.2.2026",
+          "event": "הגשת התביעה הכספית להשבה בת\"א 26-01-8877"
+        },
+        {
+          "date": "18.2.2026",
+          "event": "מתן פסק הדין בערעור בעניין איגוד יבואני חומרי בניין נ' גלים לוגיסטיקה, ובו קביעה פוזיטיבית שהגבייה נעשתה שלא כדין"
+        },
+        {
+          "date": "15.3.2026",
+          "event": "הגשת כתב ההגנה של גלים, החוזר על אותן טענות שנדחו"
+        },
+        {
+          "date": "21.6.2026",
+          "event": "מועד קדם המשפט"
+        }
+      ],
+      "legal_topic_analysis": "התרגיל משחזר את המתח שבשאלת המקור: פסק דין בערעור שניתן לאחר הגשת התביעה, המכריע פוזיטיבית באותה פלוגתא בדיוק שהנתבע מעלה שוב בכתב ההגנה. המועמד נדרש לזהות את הכלי הדיוני – בקשה להכרעה בשלב מוקדם, בקדם המשפט, מכוח {{V2-Q1}} ובשילוב תכליות האיזון שב{{L1-Q1}} (מניעת הכרעות סותרות, דיון צודק מהיר ויעיל, חיסכון במשאבים) – ולבססה על השתק פלוגתא לפי ארבעת התנאים המצטברים ב{{V3-Q1}}. הקושי המרכזי הוא האבחון מ{{V3-Q1}}: שם נכשל המבקש משום שההכרעה הקודמת לא כללה ממצא פוזיטיבי אלא רק אי-הרמת נטל, והייתה שולית לפסק הדין. כאן הממצא פוזיטיבי וחיוני. שכבת קושי נוספת היא טענת ההסתמכות של המשיבה על הסכם המסגרת מתאריך 7.9.2023, שהיא טענה בעלת ממש ולא טענת סרק, ויש להראות מדוע אין בה כדי לשנות את זהות הפלוגתא – חוקיות מנגנון הגבייה – אף שהיא עשויה להיוותר כפלוגתא נפרדת.",
+      "model_answer_outline": "1. פתיח: בקשה למתן החלטה/פסק דין חלקי בשאלת החבות בשלב מוקדם, ולחלופין לקביעת דיון בשאלה משפטית מקדמית בקדם המשפט בתאריך 21.6.2026. 2. עובדות מינימליות: התביעה מתאריך 4.2.2026; פסק הדין בערעור מתאריך 18.2.2026; כתב ההגנה מתאריך 15.3.2026 החוזר על אותן טענות; העדר מחלוקת על הסכומים (168,000 ש\"ח) הנתמך בנספחי המשיבה עצמה. 3. הבסיס הדיוני: {{V2-Q1}} מלמד שאין צורך בהודאת הנתבע, ודי בכך שכתבי הטענות מעלים מחלוקת משפטית שאינה טעונה בירור עובדתי, וכי מקום שלא תצמח תועלת מהמשך הבירור יש להכריע מוקדם. 4. איזון האינטרסים לפי {{L1-Q1}}: מניעת הכרעות סותרות מול אותה נתבעת, ניהול דיון מהיר ויעיל וחיסכון במשאבים, וכן חובת ההכרעה בהקדם האפשרי. 5. השתק פלוגתא: יישום ארבעת התנאים המצטברים לפי {{V3-Q1}} – זהות הפלוגתא (חוקיות מנגנון \"דמי פיקוח נמל\" בתנאי ההובלה של המשיבה), יומה של המשיבה בערכאות (שלוש שנות התדיינות, שני משרדים, עדים ומומחה), ממצא פוזיטיבי (בשונה מאי-הרמת נטל שנדונה ב{{V3-Q1}}), וחיוניות הממצא לתוצאה (הוא שהוליד את חיוב ההשבה). יש להדגיש את הסתייגות {{V3-Q1}} לפיה אין להשתיק בעל דין בנקל, ולהראות שדווקא כאן מולאו כל התנאים. 6. אבחון טענת ההסתמכות: הסכם המסגרת מתאריך 7.9.2023 אינו יוצר פלוגתא שונה – תנאי מקפח שנקבע כבלתי חוקי אינו מוכשר בהסכמה אישית, וההנחה בתעריף היא לכל היותר טענת קיזוז/הפחתה בשלב הסעד. לפיכך ניתן להכריע בחבות ולהותיר לבירור, אם בכלל, את שאלת שיעור ההשבה. 7. סעדים ונספחים: פסק הדין מתאריך 18.2.2026, כתב ההגנה ונספחיו, הסכם המסגרת, ריכוז החשבוניות.",
+      "common_pitfall": "רבים ינסחו בקשה לסילוק על הסף (שאינה מתאימה כאשר המבקש הוא התובע), או יסתפקו באמירה כללית ש\"יש פסק דין\" בלי ליישם אחד לאחד את ארבעת התנאים של {{V3-Q1}} ובלי להסביר מדוע התוצאה כאן הפוכה מזו שב{{V3-Q1}} (ממצא פוזיטיבי וחיוני להבדיל מאי-הרמת נטל וקביעה שולית). כשל נוסף: התעלמות מטענת ההסתמכות על הסכם המסגרת, או הודאה מכללא שהיא מחייבת בירור עובדתי מלא – במקום להפרידה משאלת החבות ולהותירה לשלב הסעד.",
+      "quote_usage": [
+        {
+          "quote_id": "L1-Q1",
+          "role_in_answer": "מקור לאיזון האינטרסים ולתכלית מניעת הכרעות סותרות, יעילות הדיון וחובת ההכרעה בהקדם האפשרי"
+        },
+        {
+          "quote_id": "V2-Q1",
+          "role_in_answer": "הבסיס הדיוני להכרעה בשלב מוקדם, אף בקדם משפט, במחלוקת משפטית גרידא וללא הודאת הנתבע"
+        },
+        {
+          "quote_id": "V3-Q1",
+          "role_in_answer": "מסגרת ארבעת התנאים המצטברים להשתק פלוגתא, והבסיס לאבחון: שם נעדר ממצא פוזיטיבי וחיוני, וכאן הוא מתקיים"
+        }
+      ]
+    }
+  ],
+  "answers": [
+    {
+      "external_id": "2026-S-Q1-C-ANS",
+      "question_external_id": "2026-S-Q1-C",
+      "origin": "generated",
+      "status": "draft",
+      "quote_ids": [
+        "L1-Q1",
+        "V2-Q1",
+        "V3-Q1"
+      ],
+      "document_type": "בקשה למתן פסק דין חלקי",
+      "court": "בבית המשפט המחוזי מרכז-לוד",
+      "case_number": "ת\"א 26-01-8877",
+      "parties": {
+        "client_name": "נדב אלימלך, ת.ז ___",
+        "client_role": "התובע\nהמבקש",
+        "opposing_name": "גלים לוגיסטיקה בע\"מ, ח.פ ___",
+        "opposing_role": "הנתבעת\nהמשיבה"
+      },
+      "service_date": "",
+      "response_deadline": "",
+      "opening": "בית המשפט הנכבד מתבקש לעשות שימוש בסמכותו לפי {{L1-Q1}} וליתן פסק דין חלקי הקובע כי גביית \"דמי פיקוח נמל\" מן המבקש נעשתה שלא כדין ומכוח תנאי מקפח, וכי המשיבה מושתקת מלטעון אחרת, כך שהדיון בתביעה יתמקד בשאלת הסכומים בלבד. ואלה נימוקי הבקשה:",
+      "sections": [
+        {
+          "heading": "הרקע לבקשה",
+          "paragraphs": [
+            {
+              "text": "המבקש הוא יבואן ציוד חקלאי אשר מכולותיו משונעות באמצעות המשיבה, חברת שילוח, ובמשך שלוש השנים שקדמו להגשת התביעה נגבו ממנו \"דמי פיקוח נמל\" (להלן: \"דמי הפיקוח\") בסך כולל של 168,000 ₪. התביעה שבכותרת, שהוגשה ביום 4.2.2026, היא תביעה להשבת סכומים אלה.",
+              "exhibit_description": "",
+              "exhibit_marker": ""
+            },
+            {
+              "text": "ביום 18.2.2026, לאחר הגשת התביעה, ניתן פסק דין בערעור בעניין איגוד יבואני חומרי בניין נ' גלים לוגיסטיקה בע\"מ (להלן: \"פרשת איגוד היבואנים\"), שם נקבע בהרכב שלושה, כקביעה פוזיטיבית ולא כהערת אגב, כי הסעיף בתנאי ההובלה של המשיבה שמכוחו נגבים דמי הפיקוח הוא תנאי מקפח בחוזה אחיד, כי המשיבה אינה מספקת בפועל שירות פיקוח כלשהו בתמורה לתשלום, וכי הגבייה נעשתה שלא כדין. קביעה זו היא שהקימה את חובת ההשבה באותו הליך.",
+              "exhibit_description": "פסק הדין בפרשת איגוד היבואנים",
+              "exhibit_marker": "1"
+            },
+            {
+              "text": "ביום 15.3.2026 הגישה המשיבה כתב הגנה ובו היא חוזרת מילה במילה על אותן טענות עצמן שנדחו: כי דמי הפיקוח הם תמורה לשירות אמיתי, כי התנאי סביר ומקובל בענף וכי הלקוח הסכים לו. אין בכתב ההגנה מחלוקת על מספר המכולות ועל הסכומים שנגבו, והם מאושרים בנספח החשבוניות שצירפה המשיבה עצמה.",
+              "exhibit_description": "",
+              "exhibit_marker": ""
+            },
+            {
+              "text": "בסעיף נפרד בכתב ההגנה טוענת המשיבה כי יש להבחין בין המקרים, משום שביום 7.9.2023 חתם המבקש על הסכם מסגרת אישי הכולל תעריף מוזל למכולה (להלן: \"הסכם המסגרת\"), ולטענתה ההנחה ניתנה תמורת אישורו בכתב את מנגנון דמי הפיקוח.",
+              "exhibit_description": "הסכם המסגרת מיום 7.9.2023",
+              "exhibit_marker": "2"
+            }
+          ]
+        },
+        {
+          "heading": "הטיעון המשפטי",
+          "paragraphs": [
+            {
+              "text": "הסמכות ליתן פסק דין חלקי: {{L1-Q1}} מורה כי בית המשפט ייתן את החלטתו בתום הדיון בכל הליך, ומגדיר \"החלטה\" ככוללת אף פסק דין חלקי. משכך מוסמך ביהמ\"ש הנכבד להכריע כבר עתה בפלוגתא שנתחמה, מבלי להמתין לסיום ההליך כולו.",
+              "exhibit_description": "",
+              "exhibit_marker": ""
+            },
+            {
+              "text": "מוקדמות ההליך אינה מכשול. ב{{V2-Q1}} נקבע כי {{V2-Q1.text}} בענייננו לא יצמח דבר מבירור שאלת חוקיות הגבייה, שכבר הוכרעה בפסק דין בערעור, וכתבי הטענות אינם מעלים לגביה מחלוקת עובדתית הדורשת שמיעת ראיות.",
+              "exhibit_description": "",
+              "exhibit_marker": ""
+            },
+            {
+              "text": "השתק פלוגתא: ב{{V3-Q1}} הובהר כי בעל דין מושתק מלעורר מחדש מחלוקת שהוכרעה, וכי לשם כך נדרשים ארבעה תנאים מצטברים. באותה פרשה נדחתה טענת ההשתק משום ששני תנאים לא קוימו – ההכרעה לא קבעה ממצא פוזיטיבי אלא שנטל הראיה לא הורם, וממילא הייתה שולית לפסק הדין. ענייננו הוא היפוכו המדויק של אותו מקרה, וארבעת התנאים מתקיימים בו במלואם:",
+              "exhibit_description": "",
+              "exhibit_marker": ""
+            },
+            {
+              "text": "זהות הפלוגתא: בשתי ההתדיינויות נבחנה אותה שאלה ממש – האם הסעיף בתנאי ההובלה של המשיבה מכשיר את גביית דמי הפיקוח והאם ניתנת בגינם תמורה. אין מדובר בסעיפים שונים או בגבייה שונה, אלא באותו מנגנון גבייה אחיד ובאותם תנאי הובלה.",
+              "exhibit_description": "",
+              "exhibit_marker": ""
+            },
+            {
+              "text": "בעל הדין זכה ליומו: המשיבה בפרשת איגוד היבואנים היא הנתבעת כאן. היא נוהלה שם על ידי שני משרדי עורכי דין, הביאה שלושה עדים ומומחה מטעמה, וניהלה את ההליך שלוש שנים. יומה בבית המשפט היה מלא ואין היא יכולה להישמע בטענה שנמנע ממנה להתגונן.",
+              "exhibit_description": "",
+              "exhibit_marker": ""
+            },
+            {
+              "text": "ממצא פוזיטיבי: בשונה מפרשת פרפור, לא נקבע בפרשת איגוד היבואנים שנטל כלשהו לא הורם, אלא נקבע פוזיטיבית כי התנאי מקפח, כי אין שירות פיקוח בפועל וכי הגבייה נעשתה שלא כדין.",
+              "exhibit_description": "",
+              "exhibit_marker": ""
+            },
+            {
+              "text": "חיוניות ההכרעה: הקביעה בדבר אי-חוקיות הגבייה היא שהקימה את חובת ההשבה בפרשת איגוד היבואנים, ומשכך היא לב פסק הדין ולא שולית לו.",
+              "exhibit_description": "",
+              "exhibit_marker": ""
+            },
+            {
+              "text": "טענת ההבחנה בדבר הסכם המסגרת – דינה להידחות. ראשית, הסכם המסגרת נחתם ביום 7.9.2023, ואינו יכול להכשיר גבייה שנעשתה קודם לכן. שנית, טענת המשיבה בדבר הסכמת הלקוח למנגנון דמי הפיקוח היא בדיוק הטענה שנדחתה בפרשת איגוד היבואנים, ומשנקבע שם כי מדובר בתנאי מקפח שבגינו לא ניתנת כל תמורה, אין הסכמה פרטנית – ואף לא הנחה בתעריף המכולה – יכולה להכשיר גבייה בעד שירות שאינו קיים. שלישית, אין בהסכם המסגרת דבר המשנה את תנאי ההובלה עצמם, שהם המקור לגבייה ושבהם נמצא הפגם. ההנחה בתעריף המכולה עשויה, לכל היותר, להיות רלוונטית לשלב חישוב ההשבה – ולא לשאלת חוקיות הגבייה, שהיא בלבד מושא בקשה זו.",
+              "exhibit_description": "",
+              "exhibit_marker": ""
+            },
+            {
+              "text": "יוער כי טענת המשיבה בדבר \"נוהג מקובל בענף\" (המוכחשת) נבחנה ונדחתה אף היא בפרשת איגוד היבואנים, ואין המשיבה רשאית להעלותה מחדש בכסות של הבחנה עובדתית.",
+              "exhibit_description": "",
+              "exhibit_marker": ""
+            },
+            {
+              "text": "מתן פסק דין חלקי עולה בקנה אחד עם עקרונות היסוד שבתקנות: {{L1-Q1}} מורה לבית המשפט לאזן בין האינטרס של בעלי הדין ובין האינטרס הציבורי, הכולל \"קיומו של דיון משפטי צודק, מהיר ויעיל\", \"חיסכון במשאבי זמן ועלויות\" וכן \"מניעת הכרעות סותרות\". ניהול הוכחות ממושך בשאלה שהוכרעה בערעור, ובה תידרש המשיבה להביא שוב את עדיה ומומחיה, מבזבז זמן שיפוטי ועלול להוליד הכרעה סותרת לזו שניתנה בהרכב שלושה. הכרעה חלקית עתה תתחום את גדר המחלוקת לשאלת הסכומים בלבד – שאף היא אינה במחלוקת אמיתית, נוכח נספח החשבוניות שצירפה המשיבה.",
+              "exhibit_description": "",
+              "exhibit_marker": ""
+            }
+          ]
+        },
+        {
+          "heading": "לסיכום",
+          "paragraphs": [
+            {
+              "text": "אשר על כן מתבקש בית המשפט הנכבד ליתן פסק דין חלקי הקובע כי גביית דמי הפיקוח מן המבקש נעשתה שלא כדין ומכוח תנאי מקפח בחוזה אחיד, וכי המשיבה מושתקת מלטעון להיפוכה של קביעה זו; ולחייב את המשיבה בהוצאות בקשה זו ובשכר טרחת עו\"ד, שהצורך בהגשתה נולד מהעלאת טענות שנדחו כבר בפסק דין.",
+              "exhibit_description": "",
+              "exhibit_marker": ""
+            }
+          ]
+        }
+      ],
+      "closing": "בקשה זו מבוססת על טעמים משפטיים ועל פסק דין שניתן, ולפיכך אינה נתמכת בתצהיר.",
+      "signature_line": "________, עו\"ד\nב\"כ התובע/המבקש",
+      "sources_used": [
+        {
+          "quote_id": "L1-Q1",
+          "role": "מקור הסמכות למתן פסק דין חלקי (תק' 129(א) ותק' 6) ועקרונות היסוד המצדיקים זאת (תק' 5) – מניעת הכרעות סותרות וחיסכון במשאבים"
+        },
+        {
+          "quote_id": "V2-Q1",
+          "role": "הכלל בדבר הכרעה בשלב מוקדם כשאין תועלת בהמשך הבירור וכשהמחלוקת משפטית גרידא"
+        },
+        {
+          "quote_id": "V3-Q1",
+          "role": "ארבעת התנאים המצטברים להשתק פלוגתא, והבחנה מן המקרה שבו נדחתה הטענה"
+        }
+      ],
+      "rubric_coverage": [
+        {
+          "dimension": "לשון",
+          "requirement": "משלב של כתב טענות, שימוש מדויק במונח \"פלוגתא\" והבחנה בין התביעה שבכותרת לבין ההליך בפרשת איגוד היבואנים",
+          "how_met": "הבקשה מנוסחת בלשון פרוצדורלית מדויקת, מבחינה בין \"התביעה שבכותרת\" ל\"פרשת איגוד היבואנים\", ואינה נשענת על השפה הדבורה שבתיאור המקרה (\"קפץ ל-1,400 שקל\", \"ככה זה בכל השוק\")"
+        },
+        {
+          "dimension": "לשון",
+          "requirement": "הפניה מלאה לחקיקה ולפסיקה בפעם הראשונה והגדרת שם מקוצר",
+          "how_met": "כל מקור מובא באמצעות מציין המכיל את הציטוט המלא, ולפרשת איגוד היבואנים נקבע שם מקוצר במקום הופעתה הראשונה"
+        },
+        {
+          "dimension": "ארגון",
+          "requirement": "חלוקה לפסקאות ממוספרות ולכותרות ביניים לפי מבנה כתב טענות: תמצית, רקע, טיעון משפטי, סיכום",
+          "how_met": "פתיחה חד-משפטית המגדירה את הסעד, ואחריה 'הרקע לבקשה', 'הטיעון המשפטי' (סמכות – מוקדמות – השתק על ארבעת תנאיו – טענת ההבחנה – שיקולי תק' 5) ו'לסיכום'"
+        },
+        {
+          "dimension": "ארגון",
+          "requirement": "סינון עובדות ונספחים בהקשרם",
+          "how_met": "נשמטו הפרטים שאינם דרושים (זהות ארצות הייבוא, אובדן הלקוחות, עיכוב המשאבות בנמל), והנספחים מעוגנים בפסקה העובדתית שהם מבססים ולא כרשימה"
+        },
+        {
+          "dimension": "תוכן",
+          "requirement": "מקור הסמכות, הנסיבות למתן פס\"ד חלקי, ארבעת תנאי השתק הפלוגתא ויישומם, שיקולי תקנה 5 והגדרת הסעד",
+          "how_met": "תק' 129(א) ו-6 כמקור סמכות; דרור נ' יסעור למוקדמות ההכרעה; פרפור לתנאים, בהבחנה מפורשת מן המקרה שם (העדר ממצא פוזיטיבי ושוליות ההכרעה) וביישום כל תנאי לעובדות; תק' 5 לאינטרס הציבורי; והסעד מוגדר מפורשות בפתיחה ובסיכום"
+        },
+        {
+          "dimension": "תוכן",
+          "requirement": "התמודדות מפורשת עם טענת ההבחנה בדבר הסכם המסגרת מיום 7.9.2023",
+          "how_met": "פסקה נפרדת המשיבה בשלושה נימוקים: מועד החתימה מול תקופת הגבייה, זהות הטענה לזו שנדחתה, והעדר שינוי בתנאי ההובלה – תוך הפניית ההנחה בתעריף לשלב חישוב ההשבה"
+        }
+      ]
+    }
+  ],
+  "rendered_preview": {
+    "document_type": "בקשה למתן פסק דין חלקי",
+    "court": "בבית המשפט המחוזי מרכז-לוד",
+    "case_number": "ת\"א 26-01-8877",
+    "parties": {
+      "client_name": "נדב אלימלך, ת.ז ___",
+      "client_role": "התובע\nהמבקש",
+      "opposing_name": "גלים לוגיסטיקה בע\"מ, ח.פ ___",
+      "opposing_role": "הנתבעת\nהמשיבה"
+    },
+    "service_date": "",
+    "response_deadline": "",
+    "opening": "בית המשפט הנכבד מתבקש לעשות שימוש בסמכותו לפי מתוך תקנות סדר הדין האזרחי ,התשע\"ט:2018 וליתן פסק דין חלקי הקובע כי גביית \"דמי פיקוח נמל\" מן המבקש נעשתה שלא כדין ומכוח תנאי מקפח, וכי המשיבה מושתקת מלטעון אחרת, כך שהדיון בתביעה יתמקד בשאלת הסכומים בלבד. ואלה נימוקי הבקשה:",
+    "sections": [
+      {
+        "heading": "הרקע לבקשה",
+        "paragraphs": [
+          {
+            "text": "המבקש הוא יבואן ציוד חקלאי אשר מכולותיו משונעות באמצעות המשיבה, חברת שילוח, ובמשך שלוש השנים שקדמו להגשת התביעה נגבו ממנו \"דמי פיקוח נמל\" (להלן: \"דמי הפיקוח\") בסך כולל של 168,000 ₪. התביעה שבכותרת, שהוגשה ביום 4.2.2026, היא תביעה להשבת סכומים אלה.",
+            "exhibit_description": "",
+            "exhibit_marker": ""
+          },
+          {
+            "text": "ביום 18.2.2026, לאחר הגשת התביעה, ניתן פסק דין בערעור בעניין איגוד יבואני חומרי בניין נ' גלים לוגיסטיקה בע\"מ (להלן: \"פרשת איגוד היבואנים\"), שם נקבע בהרכב שלושה, כקביעה פוזיטיבית ולא כהערת אגב, כי הסעיף בתנאי ההובלה של המשיבה שמכוחו נגבים דמי הפיקוח הוא תנאי מקפח בחוזה אחיד, כי המשיבה אינה מספקת בפועל שירות פיקוח כלשהו בתמורה לתשלום, וכי הגבייה נעשתה שלא כדין. קביעה זו היא שהקימה את חובת ההשבה באותו הליך.",
+            "exhibit_description": "פסק הדין בפרשת איגוד היבואנים",
+            "exhibit_marker": "1"
+          },
+          {
+            "text": "ביום 15.3.2026 הגישה המשיבה כתב הגנה ובו היא חוזרת מילה במילה על אותן טענות עצמן שנדחו: כי דמי הפיקוח הם תמורה לשירות אמיתי, כי התנאי סביר ומקובל בענף וכי הלקוח הסכים לו. אין בכתב ההגנה מחלוקת על מספר המכולות ועל הסכומים שנגבו, והם מאושרים בנספח החשבוניות שצירפה המשיבה עצמה.",
+            "exhibit_description": "",
+            "exhibit_marker": ""
+          },
+          {
+            "text": "בסעיף נפרד בכתב ההגנה טוענת המשיבה כי יש להבחין בין המקרים, משום שביום 7.9.2023 חתם המבקש על הסכם מסגרת אישי הכולל תעריף מוזל למכולה (להלן: \"הסכם המסגרת\"), ולטענתה ההנחה ניתנה תמורת אישורו בכתב את מנגנון דמי הפיקוח.",
+            "exhibit_description": "הסכם המסגרת מיום 7.9.2023",
+            "exhibit_marker": "2"
+          }
+        ]
+      },
+      {
+        "heading": "הטיעון המשפטי",
+        "paragraphs": [
+          {
+            "text": "הסמכות ליתן פסק דין חלקי: מתוך תקנות סדר הדין האזרחי ,התשע\"ט:2018 מורה כי בית המשפט ייתן את החלטתו בתום הדיון בכל הליך, ומגדיר \"החלטה\" ככוללת אף פסק דין חלקי. משכך מוסמך ביהמ\"ש הנכבד להכריע כבר עתה בפלוגתא שנתחמה, מבלי להמתין לסיום ההליך כולו.",
+            "exhibit_description": "",
+            "exhibit_marker": ""
+          },
+          {
+            "text": "מוקדמות ההליך אינה מכשול. בע\"א  23-123דרור  'ניסעור נקבע כי \"מקום בו לא תצמח תועלת מהמשך בירור ההליך ,יש להכריעו בשלב מוקדם ,ואפילו בקדם המשפט .הכרעה שכזו אינה מוגבלת למקרים בהם מודה הנתבע בחלקים מכתב התביעה אלא גם כאשר כתבי הטענות מעלים מחלוקת משפטית גרידא שאינה דורשת בירור עובדתי.\" בענייננו לא יצמח דבר מבירור שאלת חוקיות הגבייה, שכבר הוכרעה בפסק דין בערעור, וכתבי הטענות אינם מעלים לגביה מחלוקת עובדתית הדורשת שמיעת ראיות.",
+            "exhibit_description": "",
+            "exhibit_marker": ""
+          },
+          {
+            "text": "השתק פלוגתא: ברע\"א  21-456פרפור נ 'נשר הובהר כי בעל דין מושתק מלעורר מחדש מחלוקת שהוכרעה, וכי לשם כך נדרשים ארבעה תנאים מצטברים. באותה פרשה נדחתה טענת ההשתק משום ששני תנאים לא קוימו – ההכרעה לא קבעה ממצא פוזיטיבי אלא שנטל הראיה לא הורם, וממילא הייתה שולית לפסק הדין. ענייננו הוא היפוכו המדויק של אותו מקרה, וארבעת התנאים מתקיימים בו במלואם:",
+            "exhibit_description": "",
+            "exhibit_marker": ""
+          },
+          {
+            "text": "זהות הפלוגתא: בשתי ההתדיינויות נבחנה אותה שאלה ממש – האם הסעיף בתנאי ההובלה של המשיבה מכשיר את גביית דמי הפיקוח והאם ניתנת בגינם תמורה. אין מדובר בסעיפים שונים או בגבייה שונה, אלא באותו מנגנון גבייה אחיד ובאותם תנאי הובלה.",
+            "exhibit_description": "",
+            "exhibit_marker": ""
+          },
+          {
+            "text": "בעל הדין זכה ליומו: המשיבה בפרשת איגוד היבואנים היא הנתבעת כאן. היא נוהלה שם על ידי שני משרדי עורכי דין, הביאה שלושה עדים ומומחה מטעמה, וניהלה את ההליך שלוש שנים. יומה בבית המשפט היה מלא ואין היא יכולה להישמע בטענה שנמנע ממנה להתגונן.",
+            "exhibit_description": "",
+            "exhibit_marker": ""
+          },
+          {
+            "text": "ממצא פוזיטיבי: בשונה מפרשת פרפור, לא נקבע בפרשת איגוד היבואנים שנטל כלשהו לא הורם, אלא נקבע פוזיטיבית כי התנאי מקפח, כי אין שירות פיקוח בפועל וכי הגבייה נעשתה שלא כדין.",
+            "exhibit_description": "",
+            "exhibit_marker": ""
+          },
+          {
+            "text": "חיוניות ההכרעה: הקביעה בדבר אי-חוקיות הגבייה היא שהקימה את חובת ההשבה בפרשת איגוד היבואנים, ומשכך היא לב פסק הדין ולא שולית לו.",
+            "exhibit_description": "",
+            "exhibit_marker": ""
+          },
+          {
+            "text": "טענת ההבחנה בדבר הסכם המסגרת – דינה להידחות. ראשית, הסכם המסגרת נחתם ביום 7.9.2023, ואינו יכול להכשיר גבייה שנעשתה קודם לכן. שנית, טענת המשיבה בדבר הסכמת הלקוח למנגנון דמי הפיקוח היא בדיוק הטענה שנדחתה בפרשת איגוד היבואנים, ומשנקבע שם כי מדובר בתנאי מקפח שבגינו לא ניתנת כל תמורה, אין הסכמה פרטנית – ואף לא הנחה בתעריף המכולה – יכולה להכשיר גבייה בעד שירות שאינו קיים. שלישית, אין בהסכם המסגרת דבר המשנה את תנאי ההובלה עצמם, שהם המקור לגבייה ושבהם נמצא הפגם. ההנחה בתעריף המכולה עשויה, לכל היותר, להיות רלוונטית לשלב חישוב ההשבה – ולא לשאלת חוקיות הגבייה, שהיא בלבד מושא בקשה זו.",
+            "exhibit_description": "",
+            "exhibit_marker": ""
+          },
+          {
+            "text": "יוער כי טענת המשיבה בדבר \"נוהג מקובל בענף\" (המוכחשת) נבחנה ונדחתה אף היא בפרשת איגוד היבואנים, ואין המשיבה רשאית להעלותה מחדש בכסות של הבחנה עובדתית.",
+            "exhibit_description": "",
+            "exhibit_marker": ""
+          },
+          {
+            "text": "מתן פסק דין חלקי עולה בקנה אחד עם עקרונות היסוד שבתקנות: מתוך תקנות סדר הדין האזרחי ,התשע\"ט:2018 מורה לבית המשפט לאזן בין האינטרס של בעלי הדין ובין האינטרס הציבורי, הכולל \"קיומו של דיון משפטי צודק, מהיר ויעיל\", \"חיסכון במשאבי זמן ועלויות\" וכן \"מניעת הכרעות סותרות\". ניהול הוכחות ממושך בשאלה שהוכרעה בערעור, ובה תידרש המשיבה להביא שוב את עדיה ומומחיה, מבזבז זמן שיפוטי ועלול להוליד הכרעה סותרת לזו שניתנה בהרכב שלושה. הכרעה חלקית עתה תתחום את גדר המחלוקת לשאלת הסכומים בלבד – שאף היא אינה במחלוקת אמיתית, נוכח נספח החשבוניות שצירפה המשיבה.",
+            "exhibit_description": "",
+            "exhibit_marker": ""
+          }
+        ]
+      },
+      {
+        "heading": "לסיכום",
+        "paragraphs": [
+          {
+            "text": "אשר על כן מתבקש בית המשפט הנכבד ליתן פסק דין חלקי הקובע כי גביית דמי הפיקוח מן המבקש נעשתה שלא כדין ומכוח תנאי מקפח בחוזה אחיד, וכי המשיבה מושתקת מלטעון להיפוכה של קביעה זו; ולחייב את המשיבה בהוצאות בקשה זו ובשכר טרחת עו\"ד, שהצורך בהגשתה נולד מהעלאת טענות שנדחו כבר בפסק דין.",
+            "exhibit_description": "",
+            "exhibit_marker": ""
+          }
+        ]
+      }
+    ],
+    "closing": "בקשה זו מבוססת על טעמים משפטיים ועל פסק דין שניתן, ולפיכך אינה נתמכת בתצהיר.",
+    "signature_line": "________, עו\"ד\nב\"כ התובע/המבקש",
+    "sources_used": [
+      {
+        "quote_id": "L1-Q1",
+        "role": "מקור הסמכות למתן פסק דין חלקי (תק' 129(א) ותק' 6) ועקרונות היסוד המצדיקים זאת (תק' 5) – מניעת הכרעות סותרות וחיסכון במשאבים"
+      },
+      {
+        "quote_id": "V2-Q1",
+        "role": "הכלל בדבר הכרעה בשלב מוקדם כשאין תועלת בהמשך הבירור וכשהמחלוקת משפטית גרידא"
+      },
+      {
+        "quote_id": "V3-Q1",
+        "role": "ארבעת התנאים המצטברים להשתק פלוגתא, והבחנה מן המקרה שבו נדחתה הטענה"
+      }
+    ],
+    "rubric_coverage": [
+      {
+        "dimension": "לשון",
+        "requirement": "משלב של כתב טענות, שימוש מדויק במונח \"פלוגתא\" והבחנה בין התביעה שבכותרת לבין ההליך בפרשת איגוד היבואנים",
+        "how_met": "הבקשה מנוסחת בלשון פרוצדורלית מדויקת, מבחינה בין \"התביעה שבכותרת\" ל\"פרשת איגוד היבואנים\", ואינה נשענת על השפה הדבורה שבתיאור המקרה (\"קפץ ל-1,400 שקל\", \"ככה זה בכל השוק\")"
+      },
+      {
+        "dimension": "לשון",
+        "requirement": "הפניה מלאה לחקיקה ולפסיקה בפעם הראשונה והגדרת שם מקוצר",
+        "how_met": "כל מקור מובא באמצעות מציין המכיל את הציטוט המלא, ולפרשת איגוד היבואנים נקבע שם מקוצר במקום הופעתה הראשונה"
+      },
+      {
+        "dimension": "ארגון",
+        "requirement": "חלוקה לפסקאות ממוספרות ולכותרות ביניים לפי מבנה כתב טענות: תמצית, רקע, טיעון משפטי, סיכום",
+        "how_met": "פתיחה חד-משפטית המגדירה את הסעד, ואחריה 'הרקע לבקשה', 'הטיעון המשפטי' (סמכות – מוקדמות – השתק על ארבעת תנאיו – טענת ההבחנה – שיקולי תק' 5) ו'לסיכום'"
+      },
+      {
+        "dimension": "ארגון",
+        "requirement": "סינון עובדות ונספחים בהקשרם",
+        "how_met": "נשמטו הפרטים שאינם דרושים (זהות ארצות הייבוא, אובדן הלקוחות, עיכוב המשאבות בנמל), והנספחים מעוגנים בפסקה העובדתית שהם מבססים ולא כרשימה"
+      },
+      {
+        "dimension": "תוכן",
+        "requirement": "מקור הסמכות, הנסיבות למתן פס\"ד חלקי, ארבעת תנאי השתק הפלוגתא ויישומם, שיקולי תקנה 5 והגדרת הסעד",
+        "how_met": "תק' 129(א) ו-6 כמקור סמכות; דרור נ' יסעור למוקדמות ההכרעה; פרפור לתנאים, בהבחנה מפורשת מן המקרה שם (העדר ממצא פוזיטיבי ושוליות ההכרעה) וביישום כל תנאי לעובדות; תק' 5 לאינטרס הציבורי; והסעד מוגדר מפורשות בפתיחה ובסיכום"
+      },
+      {
+        "dimension": "תוכן",
+        "requirement": "התמודדות מפורשת עם טענת ההבחנה בדבר הסכם המסגרת מיום 7.9.2023",
+        "how_met": "פסקה נפרדת המשיבה בשלושה נימוקים: מועד החתימה מול תקופת הגבייה, זהות הטענה לזו שנדחתה, והעדר שינוי בתנאי ההובלה – תוך הפניית ההנחה בתעריף לשלב חישוב ההשבה"
+      }
+    ]
+  }
+}

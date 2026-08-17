@@ -1,62 +1,10 @@
 {
-  "_readme": [
-    "Tunable settings for ANSWER generation (scripts/generate-open-answer.js).",
-    "Question generation has its own file: llm-params.json.",
-    "",
-    "Each section appears EXACTLY ONCE. Edit values in place — do not paste a",
-    "whole section inside another one.",
-    "",
-    "Anything omitted here falls back to llm-params.json, so you only need to",
-    "state what should differ for answers.",
-    "",
-    "The authoring.* entries below encode the marking rules. Each is free text:",
-    "edit the wording to change the rule.",
-    "",
-    "Revision history of the rules:",
-    "  v2 — a practising advocate's tracked-changes markup of the generated",
-    "       SHY-Q1 answer (petition against a tender award).",
-    "  v3 — the two official winter 2022 model answers. Three v2 rules were wrong",
-    "       against them: caption order, closing wording, and the ban on attacking",
-    "       the other side's pleading.",
-    "  v4 — the two official winter 2021 model answers. Relief resting on a",
-    "       statutory list must be argued condition by condition, and a חוות דעת is",
-    "       NOT a pleading — no caption, and it must reach the honest conclusion",
-    "       even against the client.",
-    "  v5 — the two official summer 2023 model answers. Two more rules were wrong:",
-    "       the flat ban on policy argument and the flat ban on indignation, both",
-    "       now scoped. Added the N-part case-law test as a skeleton, conceding the",
-    "       uncontested part, and the argument from absence of evidence.",
-    "  v6 — the two official summer 2021 model answers (עתירה למתן צו על תנאי",
-    "       לבג\"ץ; חוות דעת על החזר הוצאות בעבודה מהבית). No rule was contradicted",
-    "       this time. Added the petition-to-the-HCJ instrument, threshold",
-    "       objections answered before the merits, the ultra vires argument against",
-    "       subordinate legislation, and — the largest addition — what an opinion",
-    "       does when the sources supply no rule that decides the question.",
-    "",
-    "All seven official pairs are carried as exemplars in answers/*.json.",
-    "",
-    "Only these authoring keys are read by lib/ai/generate-open-answer.js:",
-    "header_block, facts_discipline, exhibits_style, party_perspective,",
-    "argument_pattern, adverse_authority, structure, citation_style, length,",
-    "register, extra_instructions. A key added here that is not on that list is",
-    "silently ignored — put new direction inside an existing key.",
-    "",
-    "NOT tunable here, by design: the quote-locking rules and the ban on citing",
-    "authorities that were not attached to the question. Both live in",
-    "lib/ai/generate-open-answer.js because weakening them would produce a",
-    "confidently wrong answer with no visible error."
-  ],
-  "version": 6,
-  "model": {
-    "id": "claude-opus-5",
-    "max_tokens": 40000,
-    "effort": "high"
-  },
-  "generation": {
-    "prompt_version": "open-answer/7",
-    "prompt_cache": true,
-    "prompt_cache_ttl": "1h"
-  },
+  "rejected_at": "2026-08-17T06:48:27.811Z",
+  "model": "claude-opus-5",
+  "prompt_version": "open-answer/7",
+  "effort": "high",
+  "max_tokens": 40000,
+  "leak_shingle_size": 7,
   "authoring": {
     "header_block": "RULE 1 — before anything else, decide WHICH INSTRUMENT the question asks for, and write that one. (a) A pleading filed in court — בקשה, תגובה, תשובה, עתירה, כתב תביעה, כתב הגנה — opens with the caption. A חוות דעת does NOT: it is written to the client or to the partner in your firm, and has no court, no case number, no parties block, no relief and no signature block. Return an empty string for court, case_number, service_date, response_deadline and signature_line, and empty strings inside parties, when the question asks for an opinion. Writing an opinion in the dress of a pleading, or a pleading in the shape of an opinion, forfeits the whole answer. (b) A challenge to subordinate legislation or to a minister's act goes to the HCJ: court is בבית המשפט העליון בשבתו כבית משפט גבוה לצדק, case_number is בג\"ץ ____/__, and the instrument is an עתירה למתן צו על תנאי. Its opening does not ask for an order but for the respondent to show cause — בית המשפט הנכבד מתבקש להוציא מלפניו צו על תנאי המופנה אל המשיב ומורה לו להתייצב וליתן טעם מדוע לא ייקבע כי: — followed by the grounds as NUMBERED, SELF-CONTAINED propositions, each closing ולפיכך דינה להתבטל. Those numbered grounds are also the skeleton of the argument section; see RULE 4(b). (c) The caption of a pleading: the court name and the case number on one line (court right, case number left); for an interlocutory application the case number carries בקשה מספר ___ as well. Then the parties in the CASE's order — plaintiff/petitioner first, a centred -נגד-, then defendant/respondent — WHICHEVER SIDE WE ACT FOR. Do not move our client to the top. (d) A pleading that opens a proceeding gives each party one designation (העותרת, המשיב). An interlocutory application inside an existing case gives each party TWO, stacked: the role in the case, then the role in this application — הנתבע above המשיב, התובעת above המבקשת. Return the two separated by a newline in client_role / opposing_role. (e) Where the order sought is directed at someone who is NOT a party to the case — a public authority, a prosecutor's office, a bank holding the file — that person must appear in the caption as an additional respondent to this application (המשיבה בבקשה זו: מדינת ישראל באמצעות פרקליטות מחוז דרום). An order cannot be made against someone who is not before the court. A state respondent is served through its representative: על ידי פרקליטות המדינה. (f) The party is the legal person whose right is at stake, not the human being who walked into your office. Where the client's company bid, lost, is bound or is being sued, the party is the COMPANY ALONE: client_name is חברת \"המטמינים\" בע\"מ, ח.פ ??? and NOTHING ELSE. Do not name the owner, the director or the signatory, and never write the two together — משה איבגי, בעליה של חברת \"המטמינים\" is wrong, and so is חברת \"המטמינים\" בבעלות משה איבגי. The owner is not a party, has no standing here, and mentioning him invites a challenge to the pleading. The same applies in the body: the pleading speaks of the company in the feminine singular throughout, and refers to it only by its designation (העותרת) or its short name. An individual is a party in his own name, with ת.ז ???, only where the right at stake is his, using the number the question gives if it gives one. (g) Where a source imposes IDENTIFICATION requirements for the relief, the caption must carry them as placeholders: תקנה 125 requires the respondent's name in Latin letters, address, ID and passport number for an exit order, and the official answer's caption duly reads YAKOV AZAR, דרכון: ___. (h) client_name and opposing_name carry the party's NAME and identifier ONLY. Do NOT write the advocate's details there: the renderer prints באמצעות ב\"כ עו\"ד ??? (מ\"ר ???) מרחוב ??? טל': ???; פקס: ???; דוא\"ל: ??? beneath each party by itself, and repeating it prints the line twice. (i) מועד המצאת הבקשה and מועד אחרון לתגובה belong only to a pleading that RESPONDS to something already served on the client. A pleading that opens a proceeding has neither — return empty strings. (j) Then the underlined title of the pleading, centred, naming the instrument and the posture: בקשה לצו עיכוב יציאה מן הארץ טרם הגשת תביעה (במעמד צד אחד).",
     "facts_discipline": "RULE 2 — the facts section carries only what the legal argument needs, stated at the level of legal relevance and no lower, in a handful of short paragraphs. It is not a retelling of the client's meeting. (a) Colour taken from the fact pattern costs marks and can cost the case: where the question describes how the parties know each other, their army service, what they reminisced about, the client's mood or language, write only the operative core — לשניים היכרות מוקדמת — because spelling out a long, warm acquaintance hands the other side the very characterisation its authority needs. (b) What the client says in confidence, and anything that would embarrass or expose them, does not go in the pleading at all. Where the client is furious and says so at length, take the SUBSTANCE and drop the tone: the official answer converts a client's rant about the authority's cheek into two clean points and keeps nothing of the language. (c) The facts section states facts; the inference they support belongs in the legal argument. Do not close a fact paragraph with what the court may therefore do. (d) The one exception: where a fact IS the wrong, name the wrong in legal terms, in one sentence, in a paragraph of its own — עצם הנחת המתנה על שולחנו של המנכ\"ל מהווה ניסיון למתן שוחד — rather than framing it rhetorically. (e) Define a short name for every recurring person, body, instrument and object at its first appearance — (להלן: \"המבקשת\"), (להלן: \"התקנות\"), (להלן: \"הפקודה\"), (להלן: \"הראיה\") — placing the definition AFTER the words that justify it, then use it verbatim everywhere else. (f) Where a date matters to the argument and the question does not give it, leave a blank placeholder rather than inventing one: ביום _______ עבר בכנסת חוק... The same goes for a case number or an amount the question withholds. (g) Where the parties' relationship to each other is itself a fact the argument uses, give it its own short הצדדים section before the narrative, one paragraph per party. (h) Where the client approached the other side or the authority before suing, that correspondence is a fact section of its own — פניות העותרת למשיב — with its exhibits, because it is what makes the claim admissible; see RULE 4(c).",
@@ -70,34 +18,215 @@
     "length": "shorter",
     "extra_instructions": "The official answers run to two pages and roughly ten to twenty numbered paragraphs, facts included; the question usually states the two-page limit itself, and it is a marking criterion. Before writing each sentence, ask: where is this written? A sentence supported by neither the question's facts nor a quoted source must be cut, however well it argues. Before finishing, check the sources once more: an attached provision you never used is almost always a condition you failed to address, an attached authority you never cited is almost always the test you were supposed to apply, and an attached authority that bars relief is one you were supposed to pre-empt."
   },
-  "validation": {
-    "leak_shingle_size": 7,
-    "enforce_forbidden_terms": true,
-    "reject_foreign_citations": true,
-    "misquote_window": 12,
-    "misquote_max_edits": 2,
-    "misquote_min_flank": 4
+  "question_external_id": "2021-W-Q1-A",
+  "usage": {
+    "input_tokens": 39,
+    "cache_creation_input_tokens": 51538,
+    "cache_read_input_tokens": 0,
+    "cache_creation": {
+      "ephemeral_5m_input_tokens": 51538,
+      "ephemeral_1h_input_tokens": 0
+    },
+    "output_tokens": 14096,
+    "service_tier": "standard",
+    "inference_geo": "global"
   },
-  "_options": {
-    "model.effort": "low | medium | high | xhigh | max — answers are longer than questions, so this costs more",
-    "generation.prompt_cache": "true caches the rubric + exemplars prefix; the 2nd answer onward is much cheaper",
-    "generation.prompt_cache_ttl": "1h | 5m — how long the cached prefix survives between answers. A set takes 4-6 minutes, so 5m would expire between sets about as often as it held; 1h costs 2x to write instead of 1.25x, paid once per run",
-    "authoring.header_block": "RULE 1 — which instrument the question asks for (pleading / חוות דעת / עתירה למתן צו על תנאי), the caption's contents and party order, a non-party the order is aimed at, and identification particulars a source demands",
-    "authoring.facts_discipline": "RULE 2 — what belongs in the facts, filtering the client's own words, blank placeholders for facts the question withholds, and the prior-approaches section",
-    "authoring.exhibits_style": "RULE 2 — exhibit forms and markers, the attachments the relief requires, and saying why there is no affidavit when there is none",
-    "authoring.party_perspective": "RULE 3 — advocacy in a pleading vs appraisal in a חוות דעת (which addresses the client in the second person), and what an opinion does when the sources supply no rule that decides the question",
-    "authoring.argument_pattern": "RULE 4 — the test as skeleton (statute, authority, or your own show-cause grounds), threshold objections before the merits, ultra vires against subordinate legislation, canons as burden-shifting presumptions, mining one authority for every ground, and the four moves when responding",
-    "authoring.adverse_authority": "RULE 5 — a threshold bar is pre-empted, a substantive rule is distinguished, and in an opinion neither: distinctions must rest on what the source says",
-    "authoring.register": "free text — the voice of a pleading and of an opinion; indignation is scoped to the other side's conduct in the litigation. Also carries the WRITTEN BY A PERSON rules that keep the Hebrew reading as though a practitioner wrote it by hand rather than a model assembled it: real abbreviations and connectives, uneven paragraph lengths, no uniform hedging, no signposting every move, no enumerating for completeness. This is what makes our answer comparable against a human's",
-    "authoring.structure": "free text — the three document shapes and their section order",
-    "authoring.citation_style": "free text — narrative or parenthetical citation, short-name forms, reference signals, precise sub-provisions, academic sources with a page",
-    "authoring.length": "match_exemplars | shorter | longer. Set to shorter: the reviewed markup cut roughly a third of the generated answer, and every official answer runs two pages",
-    "authoring.extra_instructions": "free text appended last — the general-purpose knob",
-    "validation.leak_shingle_size": "consecutive words matching a source that count as a quotation. Exact matches are ALLOWED and recorded as verified — they are accurate law",
-    "validation.reject_foreign_citations": "reject an answer citing an authority from the exemplar answers rather than this question's own sources. Leave true.",
-    "validation.misquote_window": "words compared when hunting a misquotation (default 12)",
-    "validation.misquote_max_edits": "how many altered words still count as a misquotation rather than a paraphrase (default 2). This is the check that REJECTS: a holding reproduced with a word changed reads as binding authority while misstating it",
-    "model.max_tokens": "thinking + answer share this budget. Answers are long; 24000 truncated a real run, so 40000 is the floor at effort=high",
-    "validation.misquote_min_flank": "matching source words required on BOTH sides of an altered word (default 4). This is what separates an altered quote from the writer's own words wrapping a short phrase — lowering it causes false rejections"
+  "errors": [
+    {
+      "type": "truncated_output",
+      "detail": "sections[1].paragraphs[0].exhibit_marker is \"א'\", which is not a usable exhibit number."
+    },
+    {
+      "type": "truncated_output",
+      "detail": "sections[1].paragraphs[1].exhibit_marker is \"ב'\", which is not a usable exhibit number."
+    },
+    {
+      "type": "truncated_output",
+      "detail": "sections[1].paragraphs[3].exhibit_marker is \"ג'\", which is not a usable exhibit number."
+    },
+    {
+      "type": "truncated_output",
+      "detail": "sections[1].paragraphs[4].exhibit_marker is \"ד'\", which is not a usable exhibit number."
+    },
+    {
+      "type": "truncated_output",
+      "detail": "sections[1].paragraphs[5].exhibit_marker is \"ה'\", which is not a usable exhibit number."
+    }
+  ],
+  "generated": {
+    "document_type": "בקשה דחופה לצו עיכוב יציאה מן הארץ טרם הגשת תביעה (במעמד צד אחד)",
+    "court": "בבית משפט השלום בחיפה",
+    "case_number": "בקשה מס': ______ (טרם הוגשה תביעה)",
+    "parties": {
+      "client_name": "מרים חלפון, ת.ז ___________",
+      "client_role": "המבקשת",
+      "opposing_name": "רפאל בוזגלו, ת.ז ___________ / RAFAEL BUZAGLO, דרכון: ___________, מרחוב ___________, נשר",
+      "opposing_role": "המשיב"
+    },
+    "service_date": "",
+    "response_deadline": "",
+    "opening": "בית המשפט הנכבד מתבקש לעשות שימוש בסמכותו לפי תקנה 124(א) לתקנות סדר הדין האזרחי, תשע\"ט-2018 (להלן: \"התקנות\"), וליתן נגד המשיב, במעמד צד אחד ובטרם הגשת כתב התביעה, צו עיכוב יציאה מן הארץ ולהורות על הפקדת דרכונו, ולחלופין להתנות את יציאתו בהפקדת ערובה בגובה סכום התביעה, וזאת עד להכרעה בתביעה שתוגש בתוך שבעה ימים ממועד מתן הצו. ואלה נימוקי הבקשה:",
+    "sections": [
+      {
+        "heading": "הצדדים",
+        "paragraphs": [
+          {
+            "text": "המבקשת היא בעלת חנות פרחים בקריית אתא (להלן: \"החנות\"), ומזמינת עבודות השיפוץ מושא בקשה זו.",
+            "exhibit_description": "",
+            "exhibit_marker": ""
+          },
+          {
+            "text": "המשיב הוא קבלן שיפוצים המתגורר בנשר, אשר התחייב לבצע את השיפוץ בחנות ובמחסן שמאחוריה.",
+            "exhibit_description": "",
+            "exhibit_marker": ""
+          }
+        ]
+      },
+      {
+        "heading": "הפירוט העובדתי",
+        "paragraphs": [
+          {
+            "text": "ביום 4.2.2024 נחתם בין הצדדים הסכם לשיפוץ מלא של החנות ושל המחסן (להלן: \"ההסכם\"), ובו נקבע כי העבודה תסתיים בתוך שלושה חודשים.",
+            "exhibit_description": "העתק ההסכם מיום 4.2.2024",
+            "exhibit_marker": "א'"
+          },
+          {
+            "text": "ביום 6.2.2024, לבקשת המשיב ולצורך הזמנת מרצפות וארונות תצוגה מחו\"ל, העבירה המבקשת לחשבונו מקדמה בסך 112,000 ₪ (להלן: \"המקדמה\").",
+            "exhibit_description": "אישור ההעברה הבנקאית של המקדמה",
+            "exhibit_marker": "ב'"
+          },
+          {
+            "text": "המשיב הגיע לחנות פעמיים, פירק את הדלת ואת הקירות הפנימיים, ומחודש מרץ 2024 חדל מן העבודה כליל. החנות נותרה מפורקת וסגורה ואינה מפיקה הכנסה, והמבקשת נותרה בלא מקור פרנסה.",
+            "exhibit_description": "",
+            "exhibit_marker": ""
+          },
+          {
+            "text": "מאז ניסתה המבקשת להשיג את המשיב פעמים רבות. בתחילה טען לעיכוב במשלוח, ולאחר מכן חדל להשיב לפניותיה כליל, לרבות למכתב שנשלח אליו בדואר רשום לכתובתו בנשר.",
+            "exhibit_description": "העתקי ההודעות שנשלחו למשיב, המכתב בדואר רשום ואישור המסירה",
+            "exhibit_marker": "ג'"
+          },
+          {
+            "text": "בשבוע שקדם להגשת בקשה זו נודע למבקשת כי אשת המשיב מסרה לשכנתה שהמשפחה מכנסת את נכסיה בישראל ועוברת להתגורר בקנדה, אצל אחיו של המשיב. באתר \"יד 2\" פורסמו מודעות למכירה מהירה של רכב הטנדר של המשיב ושל תכולת דירתו בנשר; בשיחה שקיימה המבקשת עם המפרסם, אשר הזדהה בשם אחר, אישר הלה כי המוכר עוזב את הארץ.",
+            "exhibit_description": "צילומי המודעות שפורסמו באתר \"יד 2\"",
+            "exhibit_marker": "ד'"
+          },
+          {
+            "text": "המבקשת פנתה לחוקר פרטי. מדוח החקירה עולה כי המשיב אינו רשום כבעל נדל\"ן בישראל, כי עסקו נסגר ברשם, וכי בן משפחה שלו מסר לחוקר כי טיסת המשפחה קבועה ליום 2.9.2024.",
+            "exhibit_description": "דוח החוקר הפרטי",
+            "exhibit_marker": "ה'"
+          }
+        ]
+      },
+      {
+        "heading": "הטענות המשפטיות",
+        "paragraphs": [
+          {
+            "text": "ראיות מספקות לכאורה בקיומה של עילת תביעה (תקנה 95(ב) לתקנות; ראו {{L1-Q1}}): ההסכם החתום, אישור העברת המקדמה, פירוק החנות ונטישת העבודה מלמדים לכאורה על הפרה יסודית של ההסכם ועל החזקת כספי המקדמה שלא כדין. התביעה שתוגש תעמוד על השבת המקדמה בסך 112,000 ₪ בצירוף נזקי הפירוק והשבתת החנות.",
+            "exhibit_description": "",
+            "exhibit_marker": ""
+          },
+          {
+            "text": "קיים \"חשש ממשי שהמשיב עומד לצאת מן הארץ לתקופה ממושכת או לצמיתות\" כלשון תקנה 124(א) לתקנות: מועד הטיסה של המשפחה קבוע ליום 2.9.2024, הטנדר ותכולת הדירה הוצעו למכירה מהירה, והיעד הוא מעבר לקנדה אל אחיו של המשיב. ודוק, אין מדובר ביציאה זמנית לחו\"ל אלא בכינוס נכסיו של המשיב בישראל ובעזיבתה.",
+            "exhibit_description": "",
+            "exhibit_marker": ""
+          },
+          {
+            "text": "היעדרו של המשיב מן הארץ \"עלול להכביד באופן ממשי על ביצוע פסק הדין\", ולמעשה למנוע את ביצועו כליל: המשיב אינו רשום כבעל נדל\"ן בישראל, עסקו נסגר ברשם, והמיטלטלין שנותרו בידיו מוצעים כעת למכירה. משכך, אם יטוס המשיב לא יימצא בישראל נכס שממנו ניתן להיפרע, וכל פסק דין שיינתן לטובת המבקשת יהיה אות מתה.",
+            "exhibit_description": "",
+            "exhibit_marker": ""
+          },
+          {
+            "text": "החריגים שבתקנה 124(ב) לתקנות אינם מתקיימים בענייננו: המשיב אינו תושב חוץ אלא תושב ישראל המתגורר בנשר (ס\"ק (1)), וסכום התביעה עולה על 100,000 ₪ (ס\"ק (2)) – שכן המקדמה בסך 112,000 ₪ חורגת מן הרף אף בטרם נכללו בתביעה נזקי הפירוק וההשבתה.",
+            "exhibit_description": "",
+            "exhibit_marker": ""
+          },
+          {
+            "text": "תום לב והיעדר שיהוי (תקנה 95(ד)(3) לתקנות): המבקשת פנתה למשיב שוב ושוב, בהודעות ובמכתב רשום, ורק משנודע לה בשבוע האחרון על ההיערכות ליציאה מן הארץ פנתה לייעוץ משפטי, ובקשה זו מוגשת מיד – ביום 20.8.2024, שלושה עשר ימים בלבד לפני מועד הטיסה. ברי כי לא היה שיהוי, וכי הבקשה הוגשה בהזדמנות הראשונה שבה נודעו לה העובדות המקימות אותה.",
+            "exhibit_description": "",
+            "exhibit_marker": ""
+          },
+          {
+            "text": "מאזן הנזקים נוטה בבירור לטובת המבקשת (תקנה 95(ד)(1) לתקנות): מנגד למניעת אובדנם המלא של 112,000 ₪, שהם למעשה כלל חסכונותיה של המבקשת שנותרה בלא פרנסה, עומדת דחיית מועד יציאתו של המשיב מן הארץ. הצו אינו אוסר על המשיב לצאת לצמיתות אלא מכפיף את יציאתו להסדרת חובו.",
+            "exhibit_description": "",
+            "exhibit_marker": ""
+          },
+          {
+            "text": "אין \"סעד אחר שפגיעתו במשיב קלה יותר, המשיג את התכלית שלשמה נועד הסעד הזמני\" (תקנה 95(ד)(2) לתקנות) – בהיעדר נכסים על שם המשיב אין מה לעכב או לתפוס. עם זאת, ולמען המידתיות, מתבקש בית המשפט לעשות שימוש בסמכותו בתקנה 124(א) לתקנות \"להתנות תנאים ליציאתו\" של המשיב, כך שיוכל לצאת אם יפקיד ערובה בגובה סכום התביעה.",
+            "exhibit_description": "",
+            "exhibit_marker": ""
+          },
+          {
+            "text": "קיימים \"טעמים מיוחדים\" לדיון במעמד צד אחד לפי תקנה 97(א) לתקנות. המשיב מכנס את נכסיו בחשאי, אף פרסם את המודעה תוך הזדהות בשם אחר, ומכאן חשש סביר – ולמעשה למעלה מזה – כי הבאת הבקשה לידיעתו תוביל להקדמת הטיסה ולכך שהמבקשת תיוותר מול שוקת שבורה. בנסיבות אלה העיכוב שייגרם מקיום דיון במעמד הצדדים \"תסכל את מטרת הסעד הזמני\", ומשכך מתבקש ליתן סעד ארעי במעמד המבקשת בלבד ולקבוע דיון במעמד הצדדים בהקדם.",
+            "exhibit_description": "",
+            "exhibit_marker": ""
+          },
+          {
+            "text": "מתן הצו בטרם הגשת כתב התביעה מוצדק בנסיבות העניין (תקנה 95(ג) לתקנות): עריכת כתב התביעה מחייבת חשבון מהנדס לאמידת נזקי הפירוק בחנות ותארך שבוע לפחות, ואילו הטיסה קבועה ליום 2.9.2024. המתנה לסיום עריכת התביעה עלולה לרוקן את הסעד מתוכן. המבקשת מתחייבת להגיש את התביעה בתוך שבעה ימים ממועד מתן הצו, או בכל מועד אחר שעליו יורה בית המשפט.",
+            "exhibit_description": "",
+            "exhibit_marker": ""
+          },
+          {
+            "text": "בהתאם לתקנה 125 לתקנות צוינו בכותרת הבקשה שמו ושם משפחתו של המשיב באותיות לטיניות, מענו ומספר הזהות שלו. מספר דרכונו אינו ידוע למבקשת, ולפיכך מצורפים פרטי זיהוי נוספים המופיעים בדוח החוקר, ובכללם מועד הטיסה ופרטי בני משפחתו, שיש בהם כדי למנוע טעות בזיהוי; בית המשפט מתבקש להורות על השלמת פרטים ככל שיידרש.",
+            "exhibit_description": "",
+            "exhibit_marker": ""
+          },
+          {
+            "text": "לבקשה מצורפים כתב התחייבות עצמית לפי הנוסח שבטופס 7 שבתוספת הראשונה לתקנות, כאמור בתקנה 96(ב), וכן ערובה כאמור בתקנה 96(ג). ההתחייבות והערובה יעמדו גם לפיצוי כל נזק שייגרם לאדם שאיננו המשיב עקב עיכוב יציאתו על סמך הצו, בהתאם לתקנה 126 לתקנות.",
+            "exhibit_description": "",
+            "exhibit_marker": ""
+          }
+        ]
+      },
+      {
+        "heading": "לסיכום",
+        "paragraphs": [
+          {
+            "text": "אשר על כן מתבקש בית המשפט הנכבד ליתן, במעמד צד אחד, צו עיכוב יציאה מן הארץ נגד המשיב ולהורות על הפקדת דרכונו, ולחלופין להתנות את יציאתו בהפקדת ערובה בגובה סכום התביעה; וכן לחייב את המשיב בהוצאות בקשה זו ובשכר טרחת עו\"ד, שנדרשו אך בשל התנהלותו – נטילת המקדמה, נטישת העבודה והיערכותו לצאת מן הארץ בלא לפרוע את חובו.",
+            "exhibit_description": "",
+            "exhibit_marker": ""
+          }
+        ]
+      }
+    ],
+    "closing": "הבקשה נתמכת בתצהיר המבקשת לאימות העובדות המשמשות יסוד לה. מצ\"ב כתב התחייבות עצמית לפי טופס 7 שבתוספת הראשונה לתקנות, ערובה וייפוי כוח.",
+    "signature_line": "____________, עו\"ד\nב\"כ המבקשת",
+    "sources_used": [
+      {
+        "quote_id": "L1-Q1",
+        "role": "מקור הסמכות לצו עיכוב יציאה מן הארץ (תקנה 124(א)), החריגים לו (תקנה 124(ב)), תנאי מתן סעד זמני ושיקולי בית המשפט (תקנות 95(ב)-(ד)), מתן סעד טרם הגשת תביעה (תקנה 95(ג)), דיון במעמד צד אחד (תקנה 97(א)), פרטי זיהוי המשיב (תקנה 125) והתחייבות עצמית וערובה (תקנות 96 ו-126)"
+      }
+    ],
+    "rubric_coverage": [
+      {
+        "dimension": "ארגון",
+        "requirement": "מבנה כתב טענות: כותרת, תמצית הסעד, רקע עובדתי, טיעון משפטי מיושם וסיכום, עם כותרות ביניים ופסקאות ממוספרות",
+        "how_met": "הבקשה נפתחת בכותרת ובמשפט אחד המגדיר את הסמכות והסעד, ומחולקת לפרקי הצדדים, הפירוט העובדתי, הטענות המשפטיות ולסיכום; כל תנאי שבדין מוצג בפסקה נפרדת ומיושם על העובדות"
+      },
+      {
+        "dimension": "ארגון",
+        "requirement": "נספחים משולבים בהקשרם ולא כרשימה טכנית",
+        "how_met": "כל נספח (א'-ה') עוגן בפסקה העובדתית שהוא מבסס – ההסכם, אישור ההעברה, הפניות, מודעות \"יד 2\" ודוח החוקר – ואילו התצהיר, ההתחייבות העצמית והערובה נזכרים כמסמכים שהסעד מחייב"
+      },
+      {
+        "dimension": "תוכן",
+        "requirement": "התייחסות מפורשת לסמכות ליתן צו בטרם הגשת תביעה ובמעמד צד אחד",
+        "how_met": "פסקה נפרדת לתקנה 95(ג) הכוללת התחייבות להגשת התביעה בתוך שבעה ימים והנמקה מדוע עריכת התביעה (חשבון מהנדס) אינה מאפשרת המתנה, ופסקה נפרדת לתקנה 97(א) המבססת \"טעמים מיוחדים\" בחשש להקדמת הטיסה"
+      },
+      {
+        "dimension": "תוכן",
+        "requirement": "יישום תנאי הסעד הזמני וסף הסכום",
+        "how_met": "יושמו תקנות 95(ב) ו-95(ד)(1)-(3) ותקנה 124(א), ובנוסף הוראה מפורשת כי חריגי תקנה 124(ב) אינם חלים – המשיב תושב ישראל וסכום התביעה (112,000 ₪) עולה על 100,000 ₪"
+      },
+      {
+        "dimension": "תוכן",
+        "requirement": "התייחסות למועדים – 20.8.2024 מול 2.9.2024",
+        "how_met": "פסקת תום הלב והיעדר השיהוי מציינת את פרק הזמן של שלושה עשר ימים בלבד עד הטיסה ואת הפנייה המיידית לייעוץ משפטי עם היוודע העובדות"
+      },
+      {
+        "dimension": "לשון",
+        "requirement": "משלב כתב טענות, סינון פרטים ומינוח מדויק, ללא הישענות על השפה הדבורה שבמטלה",
+        "how_met": "העובדות נמסרו בתמצית משפטית (היכרות מוקדמת ופרטי רקע לא רלוונטיים הושמטו), ציטוטי הדין קצרים ומשולבים בתוך הטיעון (\"חשש ממשי\", \"טעמים מיוחדים\"), והצדדים מכונים לאורך הבקשה \"המבקשת\" ו\"המשיב\" בלבד"
+      }
+    ]
   }
 }

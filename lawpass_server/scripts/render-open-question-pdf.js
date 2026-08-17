@@ -155,10 +155,12 @@ function buildHtml({ question, bank, label }) {
 }
 
 function main() {
-  const [generatedPath, sourcePath] = process.argv.slice(2);
+  const args = process.argv.slice(2);
+  const htmlOnly = args.includes("--html-only");
+  const [generatedPath, sourcePath] = args.filter((a) => !a.startsWith("--"));
   if (!generatedPath || !sourcePath) {
     console.error(
-      "usage: node scripts/render-open-question-pdf.js <generated.json> <source-questions.json>"
+      "usage: node scripts/render-open-question-pdf.js <generated.json> <source-questions.json> [--html-only]"
     );
     process.exit(2);
   }
@@ -196,11 +198,11 @@ function main() {
     path.dirname(path.resolve(generatedPath)),
     path.basename(generatedPath).replace(/[.]json$/, "")
   );
-  const { htmlPath, pdfPath } = printHtmlToPdf(html, base);
+  const { htmlPath, pdfPath } = printHtmlToPdf(html, base, { htmlOnly });
 
   console.log(`sources printed verbatim from bank: ${bank.map((q) => q.id).join(", ")}`);
   console.log(`html : ${htmlPath}`);
-  console.log(`pdf  : ${pdfPath}`);
+  if (pdfPath) console.log(`pdf  : ${pdfPath}`);
 }
 
 main();

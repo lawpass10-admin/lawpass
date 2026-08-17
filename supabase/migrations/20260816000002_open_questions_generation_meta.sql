@@ -1,0 +1,40 @@
+-- open_questions.generation_meta — how a generated row was produced.
+--
+-- A SNAPSHOT, never a reference. llm-params.json and llm-params-answers.json are
+-- live files edited between runs, and they keep no history: the 2025-D-W-Q1-A
+-- angle was generated with an empty `register` instruction, while the file today
+-- carries a full paragraph of it. Without a copy frozen onto the row there is no
+-- way to tell which side of that change any given question falls on.
+--
+-- Shape: the `generated_from` object the generator already writes into
+-- scripts/ingestion/open_questions/generated/*.json —
+--
+--   {
+--     "source_external_id": "2025-D-W-Q1",
+--     "source_file":        "2025-12-part1-writing.json",
+--     "model":              "claude-opus-5",
+--     "prompt_version":     "open-question-angle/2",
+--     "effort":             "low",
+--     "max_tokens":         24000,
+--     "leak_shingle_size":  7,
+--     "authoring":          { "difficulty": ..., "register": ..., "extra_instructions": ... },
+--     "angle_letter":       "A",
+--     "generated_at":       "2026-08-03T06:03:15.098Z"
+--   }
+--
+-- Worth adding when the writer is updated: `usage` (input/output/cache tokens).
+-- The rejected/ path already records it, so today you can cost your failed
+-- generations but not your successful ones.
+--
+-- NULL for type='source' rows — those came off a real exam paper, not a model.
+-- No CHECK tying type='new' to a non-null value: it would be the correct
+-- invariant, but it blocks inserting a draft row before its metadata is
+-- assembled. Add it once the generator writes rows directly.
+--
+-- jsonb rather than columns because llm-params.json is versioned ("version": 1)
+-- and will grow knobs — a new tuning parameter should not need a migration.
+-- If you end up filtering constantly on model or prompt_version, index those
+-- two expressions rather than promoting them to columns.
+
+ALTER TABLE public.open_questions
+  ADD COLUMN IF NOT EXISTS generation_meta jsonb NULL;

@@ -19,6 +19,7 @@ const {
   bankForPrompt,
   validateGenerated,
   renderGenerated,
+  repairPlaceholderIds,
   normalize,
 } = require("./quote-bank");
 
@@ -64,7 +65,12 @@ Where the answer depends on a document the client would attach, name it as an ex
 // scripts/ingestion/open_questions/llm-params-answers.json.
 const DEFAULT_ANSWER_PARAMS = {
   model: { id: "claude-opus-5", max_tokens: 24000, effort: "high" },
-  generation: { prompt_version: PROMPT_VERSION, prompt_cache: true },
+  generation: {
+    prompt_version: PROMPT_VERSION,
+    prompt_cache: true,
+    // "1h" or "5m". See the breakpoint comment in generateAnswer.
+    prompt_cache_ttl: "1h",
+  },
   authoring: {
     header_block: "",
     facts_discipline: "",
@@ -84,6 +90,7 @@ const DEFAULT_ANSWER_PARAMS = {
     reject_foreign_citations: true,
     misquote_window: 8,
     misquote_max_edits: 2,
+    misquote_min_flank: 4,
   },
   forbidden_terms: {},
 };
@@ -337,6 +344,13 @@ function findForeignCitations(generated, foreign) {
  * exactly what a truncated pleading looks like, and `stop_reason` does not
  * always report it, so the content itself has to be checked.
  */
+/**
+ * Exhibit markers the renderer can use: 1, 2-3, א', ב״, א'-ב', נספח ג'.
+ * Leading char is a digit or a letter; the rest may add geresh/gershayim
+ * (typed as ' or ", or the Hebrew ׳ ״), range dashes and spaces.
+ */
+const MARKER_SHAPE = /^[\w֐-׿][\w֐-׿'"׳״‐-―\-\s]*$/;
+
 function findIncompleteAnswer(g) {
   const errors = [];
   const empty = (v) => !v || !String(v).trim();
@@ -356,9 +370,13 @@ function findIncompleteAnswer(g) {
           detail: `sections[${i}].paragraphs[${j}] is empty — generation stopped mid-document.`,
         });
       }
-      // a marker is a number or a letter; punctuation means a half-written field
+      // A marker is a number (1), a range (2-3), or a Hebrew letter carrying its
+      // geresh (א', ב״) — the exhibits rule asks for all three, and the geresh is
+      // typed as a plain apostrophe. What this check is for is a field caught
+      // mid-write, which is punctuation with no marker in front of it (","). So:
+      // it must START with a digit or letter, and hold nothing but marker parts.
       const marker = typeof p === "string" ? "" : p.exhibit_marker;
-      if (marker && !/^[\w֐-׿]+$/.test(String(marker).trim())) {
+      if (marker && !MARKER_SHAPE.test(String(marker).trim())) {
         errors.push({
           type: "truncated_output",
           detail: `sections[${i}].paragraphs[${j}].exhibit_marker is "${marker}", which is not a usable exhibit number.`,
@@ -396,6 +414,65 @@ function findIncompleteAnswer(g) {
   return errors;
 }
 
+/**
+ * The system blocks, in the order the API renders them.
+ *
+ * ORDER IS THE WHOLE POINT — caching is a prefix match, so everything up to the
+ * breakpoint has to be byte-identical from one request to the next. The rubric
+ * and the exemplar answers are the same for every question in the workspace and
+ * are ~77% of this prompt, so they go FIRST, with the breakpoint after them;
+ * the question and its bank — the only part that changes per set — go last.
+ *
+ * Written the other way round, with the question first, the prefix differed
+ * from byte one: every run rewrote the whole thing at the write premium and
+ * cache_read_input_tokens never moved off 0. Moving the question back above the
+ * breakpoint would silently undo that, which is why this is a separate function
+ * with a test on the block order.
+ */
+function buildAnswerPrompt({ question, bank, rubricText, exemplars, params }) {
+  const invariantBlock = {
+    type: "text",
+    text: JSON.stringify({ rubric: rubricText, exemplar_answers: exemplars }, null, 2),
+  };
+
+  // The breakpoint caches everything before it — the system rules AND the
+  // rubric and exemplars. A one-hour TTL rather than the default five minutes:
+  // a set takes four to six minutes end to end, so the next set's answer stage
+  // arrives right on the edge of the 5m window and would miss about as often as
+  // it hit. The 1h write costs 2x instead of 1.25x, paid once per run.
+  if (params.generation.prompt_cache) {
+    invariantBlock.cache_control = {
+      type: "ephemeral",
+      ttl: params.generation.prompt_cache_ttl,
+    };
+  }
+
+  return [
+    { type: "text", text: buildAnswerSystemPrompt(params.authoring) },
+    invariantBlock,
+    {
+      type: "text",
+      text: JSON.stringify(
+        {
+          question: {
+            external_id: question.external_id,
+            title: question.angle_title || question.title,
+            client_role: question.client_role,
+            deliverable: question.deliverable,
+            fact_pattern: question.fact_pattern,
+            task_instructions: question.task_instructions,
+            answer_limit: question.answer_limit,
+            timeline: question.timeline,
+          },
+          quote_bank: bankForPrompt(bank),
+        },
+        null,
+        2
+      ),
+    },
+  ];
+}
+
 async function generateAnswer({
   question,
   bank,
@@ -406,37 +483,11 @@ async function generateAnswer({
 }) {
   const client = getClient();
   const params = mergeAnswerParams(paramsOverride);
-  const systemPrompt = buildAnswerSystemPrompt(params.authoring);
-
-  const stable = JSON.stringify(
-    {
-      question: {
-        external_id: question.external_id,
-        title: question.angle_title || question.title,
-        client_role: question.client_role,
-        deliverable: question.deliverable,
-        fact_pattern: question.fact_pattern,
-        task_instructions: question.task_instructions,
-        answer_limit: question.answer_limit,
-        timeline: question.timeline,
-      },
-      quote_bank: bankForPrompt(bank),
-      rubric: rubricText,
-      exemplar_answers: exemplars,
-    },
-    null,
-    2
-  );
-
-  const stableBlock = { type: "text", text: stable };
-  if (params.generation.prompt_cache) {
-    stableBlock.cache_control = { type: "ephemeral" };
-  }
 
   const stream = client.messages.stream({
     model: params.model.id,
     max_tokens: params.model.max_tokens,
-    system: [{ type: "text", text: systemPrompt }, stableBlock],
+    system: buildAnswerPrompt({ question, bank, rubricText, exemplars, params }),
     output_config: {
       effort: params.model.effort,
       format: { type: "json_schema", schema: ANSWER_SCHEMA },
@@ -446,7 +497,15 @@ async function generateAnswer({
         role: "user",
         content:
           "Write the model answer for this question, satisfying the rubric. " +
-          "Use only the attached sources, through their placeholders.",
+          "Use only the attached sources, through their placeholders.\n\n" +
+          // Spelled out per question for the same reason as in the question
+          // generator: the rules illustrate the syntax with {{V1}}, and a bank
+          // suffixed per question invites the model to write the example's
+          // shape instead of the real id.
+          `The placeholder ids for this question are exactly: ` +
+          `${bank.map((q) => `{{${q.id}}}`).join(", ")}. Write them verbatim, ` +
+          `suffix included — {{V1}} in the rules is an illustration of the ` +
+          `SYNTAX, not an id you may use.`,
       },
     ],
   });
@@ -463,13 +522,17 @@ async function generateAnswer({
   const textBlock = message.content.find((b) => b.type === "text");
   if (!textBlock) throw new Error("[ai] no text block in response");
 
-  const generated = JSON.parse(textBlock.text);
+  const { value: generated, repairs } = repairPlaceholderIds(
+    JSON.parse(textBlock.text),
+    bank
+  );
 
   const validation = validateGenerated(generated, bank, {
     forbiddenTerms: params.validation.enforce_forbidden_terms ? forbiddenTerms : [],
     shingleSize: params.validation.leak_shingle_size,
     misquoteWindow: params.validation.misquote_window,
     misquoteMaxEdits: params.validation.misquote_max_edits,
+    misquoteMinFlank: params.validation.misquote_min_flank,
   });
 
   for (const e of findIncompleteAnswer(generated)) {
@@ -491,6 +554,7 @@ async function generateAnswer({
   return {
     generated,
     rendered: validation.ok ? renderGenerated(generated, bank) : null,
+    repairs, // id slips corrected before validation, for the run log
     validation,
     usage: message.usage,
     meta: {
@@ -507,6 +571,7 @@ async function generateAnswer({
 
 module.exports = {
   generateAnswer,
+  buildAnswerPrompt,
   findIncompleteAnswer,
   mergeAnswerParams,
   buildAnswerSystemPrompt,

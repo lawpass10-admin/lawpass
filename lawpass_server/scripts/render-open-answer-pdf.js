@@ -210,10 +210,12 @@ function buildHtml({ answer, bank, label }) {
 }
 
 function main() {
-  const [answerPath, sourcePath, sourceIdArg] = process.argv.slice(2);
+  const args = process.argv.slice(2);
+  const htmlOnly = args.includes("--html-only");
+  const [answerPath, sourcePath, sourceIdArg] = args.filter((a) => !a.startsWith("--"));
   if (!answerPath || !sourcePath) {
     console.error(
-      "usage: node scripts/render-open-answer-pdf.js <answer.json> <source-questions.json> [source_external_id]"
+      "usage: node scripts/render-open-answer-pdf.js <answer.json> <source-questions.json> [source_external_id] [--html-only]"
     );
     process.exit(2);
   }
@@ -266,11 +268,11 @@ function main() {
     path.dirname(path.resolve(answerPath)),
     path.basename(answerPath).replace(/\.json$/, "")
   );
-  const { htmlPath, pdfPath } = printHtmlToPdf(html, base);
+  const { htmlPath, pdfPath } = printHtmlToPdf(html, base, { htmlOnly });
 
   console.log(`sources rendered from bank: ${bank.map((q) => q.id).join(", ")}`);
   console.log(`html : ${htmlPath}`);
-  console.log(`pdf  : ${pdfPath}`);
+  if (pdfPath) console.log(`pdf  : ${pdfPath}`);
 }
 
 main();

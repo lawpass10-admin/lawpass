@@ -341,7 +341,16 @@ def find_reversed_numbers(text: str):
 # ------------------------------------------------------------- segmentation
 
 # Poppler renders "שאלה 1:" as "שאלה :1" (the colon crosses the RTL boundary).
-QUESTION_MARKER = re.compile(r"שאלה\s*:?\s*(\d+)\s*:?")
+#
+# The number is introduced three ways, and a single paper mixes them — the Bar
+# papers from 2021-2023 open question 1 with "שאלה מס' 1" and question 2 with
+# "שאלה מספר 2", while 2026 uses a bare "שאלה 1". Matching only the bare form
+# found 0 or 1 question in four of five papers, which is what left them with no
+# sources extracted at all.
+#
+# The leading guard stops בשאלה/לשאלה/כשאלה from matching: "ההכרעה בשאלה 2"
+# inside a fact pattern is a reference, not a header.
+QUESTION_MARKER = re.compile(r"(?<![א-ת])שאלה\s*(?:מספר|מס['׳]?)?\s*:?\s*(\d+)\s*:?")
 
 # Where the attached sources begin. Anchoring on a marker is far more reliable
 # than hunting for citations, because the fact pattern itself cites case numbers
@@ -367,20 +376,82 @@ def find_sources_anchor(text: str):
             return m
     return None
 
+# The court-type abbreviations and statute openers a source block can begin with.
+#
+# Both spellings of the final mem are listed (עת"ם / עת"מ): which one survives
+# depends on the PDF's font, and the papers are inconsistent. בגץ without
+# gershayim is likewise real — the 2021 summer font drops the quote mark, and
+# matching only בג"ץ silently skipped every verdict in that paper.
+CASE_TOKENS = (
+    r'ע"א|רע"א|ת"א|תא|ע"ע|בג"ץ|בג"צ|בגץ|בש"א|רע"פ|ע"פ|'
+    r'ה"פ|תמ"ש|בר"ע|דנ"א|ע"ר|עת"ם|עת"מ|עע"ם|עע"מ|עמ"נ|עת"א'
+)
+STATUTE_OPENERS = r"חוק|תקנות|פקודת|פקודה|צו"
+
+# A bare statute opener is NOT enough to start a source: the quoted body of a
+# statute is full of them ("תקנות אלה", "חוק זה יחולו", "צו עיכוב יציאה מן
+# הארץ"), and splitting there tears a quote in half — the first piece keeps the
+# citation and the rest becomes a source with no text at all.
+#
+# What separates a heading from prose is the year every Israeli statute carries
+# in its name (התשע"ט-2018). So an opener counts only when introduced by מתוך or
+# followed by a year. Case citations need no such test: their abbreviation only
+# ever appears at the head of a citation.
+_STATUTE_WITH_YEAR = r"(?:" + STATUTE_OPENERS + r")\s(?=[^\n]{0,80}?\d{4})"
+CITATION_HEAD = (
+    r"(?:מתוך\s+(?:(?:" + STATUTE_OPENERS + r")|(?:" + CASE_TOKENS + r"))\s"
+    r"|(?:" + CASE_TOKENS + r")\s"
+    r"|" + _STATUTE_WITH_YEAR + r")"
+)
+
 # "מתוך" optionally precedes a statute/regulation heading.
 # The leading boundary is essential: without it "תא" matches the tail of פלוגתא
 # and "חוק" matches inside החוק, cutting the sources at nonsense positions.
-CITATION_START = re.compile(
-    r"(?:(?<=^)|(?<=\s))(?:מתוך\s+)?("
-    r"חוק\s|תקנות\s|פקודת\s|צו\s|"
-    r'ע"א\s|רע"א\s|ת"א\s|תא\s|בג"ץ\s|בג"צ\s|בש"א\s|רע"פ\s|ע"פ\s|ה"פ\s|תמ"ש\s|בר"ע\s|דנ"א\s|ע"ר\s|'
-    r'עת"ם\s|עע"ם\s|עמ"נ\s|עת"א\s'
-    r")"
-)
+#
+# The optional list number absorbs the numbering these papers put on each source
+# (".1מתוך בגץ 6536/17" — bidi moves the period in front). Without it the
+# boundary before מתוך is the digit rather than a space, and the whole numbered
+# list is invisible. Kept to 1-2 digits so a year like 2019 cannot match.
+LIST_NUMBER = r"(?:\.?\d{1,2}[.)]?\s*)?"
+CITATION_START = re.compile(r"(?:(?<=^)|(?<=\s))" + LIST_NUMBER + CITATION_HEAD)
 
-STATUTE_HEAD = re.compile(r"^(?:מתוך\s+)?(חוק|תקנות|פקודת|צו)\s")
+# Tolerates the list number so a numbered "1.מתוך תקנות ..." is still classed as
+# a statute. Misclassifying it as case_law would put a regulation into the
+# verdict half of the quote bank.
+STATUTE_HEAD = re.compile(r"^" + LIST_NUMBER + r"(?:מתוך\s+)?(חוק|תקנות|פקודת|פקודה|צו)\s")
 # Hebrew year + Gregorian year closes a statute heading: "התשע\"ט-2018".
 STATUTE_YEAR = re.compile(r'\d{4}\s*[-–]?\s*:?|:\s*\d{4}\s*[-–]?')
+
+# Fallback for papers carrying neither marker — the 2021 winter and 2023 summer
+# papers close the task with "את תשובתכם יש לבסס מתוך המקורות המצורפים" and no
+# answer-limit sentence, so both anchors miss and every source was dropped.
+#
+# These cut at the START of the first source-list item, so the match is
+# zero-width (a lookahead) and the citation itself stays inside the sources
+# region. Anchored to a line start, because a fact pattern cites case numbers
+# mid-sentence but never opens a line with one.
+#
+# Two tiers, strongest signal first: a line opening with "מתוך <citation>" is
+# unambiguous, while a line opening with a bare citation could in principle be
+# a wrapped fact-pattern line. Whichever fires, the caller warns.
+SOURCES_FALLBACKS = [
+    re.compile(
+        r"^[ \t]*" + LIST_NUMBER
+        + r"(?=מתוך\s+(?:(?:" + STATUTE_OPENERS + r")|(?:" + CASE_TOKENS + r"))\s)",
+        re.MULTILINE,
+    ),
+    re.compile(r"^[ \t]*" + LIST_NUMBER + r"(?=" + CITATION_HEAD + r")", re.MULTILINE),
+]
+
+
+def find_sources_fallback(text: str):
+    """First fallback that matches, strongest signal first. Zero-width."""
+    for rx in SOURCES_FALLBACKS:
+        m = rx.search(text)
+        if m:
+            return m
+    return None
+
 
 TASK_START = re.compile(r"(יש ל|עליך ל|עלייך ל|נדרש ל|התבקשת ל)")
 
@@ -392,6 +463,21 @@ PUNCT_FOLD = str.maketrans({"״": '"', "׳": "'", "“": '"', "”": '"'})
 
 def fold(text: str) -> str:
     return text.translate(PUNCT_FOLD)
+
+
+# The source list's own numbering, which bidi renders as ".1" glued to the
+# citation. Stripped from the stored citation so it reads as a citation and not
+# as a numbered line.
+LEADING_LIST_NUMBER = re.compile(r"^\s*\.?\d{1,2}[.)]?\s*")
+
+
+def strip_list_number(text: str) -> str:
+    return LEADING_LIST_NUMBER.sub("", text, count=1).strip()
+
+
+BASIC_LAW_HEAD = re.compile(r"^" + LIST_NUMBER + r"(?:מתוך\s+)?חוק\s+יסוד")
+# Where a quoted statute body opens: a section number, as ".3" or ")7ב(".
+SECTION_START = re.compile(r"\s\.\d+|\s\)\d+")
 
 
 def split_citation_and_quote(block: str):
@@ -410,8 +496,21 @@ def split_citation_and_quote(block: str):
     if STATUTE_HEAD.match(folded):
         y = STATUTE_YEAR.search(folded)
         if y:
-            citation = block[: y.end()].strip().strip(":-–").strip()
+            citation = strip_list_number(block[: y.end()].strip().strip(":-–"))
             quote = block[y.end():].strip().strip('"').strip()
+            if citation and quote:
+                return citation, quote
+
+    # A Basic Law is "חוק יסוד: השפיטה" — it carries no year, and the colon
+    # belongs to its NAME. The generic colon split below would cut there and
+    # push "השפיטה" into the quoted text, leaving the citation as a bare
+    # "חוק יסוד". Split at the first section number instead, which is where the
+    # quoted body of a statute always begins.
+    if BASIC_LAW_HEAD.match(folded):
+        s = SECTION_START.search(folded)
+        if s:
+            citation = strip_list_number(block[: s.start()].strip().strip(":-–"))
+            quote = block[s.start():].strip().strip('"').strip()
             if citation and quote:
                 return citation, quote
 
@@ -420,11 +519,11 @@ def split_citation_and_quote(block: str):
         i = m.start()
         if i + 1 < len(folded) and folded[i + 1].isdigit():
             continue  # e.g. "התשע\"ט-2018:2018"
-        citation = block[:i].strip().strip('"').strip()
+        citation = strip_list_number(block[:i].strip().strip('"'))
         quote = block[i + 1:].strip().strip('"').strip()
         if citation and quote:
             return citation, quote
-    return block.strip(), None
+    return strip_list_number(block), None
 
 
 def segment(pages, exam_id):
@@ -484,10 +583,18 @@ def segment(pages, exam_id):
         if anchor:
             prose, sources_region = body[: anchor.end()], body[anchor.end():]
         else:
-            prose, sources_region = body, ""
-            warnings.append(
-                f"{external_id}: no sources marker found (neither the answer-limit sentence nor a \"המקורות המשפטיים\" heading) — sources could not be separated"
-            )
+            anchor = find_sources_fallback(fold(body))
+            if anchor:
+                prose, sources_region = body[: anchor.start()], body[anchor.start():]
+                warnings.append(
+                    f"{external_id}: no sources marker — fell back to the first source-list line. "
+                    "The split between task instructions and sources is inferred here; VERIFY it."
+                )
+            else:
+                prose, sources_region = body, ""
+                warnings.append(
+                    f"{external_id}: no sources marker found (neither the answer-limit sentence nor a \"המקורות המשפטיים\" heading) — sources could not be separated"
+                )
 
         prose = prose.strip()
         t = TASK_START.search(prose)

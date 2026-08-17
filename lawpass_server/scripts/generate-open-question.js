@@ -271,7 +271,11 @@ async function main() {
     process.exit(1);
   }
 
-  console.log("quote lock: OK — no source text was reproduced by the model\n");
+  console.log("quote lock: OK — no source text was reproduced by the model");
+  for (const r of result.repairs ?? []) {
+    console.log(`  repaired placeholder id: {{${r.from}}} -> {{${r.to}}} (unambiguous)`);
+  }
+  console.log("");
 
   const out = {
     generated_from: {

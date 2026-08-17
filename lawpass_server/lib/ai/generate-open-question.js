@@ -11,6 +11,7 @@ const {
   bankForPrompt,
   validateGenerated,
   renderGenerated,
+  repairPlaceholderIds,
 } = require("./quote-bank");
 
 // Fallbacks used when no params file is supplied. The params file
@@ -30,6 +31,7 @@ const DEFAULT_PARAMS = {
     enforce_forbidden_terms: true,
     misquote_window: 8,
     misquote_max_edits: 2,
+    misquote_min_flank: 4,
   },
   forbidden_terms: {},
 };
@@ -218,8 +220,19 @@ async function generateAngle({
     2
   );
 
+  // The exact ids, spelled out per question. The rules above teach the syntax
+  // with {{V1}}, and a bank suffixed per question (L1-Q1, V2-Q1) invites the
+  // model to copy the example's shape and write {{L1}} — which resolves to
+  // nothing and costs the whole generation. This sits in the USER turn, not the
+  // cached system prefix, so it varies per question without breaking the cache.
+  const idList = bank.map((q) => `{{${q.id}}}`).join(", ");
+
   const userInstruction = [
     `Write angle ${angleLetter}.`,
+    `The placeholder ids for this question are exactly: ${idList}. Write them ` +
+      `verbatim, suffix included — {{V1}} in the rules above is an illustration ` +
+      `of the SYNTAX, not an id you may use. An id outside this list resolves to ` +
+      `nothing and the question is rejected.`,
     forbiddenTerms.length
       ? `These names appear in the source and must not appear anywhere in your output: ${forbiddenTerms.join(", ")}.`
       : null,
@@ -260,19 +273,24 @@ async function generateAngle({
   const textBlock = message.content.find((b) => b.type === "text");
   if (!textBlock) throw new Error("[ai] no text block in response");
 
-  const generated = JSON.parse(textBlock.text);
+  const { value: generated, repairs } = repairPlaceholderIds(
+    JSON.parse(textBlock.text),
+    bank
+  );
 
   const validation = validateGenerated(generated, bank, {
     forbiddenTerms: params.validation.enforce_forbidden_terms ? forbiddenTerms : [],
     shingleSize: params.validation.leak_shingle_size,
     misquoteWindow: params.validation.misquote_window,
     misquoteMaxEdits: params.validation.misquote_max_edits,
+    misquoteMinFlank: params.validation.misquote_min_flank,
   });
   const rendered = validation.ok ? renderGenerated(generated, bank) : null;
 
   return {
     generated, // placeholder form — this is what to store
     rendered, // placeholders substituted — what a human reviews
+    repairs, // id slips corrected before validation, for the run log
     validation,
     usage: message.usage,
     meta: {

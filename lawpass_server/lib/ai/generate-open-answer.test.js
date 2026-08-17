@@ -12,7 +12,12 @@ const fs = require("node:fs");
 const path = require("node:path");
 
 const { buildBank } = require("./quote-bank");
-const { foreignCitations, findIncompleteAnswer } = require("./generate-open-answer");
+const {
+  foreignCitations,
+  findIncompleteAnswer,
+  buildAnswerPrompt,
+  mergeAnswerParams,
+} = require("./generate-open-answer");
 
 const OQ = path.resolve(__dirname, "../../../scripts/ingestion/open_questions");
 const source = JSON.parse(
@@ -118,6 +123,51 @@ test("a חוות דעת is not rejected for having no signature block", () => {
   assert.ok(bad.some((e) => /closing is empty/.test(e.detail)));
 });
 
+test("the cache breakpoint sits after the rubric and exemplars, before the question", () => {
+  // Caching is a prefix match, so the invariant part has to come first for the
+  // cache to be READ rather than rewritten every run. This test exists because
+  // the original order put the question first, which made cache_read_input_tokens
+  // 0 on every call while still paying the write premium.
+  const bank = buildBank(source.quotes, "2025-D-W-Q1");
+  const build = (q) =>
+    buildAnswerPrompt({
+      question: q,
+      bank,
+      rubricText: "מחוון",
+      exemplars: [{ name: "a.json", text: "פתרון לדוגמה" }],
+      params: mergeAnswerParams(),
+    });
+
+  const blocks = build({ external_id: "Q-A", fact_pattern: "עובדות א" });
+  assert.strictEqual(blocks.length, 3);
+
+  const cached = blocks.filter((b) => b.cache_control);
+  assert.strictEqual(cached.length, 1, "exactly one breakpoint");
+  assert.strictEqual(blocks[1], cached[0], "the breakpoint is the middle block");
+  assert.strictEqual(cached[0].cache_control.ttl, "1h");
+
+  // What is cached must not mention the question; what follows it must.
+  assert.ok(blocks[1].text.includes("מחוון"), "rubric is inside the cached prefix");
+  assert.ok(!blocks[1].text.includes("עובדות א"), "the question is NOT in the prefix");
+  assert.ok(blocks[2].text.includes("עובדות א"), "the question is after the breakpoint");
+
+  // The real guarantee: two different questions produce a byte-identical prefix.
+  const other = build({ external_id: "Q-B", fact_pattern: "עובדות ב" });
+  assert.strictEqual(blocks[0].text, other[0].text);
+  assert.strictEqual(blocks[1].text, other[1].text, "prefix must be byte-identical");
+  assert.notStrictEqual(blocks[2].text, other[2].text);
+
+  // Caching off means no breakpoint at all, and the same block order.
+  const uncached = buildAnswerPrompt({
+    question: { external_id: "Q-A" },
+    bank,
+    rubricText: "מחוון",
+    exemplars: [],
+    params: mergeAnswerParams({ generation: { prompt_cache: false } }),
+  });
+  assert.ok(uncached.every((b) => !b.cache_control));
+});
+
 test("a punctuation exhibit marker is treated as truncation", () => {
   // The run also produced "exhibit_marker": "," — a field caught mid-write.
   const g = {
@@ -134,4 +184,27 @@ test("a punctuation exhibit marker is treated as truncation", () => {
   };
   const bad = findIncompleteAnswer(g);
   assert.ok(bad.some((e) => /not a usable exhibit number/.test(e.detail)));
+});
+
+test("Hebrew-letter and range exhibit markers are accepted", () => {
+  // The exhibits rule asks for נספח א' and for נספחים 2-3, so the marker check
+  // must not read the geresh — typed as a plain apostrophe — as a broken field.
+  const markers = ["1", "12", "2-3", "א'", "ב״", "ג׳", "א'-ב'", "נספח ד'"];
+  const g = {
+    sections: [
+      {
+        heading: "העובדות",
+        paragraphs: markers.map((m) => ({
+          text: "טקסט",
+          exhibit_description: "מסמך",
+          exhibit_marker: m,
+        })),
+      },
+    ],
+    closing: "x",
+    signature_line: "x",
+    sources_used: [{}],
+    rubric_coverage: [{}],
+  };
+  assert.deepStrictEqual(findIncompleteAnswer(g), []);
 });

@@ -48,14 +48,21 @@ function paragraphs(text, className = "") {
 
 /**
  * Write `html` next to `outBase` and print it to a PDF of the same name.
- * Returns the two paths.
+ * Returns the two paths; pdfPath is null when the PDF step is skipped.
+ *
+ * htmlOnly exists for the batch runner, which produces JSON + HTML and has no
+ * use for the PDF. Skipping it is not just tidiness: the PDF step shells out to
+ * Chrome, so on a server without a browser installed findBrowser() throws, and
+ * a run would die on an artifact nobody asked for.
  */
-function printHtmlToPdf(html, outBase) {
+function printHtmlToPdf(html, outBase, { htmlOnly = false } = {}) {
   const htmlPath = `${outBase}.html`;
   const pdfPath = `${outBase}.pdf`;
 
   fs.mkdirSync(path.dirname(htmlPath), { recursive: true });
   fs.writeFileSync(htmlPath, html, "utf8");
+
+  if (htmlOnly) return { htmlPath, pdfPath: null };
 
   execFileSync(
     findBrowser(),

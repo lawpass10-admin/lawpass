@@ -194,6 +194,19 @@ async function main() {
       `out ${u.output_tokens ?? "?"} tokens\n`
   );
 
+  // The rubric and exemplars sit behind a cache breakpoint, so from the second
+  // answer of a run onward this should read rather than write. A run whose
+  // every answer says WROTE is paying the write premium for nothing — see the
+  // breakpoint comment in lib/ai/generate-open-answer.js.
+  const read = u.cache_read_input_tokens ?? 0;
+  const wrote = u.cache_creation_input_tokens ?? 0;
+  console.log(
+    read > 0
+      ? `prompt cache: READ ${read} tokens (${wrote} written)\n`
+      : `prompt cache: WROTE ${wrote} tokens, read nothing — expected on the ` +
+        `first answer of a run, or if more than an hour has passed since it\n`
+  );
+
   const base = `${question.external_id || sourceId}`;
 
   if (!result.validation.ok) {
@@ -215,7 +228,11 @@ async function main() {
     process.exit(1);
   }
 
-  console.log("quote lock: OK — no source text reproduced, no foreign authorities cited\n");
+  console.log("quote lock: OK — no source text reproduced, no foreign authorities cited");
+  for (const r of result.repairs ?? []) {
+    console.log(`  repaired placeholder id: {{${r.from}}} -> {{${r.to}}} (unambiguous)`);
+  }
+  console.log("");
 
   // One merged file: the question and its answer together.
   const merged = {

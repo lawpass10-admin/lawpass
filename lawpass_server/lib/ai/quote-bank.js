@@ -20,7 +20,12 @@
 // holding reproduced with one word changed reads as binding authority while
 // misstating it. An unknown placeholder id makes render throw.
 
-const TOKEN = /\{\{\s*([A-Za-z][A-Za-z0-9_]*)\s*(\.text)?\s*\}\}/g;
+// The id is whatever the source file calls the quote, and those carry hyphens —
+// L1-Q1, V2-Q1, one bank per question in a multi-question source. An id shape
+// narrower than the real ids is silent damage: the placeholder matches nothing,
+// so render leaves {{L1-Q1}} in the text and validation never sees an id to
+// check. Keep this in step with the ids in scripts/ingestion/*/sources/.
+const TOKEN = /\{\{\s*([A-Za-z][A-Za-z0-9_-]*)\s*(\.text)?\s*\}\}/g;
 
 // Hebrew letters + digits only; everything else becomes a separator. Punctuation
 // is deliberately ignored — the PDF's bidi layer moves it around, and a leak is
@@ -88,6 +93,53 @@ function collectTokenIds(value, found = new Set()) {
     Object.values(value).forEach((v) => collectTokenIds(v, found));
   }
   return found;
+}
+
+/**
+ * Repair an unambiguous placeholder-id slip.
+ *
+ * The rules teach the syntax with a worked example, {{V1}}, and a bank whose ids
+ * carry a per-question suffix — L1-Q1, V2-Q1 — invites the model to copy the
+ * example's SHAPE instead of the real id. That is a naming slip, not a content
+ * error: the source it reached for is right, only the label is short.
+ *
+ * So where exactly one bank id extends what it wrote — {{L1}} against a bank
+ * holding L1-Q1 — rewrite it and record the repair. Where two could match, leave
+ * it alone: validation then rejects it, which is the right outcome for a
+ * genuinely ambiguous reference. Never invent a match, and never touch an id
+ * that already resolves.
+ *
+ * Returns { value, repairs }; `value` is a repaired copy, the input untouched.
+ */
+function repairPlaceholderIds(generated, bank) {
+  const known = new Set(bank.map((q) => q.id));
+  const mapping = new Map();
+  const repairs = [];
+
+  for (const id of collectTokenIds(generated)) {
+    if (known.has(id)) continue;
+    const candidates = [...known].filter((b) => b.startsWith(`${id}-`) || b.startsWith(`${id}_`));
+    if (candidates.length === 1) {
+      mapping.set(id, candidates[0]);
+      repairs.push({ from: id, to: candidates[0] });
+    }
+  }
+  if (mapping.size === 0) return { value: generated, repairs };
+
+  const fix = (v) => {
+    if (typeof v === "string") {
+      return v.replace(TOKEN, (match, id, dotText) =>
+        mapping.has(id) ? `{{${mapping.get(id)}${dotText || ""}}}` : match
+      );
+    }
+    if (Array.isArray(v)) return v.map(fix);
+    if (v && typeof v === "object") {
+      return Object.fromEntries(Object.entries(v).map(([k, x]) => [k, fix(x)]));
+    }
+    return v;
+  };
+
+  return { value: fix(generated), repairs };
 }
 
 /**
@@ -297,6 +349,7 @@ module.exports = {
   bankForPrompt,
   renderTokens,
   renderGenerated,
+  repairPlaceholderIds,
   validateGenerated,
   findQuoteLeaks,
   collectTokenIds,
