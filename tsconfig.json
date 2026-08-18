@@ -30,5 +30,14 @@
     ".next/dev/types/**/*.ts",
     "**/*.mts"
   ],
-  "exclude": ["node_modules"]
+  "exclude": [
+    "node_modules",
+    // The Express server has its own dependency tree, and @anthropic-ai/sdk
+    // ships its TypeScript SOURCES. "node_modules" above only matches the one at
+    // this level, so without this line every .ts file inside the SDK is pulled
+    // into the program and type-checked on every run and every keystroke in the
+    // editor.
+    "lawpass_server/node_modules",
+    ".next"
+  ]
 }
