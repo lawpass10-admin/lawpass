@@ -27,19 +27,23 @@
 //   1. generate_from_source.mjs   adapt the bundle, write the question, write
 //                                 the answer  -> generated/<id>-<angle>.generated.json
 //                                                generated/<id>-<angle>.answer.json
-//   2. render-open-question-pdf.js --html-only -> generated/<id>-<angle>.generated.html
-//   3. render-open-answer-pdf.js   --html-only -> generated/<id>-<angle>.answer.html
-//   4. load_generated_questions.mjs --commit   -> one row in open_questions,
+//   2. generate-rubric.js         the marking scheme for that pair
+//                                             -> generated/<id>-<angle>.rubric.json
+//   3. render-open-question-pdf.js --html-only -> generated/<id>-<angle>.generated.html
+//   4. render-open-answer-pdf.js   --html-only -> generated/<id>-<angle>.answer.html
+//   5. load_generated_questions.mjs --commit   -> one row in open_questions,
 //                                                 type='new', with its quote bank,
 //                                                 inherited subject and generation_meta
+//   6. load_rubric.mjs --commit                -> one row in open_question_rubrics,
+//                                                 status 'draft', version 1
 //
 // JSON and HTML only — no PDF is produced, which is also why the runner does not
 // need a browser on the machine.
 //
-// COSTS REAL MONEY AND REAL TIME. Each set is two Opus calls; reckon on four to
-// six minutes and roughly 60-70k tokens per set. Sets run one at a time, on
-// purpose: the quote-lock validators reject work often enough that a failed set
-// should not be competing for the API with nine others.
+// COSTS REAL MONEY AND REAL TIME. Each set is three Opus calls; reckon on eight
+// to eleven minutes and roughly 90-100k tokens per set. Sets run one at a time,
+// on purpose: the quote-lock validators reject work often enough that a failed
+// set should not be competing for the API with nine others.
 //
 // A FAILED SET DOES NOT STOP THE RUN. Generation can be rejected by the quote
 // lock, and that verdict is correct behaviour, not a crash. The runner records
@@ -47,8 +51,10 @@
 // rejected output stays in generated/rejected/ for inspection. Exit code is 1 if
 // any set failed.
 //
-// NOTHING REACHES A STUDENT. Every row lands with status "draft" on both the
-// question and the answer, exactly as the single-set path does.
+// NOTHING REACHES A STUDENT. Every row lands with status "draft" — the question,
+// the answer and the rubric alike — exactly as the single-set path does. A draft
+// rubric grades nothing: it becomes the scheme students are marked against only
+// when someone reads it and re-runs load_rubric.mjs with --approve.
 
 import dotenv from 'dotenv';
 import { createInterface } from 'node:readline/promises';
@@ -162,6 +168,7 @@ function generateSet(step) {
   const sourceFile = join(sourcesDir, `${source.id}.source.json`);
   const questionJson = join(generatedDir, `${base}.generated.json`);
   const answerJson = join(generatedDir, `${base}.answer.json`);
+  const rubricJson = join(generatedDir, `${base}.rubric.json`);
 
   // 1. adapt + question + answer. generate_from_source.mjs writes the adapted
   //    source file the two renderers and the loader then read.
@@ -170,17 +177,36 @@ function generateSet(step) {
   if (!existsSync(questionJson)) return { ok: false, at: 'generation', detail: `${base}.generated.json was not written` };
   if (!existsSync(answerJson)) return { ok: false, at: 'generation', detail: `${base}.answer.json was not written` };
 
-  // 2 & 3. HTML for the exam paper and for the model answer. No PDF.
+  // 2. the marking scheme, derived from the question and the answer together.
+  //    Runs here rather than after the renders so that a set which cannot be
+  //    marked is known before anything is loaded — a question in the table with
+  //    no rubric is a task a student can sit and nobody can grade.
+  status = run(join(serverDir, 'scripts', 'generate-rubric.js'), [answerJson], serverDir);
+  if (status !== 0) return { ok: false, at: 'rubric', detail: 'rejected or failed — see generated/rejected/' };
+  if (!existsSync(rubricJson)) return { ok: false, at: 'rubric', detail: `${base}.rubric.json was not written` };
+
+  // 3 & 4. HTML for the exam paper and for the model answer. No PDF.
   status = run(join(serverDir, 'scripts', 'render-open-question-pdf.js'), [questionJson, sourceFile, '--html-only'], serverDir);
   if (status !== 0) return { ok: false, at: 'question html', detail: 'renderer failed' };
 
   status = run(join(serverDir, 'scripts', 'render-open-answer-pdf.js'), [answerJson, sourceFile, '--html-only'], serverDir);
   if (status !== 0) return { ok: false, at: 'answer html', detail: 'renderer failed' };
 
-  // 4. the row. The loader re-validates, attaches the quote bank, inherits the
+  // 5. the row. The loader re-validates, attaches the quote bank, inherits the
   //    subject from the parent source row and skips anything already present.
   status = run(join(here, 'load_generated_questions.mjs'), [`${base}.answer.json`, '--commit']);
   if (status !== 0) return { ok: false, at: 'database', detail: 'load failed — the JSON and HTML are still on disk' };
+
+  // 6. the rubric row, into open_question_rubrics — a separate table, not a
+  //    column here, because open_questions is student-readable and RLS is
+  //    row-level: a rubric beside the question would be one direct query away
+  //    from being the answer key in a student's browser.
+  //
+  //    Loaded as a DRAFT, with no --approve. A draft grades nothing, which is
+  //    the same promise the rest of this runner makes: generated content reaches
+  //    a student only after a human has read it.
+  status = run(join(here, 'load_rubric.mjs'), [`${base}.rubric.json`, '--commit']);
+  if (status !== 0) return { ok: false, at: 'database', detail: 'rubric load failed — the question row is in place, the rubric is not' };
 
   return { ok: true, base };
 }

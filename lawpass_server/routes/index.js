@@ -13,6 +13,7 @@ const adminRoutes = require("./admin.routes");
 const accountRoutes = require("./account.routes");
 const dashboardRoutes = require("./dashboard.routes");
 const earlyAccessRoutes = require("./early-access.routes");
+const openQuestionsRoutes = require("./open-questions.routes");
 
 const router = Router();
 
@@ -30,5 +31,7 @@ router.use("/admin", adminRoutes);
 router.use("/account", accountRoutes);
 router.use("/dashboard", dashboardRoutes);
 router.use("/early-access", earlyAccessRoutes);
+// Read-only; the writing task (מטלת כתיבה) picker and question page.
+router.use("/open-questions", openQuestionsRoutes);
 
 module.exports = router;

@@ -1,0 +1,49 @@
+{
+  "_readme": [
+    "Tunable settings for RUBRIC generation (lawpass_server/scripts/generate-rubric.js).",
+    "Question generation has llm-params.json; answers have llm-params-answers.json.",
+    "",
+    "A rubric is the per-question מחוון: the 12 points of ממד התוכן split across",
+    "what THIS question expects, plus the generic לשון and ארגון bands restated",
+    "from the official document. It is what the grader marks against, so it is",
+    "also what decides whether two students' scores mean the same thing.",
+    "",
+    "Anything omitted here falls back to llm-params.json, so you only need to",
+    "state what should differ for rubrics.",
+    "",
+    "Only these authoring keys are read by lib/ai/generate-rubric.js:",
+    "granularity, weighting, partial_credit, deduction_policy, extra_instructions.",
+    "A key added here that is not on that list is silently ignored — put new",
+    "direction inside an existing key.",
+    "",
+    "NOT tunable here, by design: the 4/4/12 scale, the band edges (חלש 0-1,",
+    "בינוני 2-3, גבוה 4) and the requirement that the content items sum to exactly",
+    "12. Those are the exam board's, and a rubric that moves them produces grades",
+    "that cannot be explained to a student who asks."
+  ],
+  "version": 1,
+  "model": {
+    "id": "claude-opus-5",
+    "max_tokens": 16000,
+    "effort": "high"
+  },
+  "generation": {
+    "prompt_version": "open-rubric/1",
+    "prompt_cache": true,
+    "prompt_cache_ttl": "1h"
+  },
+  "authoring": {
+    "granularity": "Aim for six to ten content items. Fewer than six cannot tell a middling answer from a good one; more than ten produces items worth half a point each, which no marker can apply consistently and no student can act on.",
+    "weighting": "The legal analysis carries the mark. Identifying particulars — court, parties, case number, the caption block — are worth a point or two between them, not a quarter of the total. Where the question turns on a multi-condition test, each condition that has to be argued separately is its own item; a single item covering 'the whole test' hides exactly the difference the question was set to measure.",
+    "partial_credit": "State the half-mark rule as an observable difference, not a quality word. 'Names the condition but does not apply it to the facts' is markable; 'partial understanding' is not.",
+    "deduction_policy": "Deductions are for faults the content items cannot express — padding the answer with facts the question planted as distractors, reciting a source instead of applying it, relief that does not follow from the argument, an appendix attached without saying what it proves. Two to four of them, one or two points each. They are not a second chance to penalise something an item already scores.",
+    "extra_instructions": "Write requirements a marker can check against the student's text without re-reading the whole answer. Where the item depends on citing a specific source, name the source in the requirement so it can be searched for."
+  },
+  "validation": {
+    "min_content_items": 4,
+    "max_content_items": 16,
+    "max_deduction_total": 6,
+    "points_step": 0.5,
+    "require_answer_grounding": true
+  }
+}
