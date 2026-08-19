@@ -173,7 +173,44 @@ async function main() {
   console.log(`\nwriting the rubric — this can take a couple of minutes...\n`);
 
   const stopTimer = startTimer("writing");
-  const result = await generateRubric({ question, answer, exemplarRubricText, params });
+  let result;
+  try {
+    result = await generateRubric({ question, answer, exemplarRubricText, params });
+  } catch (err) {
+    // A throw here is not a rejected rubric — it is the call itself failing:
+    // an API error, output truncated at max_tokens, a refusal. Nothing was
+    // validated, so the rejected-output path below never runs and the failure
+    // used to leave no trace at all beyond one line on a terminal that scrolls.
+    // Record what it was, so the next run does not have to reproduce it.
+    stopTimer();
+    fs.mkdirSync(rejectedDir, { recursive: true });
+    const crashPath = path.join(rejectedDir, `${base}.rubric.crash.json`);
+    fs.writeFileSync(
+      crashPath,
+      JSON.stringify(
+        {
+          failed_at: new Date().toISOString(),
+          bundle: path.basename(bundlePath),
+          question_external_id: base,
+          model: params.model.id,
+          effort: params.model.effort,
+          max_tokens: params.model.max_tokens,
+          error: {
+            name: err?.name ?? null,
+            message: err?.message ?? String(err),
+            status: err?.status ?? null,
+            stack: err?.stack ?? null,
+          },
+        },
+        null,
+        2
+      ) + "\n",
+      "utf8"
+    );
+    console.error(`\nRUBRIC CALL FAILED — nothing was generated: ${err?.message || err}`);
+    console.error(`details saved for inspection: ${crashPath}`);
+    throw err;
+  }
   const seconds = stopTimer();
 
   const u = result.usage || {};

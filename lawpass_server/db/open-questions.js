@@ -108,13 +108,21 @@ async function getQuestionById(supabase, id) {
  * filed. It is selected back because the caller reports it. Nothing here caps
  * the count — re-sitting the same task is allowed, it just gets the next number.
  */
-async function insertAnswer(supabase, { userId, openQuestionId, answerBody }) {
+async function insertAnswer(
+  supabase,
+  { userId, openQuestionId, answerBody, handWriting = null }
+) {
   const { data, error } = await supabase
     .from("open_question_answers")
     .insert({
       user_id: userId,
       open_question_id: openQuestionId,
       answer_body: answerBody,
+      // Its own column rather than a key inside answer_body: the pages are a
+      // different kind of thing from the text — they are assets living
+      // elsewhere, with their own lifecycle — and a column is what makes
+      // "which submissions were handwritten" a query instead of a scan.
+      hand_writing: handWriting,
     })
     .select("answer_id, open_question_id, attempt_number, created_at")
     .single();
@@ -140,7 +148,7 @@ async function getAnswerForUser(supabase, answerId) {
   const { data, error } = await supabase
     .from("open_question_answers")
     .select(
-      "answer_id, open_question_id, attempt_number, answer_body, score, grading_status, created_at, graded_at"
+      "answer_id, open_question_id, attempt_number, answer_body, hand_writing, score, grading_status, created_at, graded_at"
     )
     .eq("answer_id", answerId)
     .maybeSingle();

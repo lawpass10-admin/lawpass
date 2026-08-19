@@ -1,0 +1,9 @@
+LawPass — missing rubrics
+finished    : 2026-08-19T11:13:04.805Z
+duration    : 08:03
+mode        : generate + load
+
+1 OUT OF 2 RUBRIC(S) LOADED TO THE DATABASE
+
+  ok       2026-S-Q1-B      03:52
+  FAILED   2026-S-Q1-C      04:09  rejected or failed — see generated/rejected/

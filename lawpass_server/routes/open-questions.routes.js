@@ -16,6 +16,7 @@ const { Router } = require("express");
 const { authenticate } = require("../middleware/auth");
 const { requireSubscription } = require("../middleware/require-subscription");
 const { validateBody } = require("../middleware/validate");
+const { handwritingUpload } = require("../middleware/upload");
 const { asyncHandler } = require("../middleware/async-handler");
 const v = require("../validators/open-questions");
 const c = require("../controllers/open-questions.controller");
@@ -61,6 +62,18 @@ router.post(
   requireSubscription,
   validateBody(v.submitAnswerSchema, { fallback: "לא ניתן לשלוח את התשובה" }),
   asyncHandler(c.submitAnswer)
+);
+
+// "הוסף תשובה בכתב ידך" — up to two photographed A4 pages, uploaded to
+// Cloudinary and handed back as links. No validateBody: the body is multipart
+// files, not JSON, and the file checks (count, size, type) live in the upload
+// middleware and the controller.
+router.post(
+  "/:id/handwriting",
+  authenticate,
+  requireSubscription,
+  handwritingUpload,
+  asyncHandler(c.uploadHandwriting)
 );
 
 module.exports = router;

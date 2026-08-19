@@ -22,7 +22,9 @@ async function getGradingContext(admin, answerId) {
   const { data: answer, error } = await admin
     .from("open_question_answers")
     .select(
-      "answer_id, user_id, open_question_id, answer_body, attempt_number, grading_status, score, created_at"
+      // hand_writing is here so the runner can tell an EMPTY submission from a
+      // photographed one. Both have no text; only one of them is a mistake.
+      "answer_id, user_id, open_question_id, answer_body, hand_writing, attempt_number, grading_status, score, created_at"
     )
     .eq("answer_id", answerId)
     .maybeSingle();

@@ -72,6 +72,20 @@ const env = {
   // the Next.js `process.env.NEXT_PUBLIC_SITE_URL ?? ""` fallback).
   siteUrl: process.env.NEXT_PUBLIC_SITE_URL || "",
 
+  // Cloudinary — where handwritten answer pages are stored.
+  //
+  // NOT `required()`, unlike Supabase: the server has to boot without it. Every
+  // other feature works with no Cloudinary account at all, and refusing to start
+  // would turn a missing optional credential into a total outage. The upload
+  // endpoint checks isConfigured() and answers with a clear message instead.
+  cloudinary: {
+    cloudName: process.env.CLOUDINARY_CLOUD_NAME || "",
+    apiKey: process.env.CLOUDINARY_API_KEY || "",
+    apiSecret: process.env.CLOUDINARY_API_SECRET || "",
+    // Root folder for uploads; per-user/per-question subfolders hang off it.
+    folder: process.env.CLOUDINARY_FOLDER || "lawpass/handwriting",
+  },
+
   // Comma-separated allowed CORS origins (the Next.js frontend).
   corsOrigins: (
     process.env.CORS_ORIGINS ||

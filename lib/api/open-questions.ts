@@ -10,7 +10,12 @@
  * error against a relative URL.
  */
 
-import { apiEnabled, apiGetJson, apiPostJson } from "@/lib/api/client";
+import {
+  apiEnabled,
+  apiGetJson,
+  apiPostForm,
+  apiPostJson,
+} from "@/lib/api/client";
 
 export type OpenQuestionSubject = {
   subject: string;
@@ -113,6 +118,32 @@ export type SubmittedAnswer = {
   created_at: string;
   word_count: number;
   grading_status: GradingStatus;
+  /** How many photographed pages were filed with it. 0 for a typed answer. */
+  hand_writing_pages?: number;
+  /**
+   * False when the submission was NOT queued for marking — today that means a
+   * handwriting-only answer, which the text grader cannot read. The answer is
+   * filed either way; only the marking is missing.
+   */
+  grading_queued?: boolean;
+};
+
+/**
+ * One photographed page of a handwritten answer, as stored on the row.
+ *
+ * `public_id` travels with the url because it is what Cloudinary needs to
+ * delete or transform the asset later — a url cannot reliably be turned back
+ * into one.
+ */
+export type HandwritingPage = {
+  /** 1 or 2 — an answer is at most two A4 sides. */
+  page: number;
+  url: string;
+  public_id: string;
+  width?: number | null;
+  height?: number | null;
+  bytes?: number | null;
+  format?: string | null;
 };
 
 /**
@@ -183,6 +214,8 @@ export type AnswerState = {
   graded_at: string | null;
   text: string;
   word_count: number;
+  /** The photographed pages, when the answer was written by hand. */
+  hand_writing: HandwritingPage[] | null;
   score: AnswerScore | null;
 };
 
@@ -199,13 +232,16 @@ export type AnswerState = {
  */
 export async function submitAnswer(
   questionId: string,
-  text: string
+  text: string,
+  handWriting: HandwritingPage[] = []
 ): Promise<Result<SubmittedAnswer>> {
   if (!apiEnabled()) return { ok: false, error: DISABLED_ERROR };
   try {
     const body = await apiPostJson(
       `/api/open-questions/${encodeURIComponent(questionId)}/answers`,
-      { text },
+      // Omitted rather than sent empty when there is no handwriting, so a typed
+      // submission is byte-for-byte the request it was before this existed.
+      handWriting.length > 0 ? { text, hand_writing: handWriting } : { text },
       { auth: true }
     );
     if (body.ok === true) {
@@ -214,6 +250,42 @@ export async function submitAnswer(
     return failed(body);
   } catch {
     return { ok: false, error: "שליחת התשובה נכשלה — נסה שוב" };
+  }
+}
+
+/**
+ * Upload the photographed pages of a handwritten answer.
+ *
+ * The files go to our own server, which signs the Cloudinary request — the API
+ * secret is never in the browser. What comes back are the stored references,
+ * which the caller holds and sends with `submitAnswer`.
+ *
+ * Uploading is NOT submitting: pages uploaded and then abandoned are simply
+ * never referenced by a row.
+ */
+export async function uploadHandwriting(
+  questionId: string,
+  files: File[]
+): Promise<Result<HandwritingPage[]>> {
+  if (!apiEnabled()) return { ok: false, error: DISABLED_ERROR };
+  if (files.length === 0) return { ok: false, error: "לא נבחרו תמונות" };
+
+  const form = new FormData();
+  // One repeated field name, which is what multer's array("pages") reads.
+  for (const file of files) form.append("pages", file);
+
+  try {
+    const body = await apiPostForm(
+      `/api/open-questions/${encodeURIComponent(questionId)}/handwriting`,
+      form,
+      { auth: true }
+    );
+    if (body.ok === true) {
+      return { ok: true, data: (body.pages ?? []) as HandwritingPage[] };
+    }
+    return failed(body);
+  } catch {
+    return { ok: false, error: "העלאת התמונות נכשלה — נסה שוב" };
   }
 }
 

@@ -53,6 +53,17 @@ const BANDS = [
   { label: "גבוה", min: 4, max: 4 },
 ];
 
+/**
+ * The heading the model answer's opening is shown under.
+ *
+ * The opening is a sentence, not a section, so it has no heading of its own —
+ * but it is a real place a content item can live (the sentence stating what the
+ * court is asked to do carries the relief). Shown to the model under this name
+ * and accepted back under it, so the item lands on a named target instead of
+ * one the model invents and the grounding check then rejects.
+ */
+const OPENING_HEADING = "פתיחה";
+
 const CORE_RULES = `You write the marking rubric (מחוון) for one question in the Israeli bar exam writing task (מטלת כתיבה).
 
 You are given three things: the official rubric for a DIFFERENT question (the worked example of what you are producing), the question itself, and the model answer we treat as full marks.
@@ -190,6 +201,9 @@ const RUBRIC_SCHEMA = {
         content: { type: "string", description: "Hebrew. הקריטריונים של ממד התוכן." },
       },
     },
+    // No minItems/maxItems: constrained decoding rejects array length bounds
+    // above 1. The fixed count of three is enforced by validateRubric, and a
+    // duplicated band is trimmed by dedupeBands() before it gets there.
     language_bands: { type: "array", items: BAND_SCHEMA },
     organization_bands: { type: "array", items: BAND_SCHEMA },
     content_items: {
@@ -298,6 +312,27 @@ function round2(n) {
 }
 
 /**
+ * Trim a repeated band before validation.
+ *
+ * The count cannot be pinned in the schema — constrained decoding refuses array
+ * length bounds above 1 — so the label enum is the only structural guard, and it
+ * does not stop the model emitting a fourth band by repeating one. Observed:
+ * חלש, בינוני, גבוה, בינוני, where the first three were already correct.
+ *
+ * Keeps the first entry carrying each expected label, and only when all three
+ * are present. Anything else is left to validateRubric: a band array that is
+ * wrong in some other way is not a duplicate to be trimmed, and quietly
+ * reshaping it would hide a rubric the model got wrong.
+ */
+function dedupeBands(bands) {
+  if (!Array.isArray(bands) || bands.length <= BANDS.length) return null;
+  const kept = BANDS.map((expected) =>
+    bands.find((b) => b && b.label === expected.label)
+  );
+  return kept.every(Boolean) ? kept : null;
+}
+
+/**
  * Everything that makes a rubric unusable rather than merely imperfect.
  *
  * The point totals are the load-bearing checks: a rubric that does not sum to
@@ -388,7 +423,7 @@ function validateRubric(rubric, { answerSections = [], params }) {
           type: "unknown_section",
           detail:
             `${item.id} points at model answer section "${item.model_answer_section}", which ` +
-            `the answer does not have. Its sections are: ${[...headings].join(" | ")}`,
+            `the answer does not have. Valid targets: ${[...headings].join(" | ")}`,
         });
       }
     }
@@ -552,7 +587,9 @@ function buildRubricPrompt({ question, answer, exemplarRubricText, params }) {
           },
           model_answer: {
             document_type: answer.document_type,
-            opening: answer.opening,
+            // Given a heading so it is structurally parallel to a section and
+            // can be copied verbatim, like one.
+            opening: { heading: OPENING_HEADING, text: answer.opening },
             sections: (answer.sections || []).map((s) => ({
               heading: s.heading,
               paragraphs: (s.paragraphs || []).map((p) => p.text),
@@ -667,9 +704,10 @@ async function generateRubric({
           `whose items total anything other than ${SCALE.content.max} is not usable. ` +
           `Each item states what the student must ` +
           "do, in a way that a student who got there by another route still earns it. " +
-          "Name, for each item, the section of the model answer that demonstrates it — " +
-          "copy that heading verbatim from the answer above, or leave it empty where the " +
-          "item belongs to the caption rather than a section.",
+          "Name, for each item, the part of the model answer that demonstrates it — " +
+          `copy that heading verbatim from the answer above, using "${OPENING_HEADING}" ` +
+          "for an item the opening demonstrates. Leave it empty only where the item " +
+          "belongs to the caption or header block, which has no heading.",
       },
     ],
   });
@@ -687,7 +725,13 @@ async function generateRubric({
   if (!textBlock) throw new Error("[ai] no text block in response");
 
   const generated = JSON.parse(textBlock.text);
-  const answerSections = (answer.sections || []).map((s) => s.heading);
+  // The opening counts as a target whenever the answer actually has one — it is
+  // shown to the model under OPENING_HEADING, so refusing it back would reject
+  // the model for reading the prompt correctly.
+  const answerSections = [
+    ...(String(answer.opening || "").trim() ? [OPENING_HEADING] : []),
+    ...(answer.sections || []).map((s) => s.heading),
+  ];
   const repairs = [];
 
   // The model tends to open `challenges` with the official document's own
@@ -698,6 +742,16 @@ async function generateRubric({
     generated.challenges = generated.challenges
       .replace(/^\s*האתגרים\s+הבולטים\s+במטלה\s*[:：-]?\s*/u, "")
       .trim();
+  }
+
+  for (const field of ["language_bands", "organization_bands"]) {
+    const deduped = dedupeBands(generated[field]);
+    if (!deduped) continue;
+    repairs.push(
+      `${field}: dropped ${generated[field].length - BANDS.length} repeated band(s) — ` +
+        `kept ${BANDS.map((b) => b.label).join(", ")}`
+    );
+    generated[field] = deduped;
   }
 
   let validation = validateRubric(generated, { answerSections, params });
@@ -739,11 +793,13 @@ async function generateRubric({
 module.exports = {
   generateRubric,
   validateRubric,
+  dedupeBands,
   buildRubricPrompt,
   mergeRubricParams,
   RUBRIC_SCHEMA,
   SCALE,
   BANDS,
+  OPENING_HEADING,
   TOTAL_POINTS,
   PROMPT_VERSION,
 };

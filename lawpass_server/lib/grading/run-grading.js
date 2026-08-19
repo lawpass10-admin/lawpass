@@ -31,6 +31,23 @@ async function gradeOne(admin, answerId, { params = {}, claim = true } = {}) {
 
   const text = context.answer.answer_body?.text;
   if (!String(text || "").trim()) {
+    // No text, but pages: the student answered on paper. This grader reads
+    // text, so it has nothing to say about the answer — and saying so as
+    // `failed` would tell someone who did the work that their submission could
+    // not be checked. Left `pending` instead, untouched and unclaimed, so the
+    // day a grader can read the photos it is already in the queue waiting.
+    const pages = Array.isArray(context.answer.hand_writing)
+      ? context.answer.hand_writing.length
+      : 0;
+    if (pages > 0) {
+      return {
+        ok: false,
+        status: "handwriting_only",
+        detail: `answered by hand (${pages} page${pages === 1 ? "" : "s"}) — this grader reads text`,
+      };
+    }
+
+    // No text and no pages: an empty row, which is a bug rather than a choice.
     await db.markGradingFailed(admin, answerId, "the stored answer has no text");
     return { ok: false, status: "empty", detail: "the stored answer has no text" };
   }

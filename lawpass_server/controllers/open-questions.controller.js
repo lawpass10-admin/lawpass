@@ -19,6 +19,14 @@
 const db = require("../db/open-questions");
 const { adminClient } = require("../config/supabase");
 const { gradeOne } = require("../lib/grading/run-grading");
+const {
+  isConfigured: cloudinaryConfigured,
+  uploadImage,
+  isOwnAssetUrl,
+  HANDWRITING_MAX_BYTES,
+  HANDWRITING_MIME_TYPES,
+} = require("../lib/cloudinary");
+const { env } = require("../config/env");
 
 /** Question fields the candidate is allowed to see. Everything else is cut. */
 const STUDENT_FIELDS = [
@@ -134,7 +142,8 @@ async function getQuestion(req, res) {
  */
 async function submitAnswer(req, res) {
   const questionId = req.params.id;
-  const text = req.valid.text;
+  const text = req.valid.text ?? "";
+  const pages = req.valid.hand_writing ?? [];
 
   // `row` not `question` — the row's own `question` column is the JSON below.
   const row = await db.getQuestionById(req.supabase, questionId);
@@ -144,6 +153,24 @@ async function submitAnswer(req, res) {
     );
     return res.json({ ok: false, error: "השאלה לא נמצאה" });
   }
+
+  // The pages were uploaded by an earlier request and come back as plain
+  // strings, so "is this ours" is asked here rather than assumed. A URL on
+  // another host is refused outright: the alternative is storing a link we do
+  // not control on a row we serve back to a browser.
+  if (pages.some((p) => !isOwnAssetUrl(p.url))) {
+    console.warn(
+      `[open-questions] submit REJECTED user=${req.user.id} id=${questionId} reason=foreign_handwriting_url`
+    );
+    return res.json({ ok: false, error: "קישור לתמונות אינו תקין" });
+  }
+
+  // Numbered by position, not by whatever the body claimed: the client sends
+  // the pages in the order the student arranged them, and two pages both
+  // calling themselves "1" is a stored answer nobody can read back in order.
+  const handWriting = pages.length
+    ? pages.map((p, i) => ({ ...p, page: i + 1 }))
+    : null;
 
   const answerBody = {
     text,
@@ -159,10 +186,11 @@ async function submitAnswer(req, res) {
     userId: req.user.id,
     openQuestionId: questionId,
     answerBody,
+    handWriting,
   });
 
   console.info(
-    `[open-questions] submit OK user=${req.user.id} question=${questionId} answer=${saved.answer_id} attempt=${saved.attempt_number} words=${answerBody.word_count}`
+    `[open-questions] submit OK user=${req.user.id} question=${questionId} answer=${saved.answer_id} attempt=${saved.attempt_number} words=${answerBody.word_count} pages=${handWriting ? handWriting.length : 0}`
   );
 
   // Grading starts now and is NOT awaited. A marking run is around a minute —
@@ -170,7 +198,15 @@ async function submitAnswer(req, res) {
   // immediately and the page polls for the result. The row's grading_status is
   // the queue, so if this process dies mid-run the CLI worker picks it up:
   // nothing here is the only copy of the work.
-  startGrading(saved.answer_id);
+  //
+  // Nothing is queued for a submission with no typed text. The grader reads
+  // `answer_body.text` and would mark a photographed answer `failed` within the
+  // second — telling a student who did the work that their answer could not be
+  // checked. Marking handwriting means reading the image, which is a different
+  // grader; until it exists the row stays `pending` and the page says so
+  // instead of showing a marking error that is really our gap.
+  const gradable = answerBody.word_count > 0;
+  if (gradable) startGrading(saved.answer_id);
 
   return res.json({
     ok: true,
@@ -181,8 +217,107 @@ async function submitAnswer(req, res) {
       created_at: saved.created_at,
       word_count: answerBody.word_count,
       grading_status: "pending",
+      hand_writing_pages: handWriting ? handWriting.length : 0,
+      /** False = filed but not queued for marking (handwriting only). */
+      grading_queued: gradable,
     },
   });
+}
+
+/**
+ * POST /api/open-questions/:id/handwriting — the photographed answer pages.
+ *
+ * Separate from the submit for a reason: the student photographs their pages
+ * while still deciding whether to send, and an upload that only happened at
+ * submit time would mean a two-page upload standing between "send" and the
+ * receipt, with nothing on screen confirming the photos were even readable.
+ * Here the modal confirms each page as it lands, and the submit that follows
+ * carries links.
+ *
+ * The cost of splitting it is orphans: pages uploaded and then never submitted
+ * stay in Cloudinary with no row pointing at them. That is a sweeper's job (the
+ * folder carries the user and question ids for exactly that), not a reason to
+ * make the student wait.
+ */
+async function uploadHandwriting(req, res) {
+  const questionId = req.params.id;
+  const files = req.files || [];
+
+  if (!cloudinaryConfigured()) {
+    console.error(
+      "[open-questions] handwriting REJECTED reason=cloudinary_not_configured"
+    );
+    return res.json({
+      ok: false,
+      error: "העלאת תמונות אינה מוגדרת בשרת. פנה אלינו ונטפל בזה.",
+    });
+  }
+
+  if (files.length === 0) {
+    return res.json({ ok: false, error: "לא נבחרו תמונות" });
+  }
+
+  // Same "does it exist and is it answerable" check the submit makes, and for
+  // the same reason: nothing should be uploaded against an id that cannot be
+  // answered. It also keeps the folder name from being built out of a bogus id.
+  const row = await db.getQuestionById(req.supabase, questionId);
+  if (!row) {
+    console.info(
+      `[open-questions] handwriting REJECTED user=${req.user.id} id=${questionId} reason=question_not_found`
+    );
+    return res.json({ ok: false, error: "השאלה לא נמצאה" });
+  }
+
+  for (const file of files) {
+    if (!file.size) {
+      return res.json({ ok: false, error: "אחת התמונות ריקה" });
+    }
+    if (file.size > HANDWRITING_MAX_BYTES) {
+      return res.json({
+        ok: false,
+        error: "אחת התמונות גדולה מדי (מקסימום 10MB לעמוד)",
+      });
+    }
+    if (!HANDWRITING_MIME_TYPES.has(file.mimetype)) {
+      return res.json({
+        ok: false,
+        error: "אפשר לצרף תמונות בלבד (JPG, PNG, WebP או HEIC)",
+      });
+    }
+  }
+
+  // user/question in the path so an orphan can be traced back to who uploaded
+  // it and for what, and so one student's pages are never in another's folder.
+  const folder = `${env.cloudinary.folder}/${req.user.id}/${questionId}`;
+  const stamp = Date.now();
+
+  const pages = [];
+  for (const [i, file] of files.entries()) {
+    const page = i + 1;
+    try {
+      const asset = await uploadImage(file.buffer, {
+        folder,
+        publicId: `${stamp}-p${page}`,
+        mimetype: file.mimetype,
+      });
+      pages.push({ page, ...asset });
+    } catch (err) {
+      // The reason is Cloudinary's (bad credentials, over quota, not an image)
+      // and belongs in the log, not on a student's screen.
+      console.error(
+        `[open-questions] handwriting FAILED user=${req.user.id} question=${questionId} page=${page} — ${err && err.message ? err.message : err}`
+      );
+      return res.json({
+        ok: false,
+        error: "העלאת התמונות נכשלה — נסה שוב",
+      });
+    }
+  }
+
+  console.info(
+    `[open-questions] handwriting OK user=${req.user.id} question=${questionId} pages=${pages.length}`
+  );
+  return res.json({ ok: true, pages });
 }
 
 /**
@@ -242,6 +377,9 @@ async function getAnswer(req, res) {
       graded_at: answer.graded_at,
       text: answer.answer_body?.text ?? "",
       word_count: answer.answer_body?.word_count ?? 0,
+      // The photographed pages, so the results screen can show what was filed
+      // rather than an empty answer box next to a handwritten submission.
+      hand_writing: answer.hand_writing ?? null,
       // Only ever populated once grading_status is 'graded'.
       score: answer.score ?? null,
     },
@@ -253,6 +391,7 @@ module.exports = {
   getQuestionsBySubject,
   getQuestion,
   submitAnswer,
+  uploadHandwriting,
   getAnswer,
   toStudentQuestion,
   toListEntry,

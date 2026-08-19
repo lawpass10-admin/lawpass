@@ -267,7 +267,7 @@ async function main() {
   console.log(r.opening + "\n");
   for (const s of r.sections) {
     console.log(`== ${s.heading} ==`);
-    s.paragraphs.forEach((p, i) => console.log(`${i + 1}. ${p}\n`));
+    s.paragraphs.forEach((p, i) => console.log(`${i + 1}. ${p.text}\n`));
   }
   console.log("─".repeat(72));
   console.log(`\nwritten to ${outPath}`);

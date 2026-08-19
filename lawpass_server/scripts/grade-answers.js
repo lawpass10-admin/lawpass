@@ -74,15 +74,28 @@ function printScore(score) {
   console.log("─".repeat(72));
 }
 
+/**
+ * @returns {Promise<"graded"|"skipped"|"failed">}
+ *
+ * "skipped" is not a failure and must not be counted as one: a handwritten
+ * submission is intact and waiting for a grader that can read it. Reporting it
+ * as failed would make every run of this worker look broken and would turn the
+ * exit code into a false alarm for anything watching it.
+ */
 async function gradeAndReport(admin, answerId, { verbose }) {
   console.log(`\ngrading ${answerId} — this can take about a minute...`);
   const stop = startTimer("grading");
   const result = await gradeOne(admin, answerId);
   const seconds = stop();
 
+  if (result.status === "handwriting_only") {
+    console.log(`  SKIPPED: ${result.detail} — left pending, nothing charged`);
+    return "skipped";
+  }
+
   if (!result.ok) {
     console.error(`  ${result.status.toUpperCase()}: ${result.detail}`);
-    return false;
+    return "failed";
   }
 
   const u = result.usage || {};
@@ -93,7 +106,7 @@ async function gradeAndReport(admin, answerId, { verbose }) {
   for (const w of result.warnings ?? []) console.log(`  warning: ${w}`);
   if (verbose) printScore(result.score);
   else console.log(`  ציון ${result.score.total}/${result.score.max}`);
-  return true;
+  return "graded";
 }
 
 async function main() {
@@ -129,8 +142,8 @@ async function main() {
 
   const one = flag("answer");
   if (one) {
-    const ok = await gradeAndReport(admin, one, { verbose: !has("quiet") });
-    process.exitCode = ok ? 0 : 1;
+    const outcome = await gradeAndReport(admin, one, { verbose: !has("quiet") });
+    process.exitCode = outcome === "failed" ? 1 : 0;
     return;
   }
 
@@ -144,15 +157,25 @@ async function main() {
     console.log(`${queue.length} submission(s) pending (oldest first)`);
 
     let ok = 0;
+    let skipped = 0;
     // One at a time: the answers in a queue are usually for the SAME task, so
     // the second call reads the cache the first one wrote. Run them in parallel
     // and they all miss it and all pay the write.
     for (const row of queue) {
-      const done = await gradeAndReport(admin, row.answer_id, { verbose: has("verbose") });
-      if (done) ok++;
+      const outcome = await gradeAndReport(admin, row.answer_id, { verbose: has("verbose") });
+      if (outcome === "graded") ok++;
+      else if (outcome === "skipped") skipped++;
     }
-    console.log(`\n${ok}/${queue.length} graded. total time ${mmss(Date.now() - RUN_STARTED)}`);
-    process.exitCode = ok === queue.length ? 0 : 1;
+
+    // Handwritten submissions stay pending on purpose, so they appear in this
+    // queue on every run. That is the intended state, not a backlog to worry
+    // about — they are waiting for a grader that can read a photograph.
+    console.log(
+      `\n${ok}/${queue.length} graded` +
+        (skipped ? `, ${skipped} skipped (handwritten — still pending)` : "") +
+        `. total time ${mmss(Date.now() - RUN_STARTED)}`
+    );
+    process.exitCode = ok + skipped === queue.length ? 0 : 1;
     return;
   }
 

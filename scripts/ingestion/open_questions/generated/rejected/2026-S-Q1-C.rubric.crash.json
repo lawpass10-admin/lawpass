@@ -1,0 +1,14 @@
+{
+  "failed_at": "2026-08-19T12:13:33.817Z",
+  "bundle": "2026-S-Q1-C.answer.json",
+  "question_external_id": "2026-S-Q1-C",
+  "model": "claude-opus-5",
+  "effort": "high",
+  "max_tokens": 16000,
+  "error": {
+    "name": "Error",
+    "message": "Connection error.",
+    "status": null,
+    "stack": "Error: Connection error.\n    at Anthropic.makeRequest (C:\\Users\\User\\lowpass\\lawpass-main\\app\\lawpass_server\\node_modules\\@anthropic-ai\\sdk\\client.js:574:19)\n    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)"
+  }
+}

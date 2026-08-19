@@ -279,6 +279,26 @@
   }
 }
 
+/* Writing-task exam clock — the separator between mm and ss blinks once a
+   second, the way a digital clock does. It is the whole point of the blink:
+   a countdown that shows seconds but sits still for a moment reads as a
+   frozen page, and the colon says "still running" without flashing the
+   digits themselves at a student for fifty minutes.
+   `steps(2)` gives a hard on/off, matching the typewriter cursor below.
+   Disabled under prefers-reduced-motion — the colon then stays solid, and
+   the seconds are still visibly counting. */
+@keyframes examClockBlink {
+  50% { opacity: 0; }
+}
+.exam-clock-colon {
+  animation: examClockBlink 1s steps(2) infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .exam-clock-colon {
+    animation: none;
+  }
+}
+
 /* ============================================
    Slice 8 — page-transition fade-in for (app) route segments.
    Layout-applied via the `.page-fade-in` class on <main> in

@@ -48,8 +48,22 @@
 // A FAILED SET DOES NOT STOP THE RUN. Generation can be rejected by the quote
 // lock, and that verdict is correct behaviour, not a crash. The runner records
 // the failure, moves to the next set, and prints a summary at the end; the
-// rejected output stays in generated/rejected/ for inspection. Exit code is 1 if
-// any set failed.
+// rejected output stays in generated/rejected/ for inspection.
+//
+// A SET LOADS WHOLE OR NOT AT ALL. Before step 5 the runner checks that all
+// three parts exist on disk — question, answer, rubric — and loads nothing if
+// any is missing. So a set that fails at generation or at the rubric leaves the
+// database untouched, and its files stay on disk to be inspected or finished by
+// hand. The one case that cannot be made atomic is step 6: the rubric row is
+// looked up by the question row, so the question must be inserted first and a
+// failure there leaves a question with no rubric. That case is reported
+// separately as PARTIAL, with the command to finish it.
+//
+// WHAT IT REPORTS. The summary counts what reached the DATABASE, not what was
+// generated — "4 out of 5 set(s) loaded to the database" — split into loaded,
+// PARTIAL and FAILED, and the same report is written to logs/run-<timestamp>.txt
+// because a twenty-minute run scrolls off the screen. Exit code is 1 if any set
+// was partial or failed.
 //
 // NOTHING REACHES A STUDENT. Every row lands with status "draft" — the question,
 // the answer and the rubric alike — exactly as the single-set path does. A draft
@@ -58,7 +72,7 @@
 
 import dotenv from 'dotenv';
 import { createInterface } from 'node:readline/promises';
-import { readdirSync, existsSync, readFileSync } from 'node:fs';
+import { readdirSync, existsSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { join, dirname, relative } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
@@ -69,6 +83,7 @@ const serverDir = join(appRoot, 'lawpass_server');
 const pagesDir = join(here, 'answers', 'pages');
 const sourcesDir = join(here, 'sources');
 const generatedDir = join(here, 'generated');
+const logsDir = join(here, 'logs');
 
 dotenv.config({ path: join(appRoot, '.env.local') });
 dotenv.config({ path: join(appRoot, '.env') });
@@ -192,6 +207,26 @@ function generateSet(step) {
   status = run(join(serverDir, 'scripts', 'render-open-answer-pdf.js'), [answerJson, sourceFile, '--html-only'], serverDir);
   if (status !== 0) return { ok: false, at: 'answer html', detail: 'renderer failed' };
 
+  // THE COMPLETENESS GATE. Nothing reaches the database unless all three parts
+  // of the set exist: question, answer, and the rubric that marks them. The
+  // stages above already stop on their own failures, but the invariant is
+  // restated here as one check because it is the one that matters — a question
+  // row without a rubric is a task a student can sit and nobody can grade, and
+  // it is far easier to never write it than to find it later.
+  const parts = [
+    ['question', questionJson],
+    ['answer', answerJson],
+    ['rubric', rubricJson],
+  ];
+  const missing = parts.filter(([, p]) => !existsSync(p)).map(([name]) => name);
+  if (missing.length) {
+    return {
+      ok: false,
+      at: 'incomplete set',
+      detail: `missing ${missing.join(', ')} — nothing was loaded to the database`,
+    };
+  }
+
   // 5. the row. The loader re-validates, attaches the quote bank, inherits the
   //    subject from the parent source row and skips anything already present.
   status = run(join(here, 'load_generated_questions.mjs'), [`${base}.answer.json`, '--commit']);
@@ -205,8 +240,24 @@ function generateSet(step) {
   //    Loaded as a DRAFT, with no --approve. A draft grades nothing, which is
   //    the same promise the rest of this runner makes: generated content reaches
   //    a student only after a human has read it.
+  //
+  //    This is the one stage that can leave the database half-written: the
+  //    rubric row is looked up by the question row, so the question has to be
+  //    inserted first and the two cannot go in as one transaction. A failure
+  //    here is reported as PARTIAL rather than as a plain failure, because the
+  //    fix is different — the question is already in the table and only the
+  //    rubric has to be loaded, not the whole set regenerated.
   status = run(join(here, 'load_rubric.mjs'), [`${base}.rubric.json`, '--commit']);
-  if (status !== 0) return { ok: false, at: 'database', detail: 'rubric load failed — the question row is in place, the rubric is not' };
+  if (status !== 0) {
+    return {
+      ok: false,
+      partial: true,
+      at: 'database',
+      detail:
+        'rubric load failed — the QUESTION ROW IS IN THE TABLE and its rubric is not. ' +
+        `Load it with: node scripts/ingestion/open_questions/load_rubric.mjs ${base}.rubric.json --commit`,
+    };
+  }
 
   return { ok: true, base };
 }
@@ -253,8 +304,9 @@ console.log(
   `stop with Ctrl-C between sets.\n`
 );
 
-const done = [];
-const failed = [];
+const loaded = [];   // question row AND rubric row both in the database
+const partial = [];  // question row in, rubric not — needs a hand
+const failed = [];   // nothing loaded
 
 for (const step of steps) {
   const started = Date.now();
@@ -264,29 +316,71 @@ for (const step of steps) {
 
   const result = generateSet(step);
   const took = mmss(Date.now() - started);
+  const record = { ...step, took, ...result };
 
   if (result.ok) {
-    done.push({ ...step, took });
-    console.log(`\n✓ set ${step.n} done in ${took} — ${result.base}.generated.json/.html, ${result.base}.answer.json/.html, row written\n`);
+    loaded.push(record);
+    console.log(`\n✓ set ${step.n} loaded in ${took} — ${result.base}: question row + rubric row (draft)\n`);
+  } else if (result.partial) {
+    partial.push(record);
+    console.error(`\n! set ${step.n} PARTIAL after ${took}: ${result.detail}\n`);
   } else {
-    failed.push({ ...step, took, ...result });
-    console.error(`\n✗ set ${step.n} failed at ${result.at} after ${took}: ${result.detail}\n`);
+    failed.push(record);
+    console.error(`\n✗ set ${step.n} failed at ${result.at} after ${took} — nothing loaded: ${result.detail}\n`);
   }
 }
 
 // ---------------------------------------------------------------- summary
 
-console.log('═'.repeat(72));
-console.log(`RUN COMPLETE — ${done.length}/${count} set(s) written, ${failed.length} failed, total ${mmss(Date.now() - RUN_STARTED)}`);
-console.log('═'.repeat(72));
+const label = (s) => `${s.source.id}-${s.angle}`.padEnd(14);
+const lines = [
+  ...loaded.map((s) => `  loaded   ${label(s)} ${s.took}`),
+  ...partial.map((s) => `  PARTIAL  ${label(s)} ${s.took}  ${s.detail}`),
+  ...failed.map((s) => `  FAILED   ${label(s)} ${s.took}  at ${s.at}: ${s.detail}`),
+];
+const headline = `${loaded.length} out of ${count} set(s) loaded to the database`;
 
-for (const s of done) console.log(`  ok      ${`${s.source.id}-${s.angle}`.padEnd(14)} ${s.took}`);
-for (const s of failed) console.log(`  FAILED  ${`${s.source.id}-${s.angle}`.padEnd(14)} ${s.took}  at ${s.at}: ${s.detail}`);
+console.log('═'.repeat(72));
+console.log(`RUN COMPLETE — ${headline}, total ${mmss(Date.now() - RUN_STARTED)}`);
+console.log('═'.repeat(72));
+for (const line of lines) console.log(line);
 
-if (done.length) {
+if (loaded.length) {
   console.log(`\nFiles are in ${relative(appRoot, generatedDir)}. Every row is a draft — review before any of it reaches a student.`);
+}
+if (partial.length) {
+  console.log(
+    `\nNEEDS A HAND: ${partial.length} set(s) put a question in the table without its rubric. ` +
+      `Until the rubric is loaded those questions cannot be graded — run the command printed above for each.`
+  );
 }
 if (failed.length) {
   console.log(`\nRejected output for inspection: ${relative(appRoot, join(generatedDir, 'rejected'))}`);
-  process.exitCode = 1;
 }
+
+// The written report. The console scrolls away and a run is twenty minutes of
+// work; this is the record of what actually reached the database.
+const finishedAt = new Date();
+const report = [
+  'LawPass — open question set generation',
+  `finished    : ${finishedAt.toISOString()}`,
+  `duration    : ${mmss(Date.now() - RUN_STARTED)}`,
+  `requested   : ${count} set(s)`,
+  '',
+  headline.toUpperCase(),
+  `  loaded  ${loaded.length}   partial ${partial.length}   failed ${failed.length}`,
+  '',
+  ...lines,
+  '',
+  'Every row loaded is a draft. A draft rubric grades nothing until someone reads it',
+  'and re-runs load_rubric.mjs with --approve.',
+  '',
+].join('\n');
+
+mkdirSync(logsDir, { recursive: true });
+const reportPath = join(logsDir, `run-${finishedAt.toISOString().replace(/[:.]/g, '-')}.txt`);
+writeFileSync(reportPath, report, 'utf8');
+console.log(`\nreport: ${relative(appRoot, reportPath)}`);
+
+// Non-zero if anything did not land whole, so a scheduled run fails loudly.
+if (partial.length || failed.length) process.exitCode = 1;
