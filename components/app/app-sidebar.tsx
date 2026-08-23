@@ -2,6 +2,7 @@
 
 import {
   Bookmark,
+  BookOpen,
   FileText,
   Gauge,
   LogOut,
@@ -66,6 +67,7 @@ const NAV_LEARNING = [
   { href: "/practice", label: "תרגול", Icon: Scale },
   { href: "/exam", label: "סימולציות בחינה", Icon: Timer },
   { href: "/writing-task", label: "מטלת כתיבה", Icon: FileText },
+  { href: "/mahoti", label: "דיון מהותי", Icon: BookOpen },
 ] as const;
 
 const NAV_LIBRARY = [

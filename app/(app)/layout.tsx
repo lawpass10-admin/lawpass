@@ -109,12 +109,19 @@ export default async function AppLayout({
     redirect("/pricing");
   }
 
-  // Exam routes hide the sidebar to give a focused, no-distractions
+  // Focus routes hide the sidebar to give a focused, no-distractions
   // simulation feel (SPEC §7.0.4). The SubscriptionGate above still
-  // ran — exam is subscription-protected like every other (app) route.
+  // ran — these are subscription-protected like every other (app) route.
   // We skip the sidebar mount AND the bookmark/mistake count queries,
-  // since neither sidebar nor badges render on /exam/*.
-  const isExamRoute = pathname === "/exam" || pathname.startsWith("/exam/");
+  // since neither sidebar nor badges render on them.
+  //
+  // /mahoti joins /exam here for a different reason than distraction: it
+  // is a split screen, question beside notebook, and the navy sidebar
+  // costs it ~16rem of the width both panes are competing for.
+  const FOCUS_ROUTES = ["/exam", "/mahoti"];
+  const isFocusRoute = FOCUS_ROUTES.some(
+    (route) => pathname === route || pathname.startsWith(`${route}/`)
+  );
   // Slice 10 — surface the QA widget for testers across BOTH branches
   // of the layout (exam-focused branch + sidebar branch). The widget
   // is fixed-position and renders into a Portal when open, so JSX
@@ -130,7 +137,7 @@ export default async function AppLayout({
   // deterrent renders unchanged.
   const canCopy = isQaTester || profile.is_admin === true;
 
-  if (isExamRoute) {
+  if (isFocusRoute) {
     return (
       <NoCopyBypassProvider bypass={canCopy}>
         {/* Slice 51 — id="main-content" added so the universal skip-link

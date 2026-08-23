@@ -25,8 +25,8 @@ export const TIMER_DANGER_SECONDS = 10;
 export type TimerPhase = "neutral" | "warning" | "danger";
 
 /**
- * Pure phase derivation. Same boundaries as the exam-side
- * implementation (Slice 17 B-1):
+ * Pure phase derivation. Defaults are the exam-side boundaries
+ * (Slice 17 B-1):
  *   `< 10`  → "danger"
  *   `< 30`  → "warning"
  *   otherwise → "neutral"
@@ -34,10 +34,22 @@ export type TimerPhase = "neutral" | "warning" | "danger";
  * The boundaries are STRICT inequalities — at exactly 30 seconds the
  * phase is still "neutral"; the first frame to land in "warning" is
  * 29s remaining. Matches the prior exam behavior.
+ *
+ * `thresholds` overrides them for timers on a different scale: the
+ * /mahoti session runs 160 minutes and turns amber at 5 minutes, red
+ * at 1 — proportions that would be invisible at 30s/10s. Callers that
+ * pass nothing are unaffected.
  */
-export function getTimerPhase(remainingSeconds: number): TimerPhase {
-  if (remainingSeconds < TIMER_DANGER_SECONDS) return "danger";
-  if (remainingSeconds < TIMER_WARNING_SECONDS) return "warning";
+export function getTimerPhase(
+  remainingSeconds: number,
+  thresholds: { warning?: number; danger?: number } = {}
+): TimerPhase {
+  const {
+    warning = TIMER_WARNING_SECONDS,
+    danger = TIMER_DANGER_SECONDS,
+  } = thresholds;
+  if (remainingSeconds < danger) return "danger";
+  if (remainingSeconds < warning) return "warning";
   return "neutral";
 }
 
