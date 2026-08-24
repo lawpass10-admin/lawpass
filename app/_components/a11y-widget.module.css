@@ -22,7 +22,11 @@
  *       that slips through.
  *
  * Contrast & touch targets pass Gemini's widget-itself checklist:
- *   - launcher 56×56 (> SC 2.5.5 44×44 floor).
+ *   - launcher 32×32 — clears the SC 2.5.8 (AA) 24×24 floor that IS 5568
+ *     inherits, but NOT the AAA SC 2.5.5 44×44 target. Deliberate: the
+ *     56×56 original dominated the corner, and this now matches the QA
+ *     launcher beside it. Bump both back up together if AAA target size is
+ *     ever required.
  *   - launcher bg #0F1F4F + white icon ≈ 15.6:1 (>> SC 1.4.3 4.5:1 floor).
  *   - panel buttons 44×44 minimum, navy text on white bg = 15.6:1.
  *   - focus ring: solid blue 3px (#005FCC) + 2px offset, visible against
@@ -34,9 +38,14 @@
    ─────────────────────────────────────────────────────────────────── */
 
 .widgetRoot {
-  /* Layout */
+  /* Layout. Top-left, not bottom-left: the fixed-height screens (/mahoti,
+     the writing-task results) pin their action rows to the foot of the
+     viewport, and a launcher parked down there covered the primary button.
+     The QA launcher sits immediately beside this one at the same size —
+     see A11Y_LAUNCHER_* in app/(app)/_components/qa-floating-widget.tsx,
+     which mirrors these numbers. */
   position: fixed;
-  bottom: 24px;
+  top: 12px;
   left: 24px;
   z-index: 9999;
   /* `isolation: isolate` creates a new compositor stacking context so
@@ -47,8 +56,8 @@
   filter: none !important;
   /* `dir: rtl` inherited from `<html dir="rtl">` — no override needed.
      The launcher itself is icon-only so direction is irrelevant; the
-     panel layout uses physical bottom/left positioning per the
-     Gemini RTL placement spec. */
+     panel layout uses physical top/left positioning, hanging off the
+     launcher's corner. */
   font-family: "Heebo", Arial, "Noto Sans Hebrew", sans-serif;
   font-size: 14px;
   line-height: 1.4;
@@ -60,8 +69,8 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 56px;
-  height: 56px;
+  width: 32px;
+  height: 32px;
   padding: 0;
   border: 0;
   border-radius: 50%;
@@ -83,14 +92,17 @@
   outline-offset: 2px;
 }
 .launcher svg {
-  width: 28px;
-  height: 28px;
+  width: 18px;
+  height: 18px;
 }
 
 /* ─── Panel (the modal dialog) ─── */
 .panel {
   position: absolute;
-  bottom: 72px;
+  /* Opens DOWNWARD now that the launcher is at the top of the viewport:
+     launcher height (32px) + a 12px gap. Anchored from the top, so the
+     panel's own max-height governs how far down it runs. */
+  top: 44px;
   left: 0;
   width: min(340px, calc(100vw - 32px));
   max-height: min(72vh, 620px);
@@ -275,10 +287,13 @@
 .focusMaskBottom { bottom: 0; }
 
 /* ─── Mobile ─── */
+/* Only the inset changes. The old rules here re-pinned the widget to
+   `bottom` and re-sized the launcher to 54px; with the root now anchored by
+   `top`, leaving a `bottom` in place would over-constrain a height:auto
+   fixed element — it would stretch the full viewport and eat clicks through
+   its own bounding box. Size stays 32px so the pair still matches. */
 @media (max-width: 600px) {
-  .widgetRoot { bottom: 16px; left: 16px; }
-  .launcher { width: 54px; height: 54px; }
-  .panel { bottom: 68px; }
+  .widgetRoot { top: 8px; left: 16px; }
 }
 /* Touch-device guard for the cursor-tracking overlays. On a coarse
    pointer (phone/tablet) "mousemove" is meaningless — hide them so they

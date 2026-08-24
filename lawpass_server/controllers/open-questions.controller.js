@@ -19,6 +19,7 @@
 const db = require("../db/open-questions");
 const { adminClient } = require("../config/supabase");
 const { gradeOne } = require("../lib/grading/run-grading");
+const gradingProgress = require("../lib/grading/progress-registry");
 const {
   isConfigured: cloudinaryConfigured,
   uploadImage,
@@ -27,6 +28,7 @@ const {
   HANDWRITING_MIME_TYPES,
 } = require("../lib/cloudinary");
 const { env } = require("../config/env");
+const { startSpan, secs } = require("../lib/timing");
 
 /** Question fields the candidate is allowed to see. Everything else is cut. */
 const STUDENT_FIELDS = [
@@ -141,6 +143,10 @@ async function getQuestion(req, res) {
  * returned so the page can say which sitting this was.
  */
 async function submitAnswer(req, res) {
+  // The request itself is two queries and a return — it should never be part of
+  // why a student waits. Timed anyway so that "grading is slow" can be answered
+  // with the submit cost on the record rather than assumed to be nothing.
+  const submitSpan = startSpan();
   const questionId = req.params.id;
   const text = req.valid.text ?? "";
   const pages = req.valid.hand_writing ?? [];
@@ -190,7 +196,7 @@ async function submitAnswer(req, res) {
   });
 
   console.info(
-    `[open-questions] submit OK user=${req.user.id} question=${questionId} answer=${saved.answer_id} attempt=${saved.attempt_number} words=${answerBody.word_count} pages=${handWriting ? handWriting.length : 0}`
+    `[open-questions] submit OK user=${req.user.id} question=${questionId} answer=${saved.answer_id} attempt=${saved.attempt_number} words=${answerBody.word_count} pages=${handWriting ? handWriting.length : 0} elapsed=${secs(submitSpan())}`
   );
 
   // Grading starts now and is NOT awaited. A marking run is around a minute —
@@ -382,6 +388,15 @@ async function getAnswer(req, res) {
       hand_writing: answer.hand_writing ?? null,
       // Only ever populated once grading_status is 'graded'.
       score: answer.score ?? null,
+      // How far along the marking is, when this process happens to be the one
+      // doing it (see lib/grading/progress-registry.js). Null is a normal
+      // answer, not an error — for a finished row, for a run picked up by the
+      // CLI worker, or after a restart — and the page falls back to its plain
+      // waiting message whenever it is null.
+      progress:
+        answer.grading_status === "grading"
+          ? gradingProgress.get(answer.answer_id)
+          : null,
     },
   });
 }

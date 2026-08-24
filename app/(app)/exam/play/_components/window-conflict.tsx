@@ -63,7 +63,7 @@ export function WindowConflict({ sessionId }: Props) {
           לדשבורד ולהמשיך מאוחר יותר.
         </p>
       </div>
-      <div className="flex w-full flex-col gap-2 sm:flex-row sm:justify-center">
+      <div className="flex w-full flex-col gap-3 sm:flex-row sm:justify-center sm:gap-4">
         <Button
           variant="ghost"
           size="lg"

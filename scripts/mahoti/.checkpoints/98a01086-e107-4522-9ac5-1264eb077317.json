@@ -1,0 +1,10 @@
+{
+  "questionId": "98a01086-e107-4522-9ac5-1264eb077317",
+  "seed": 1687751936,
+  "model": "claude-opus-5",
+  "accepted": [],
+  "stats": {
+    "rejected": 0,
+    "reasons": []
+  }
+}

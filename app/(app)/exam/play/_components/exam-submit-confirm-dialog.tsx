@@ -49,7 +49,7 @@ export function ExamSubmitConfirmDialog({
           <AlertDialog.Description className="mt-2 text-sm text-muted-foreground">
             יש {unansweredCount} שאלות לא ענויות. הן ייספרו כשגויות.
           </AlertDialog.Description>
-          <div className="mt-6 flex flex-col gap-2 sm:flex-row sm:justify-end">
+          <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:justify-end sm:gap-4">
             <Button variant="ghost" onClick={onCancel} disabled={pending}>
               חזור לבחינה
             </Button>

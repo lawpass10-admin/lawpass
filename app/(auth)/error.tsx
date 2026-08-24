@@ -47,7 +47,7 @@ export default function AuthGroupError({
             אירעה שגיאה. נסה שוב או חזור למסך ההתחברות.
           </CardDescription>
         </CardHeader>
-        <CardContent className="flex flex-col gap-2">
+        <CardContent className="flex flex-col gap-3">
           <Button onClick={reset}>נסה שוב</Button>
           <Link
             href="/login"

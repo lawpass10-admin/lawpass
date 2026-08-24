@@ -59,7 +59,7 @@ export function TimerExpiredDialog({
             הזמן לסשן הסתיים. אפשר להמשיך לתרגל בלי מגבלת זמן, או לסיים
             ולעבור לסיכום.
           </AlertDialog.Description>
-          <div className="mt-6 flex justify-end gap-2">
+          <div className="mt-6 flex justify-end gap-4">
             <Button
               variant="ghost"
               onClick={() => void onEndSession()}

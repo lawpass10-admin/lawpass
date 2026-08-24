@@ -11,23 +11,28 @@ import {
   fetchQuestion,
   type AnswerScore,
   type AnswerState,
+  type GradingProgress,
   type ScoredItem,
 } from "@/lib/api/open-questions";
 
 /**
  * The marking of one submission — and the waiting room before it exists.
  *
- * Grading runs in the background and takes about a minute, so this screen has
- * three states, not one: still being marked, marked, and gave up. The waiting
- * state is the common one on arrival, because the student gets here the instant
- * they press send.
+ * Grading runs in the background and takes minutes, so this screen has three
+ * states, not one: still being marked, marked, and gave up. The waiting state is
+ * the common one on arrival, because the student gets here the instant they
+ * press send.
  *
  * Polling stops on its own. A page that retries forever quietly turns one stuck
  * row into a request every three seconds for as long as the tab is open, so
  * after POLL_LIMIT tries it says so and offers a manual retry instead.
  */
 const POLL_MS = 3000;
-const POLL_LIMIT = 40; // ~2 minutes
+// Six minutes. It was two, which was shorter than grading itself: a measured run
+// took 218 seconds, so a student who sat and waited was shown "this is taking
+// longer than expected" a full minute and a half BEFORE their score arrived,
+// and had to reload to see a result that was already waiting for them.
+const POLL_LIMIT = 120;
 
 type Phase = "loading" | "waiting" | "graded" | "failed" | "timeout" | "error";
 
@@ -36,6 +41,11 @@ export function AnswerFeedback({ answerId }: { answerId: string }) {
   const [title, setTitle] = useState<string>("");
   const [phase, setPhase] = useState<Phase>("loading");
   const [error, setError] = useState("");
+  // When the marking run started, on this browser's clock. Derived here, as the
+  // poll lands, because that is the only moment at which the server's
+  // `elapsed_ms` and our own `Date.now()` are known to refer to the same
+  // instant; the waiting screen then counts forward from it every second.
+  const [gradingStartedAt, setGradingStartedAt] = useState<number | null>(null);
   const attempts = useRef(0);
 
   const load = useCallback(async (): Promise<AnswerState | null> => {
@@ -46,6 +56,9 @@ export function AnswerFeedback({ answerId }: { answerId: string }) {
       return null;
     }
     setAnswer(result.data);
+    if (result.data.progress) {
+      setGradingStartedAt(Date.now() - result.data.progress.elapsed_ms);
+    }
     if (result.data.grading_status === "graded" && result.data.score) setPhase("graded");
     else if (result.data.grading_status === "failed") setPhase("failed");
     else setPhase("waiting");
@@ -94,11 +107,29 @@ export function AnswerFeedback({ answerId }: { answerId: string }) {
     };
   }, [answer?.open_question_id]);
 
-  if (phase === "loading") return <Waiting title="" attempt={0} justSubmitted={false} />;
+  if (phase === "loading") {
+    return (
+      <Waiting
+        title=""
+        attempt={0}
+        justSubmitted={false}
+        progress={null}
+        startedAt={null}
+      />
+    );
+  }
   if (phase === "error") return <Notice tone="danger">{error || "התשובה לא נמצאה"}</Notice>;
 
   if (phase === "waiting") {
-    return <Waiting title={title} attempt={answer?.attempt_number ?? 0} justSubmitted />;
+    return (
+      <Waiting
+        title={title}
+        attempt={answer?.attempt_number ?? 0}
+        justSubmitted
+        progress={answer?.progress ?? null}
+        startedAt={gradingStartedAt}
+      />
+    );
   }
 
   if (phase === "timeout") {
@@ -138,15 +169,50 @@ export function AnswerFeedback({ answerId }: { answerId: string }) {
 
 /* ─────────────────────────────── waiting ─────────────────────────────── */
 
+/**
+ * The waiting room.
+ *
+ * Marking takes minutes, and a spinner alone says nothing about whether that
+ * means twenty seconds or five more minutes — so when the server can tell us
+ * where the run is, this shows it: a bar, a clock, and which of the two things
+ * the marker is doing.
+ *
+ * The clock ticks locally rather than only on each poll. The server is asked
+ * every three seconds, and a timer that jumped in three-second steps would look
+ * stuck between them; `startedAt` is re-derived from the server's `elapsed_ms`
+ * on every poll, and this counts forward from it in between, so the display is
+ * both smooth and unable to drift.
+ */
 function Waiting({
   title,
   attempt,
   justSubmitted,
+  progress,
+  startedAt,
 }: {
   title: string;
   attempt: number;
   justSubmitted: boolean;
+  progress: GradingProgress | null;
+  startedAt: number | null;
 }) {
+  const [now, setNow] = useState(() => Date.now());
+
+  useEffect(() => {
+    if (startedAt === null) return;
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, [startedAt]);
+
+  const elapsedMs = startedAt === null ? 0 : Math.max(0, now - startedAt);
+  const expectedMs = progress?.expected_ms ?? 0;
+  const percent =
+    expectedMs > 0 ? Math.min(95, Math.round((elapsedMs / expectedMs) * 100)) : 0;
+  // Thinking is not streamed back, so characters stay at zero until the marker
+  // stops reading and starts writing. That transition is the one genuinely
+  // informative thing we can report mid-run.
+  const writing = (progress?.answer_chars ?? 0) > 0;
+
   return (
     <Card>
       <CardContent className="flex flex-col items-center gap-4 px-6 py-16 text-center">
@@ -169,7 +235,11 @@ function Waiting({
             התשובה שלך בבדיקה
           </h1>
           <p className="font-heebo" style={{ fontSize: 15, color: "var(--color-ink-dim)" }}>
-            הבדיקה יכולה לקחת עד דקה. אפשר להישאר בדף — הציון יופיע כאן מעצמו.
+            {progress
+              ? writing
+                ? "המערכת כותבת את חוות הדעת. אפשר להישאר בדף — הציון יופיע כאן מעצמו."
+                : "המערכת קוראת את התשובה ובודקת אותה מול המחוון. אפשר להישאר בדף — הציון יופיע כאן מעצמו."
+              : "הבדיקה יכולה לקחת כמה דקות. אפשר להישאר בדף — הציון יופיע כאן מעצמו."}
           </p>
           {title ? (
             <p className="font-heebo" style={{ fontSize: 13, color: "var(--color-ink-muted)" }}>
@@ -178,6 +248,34 @@ function Waiting({
             </p>
           ) : null}
         </div>
+
+        {progress ? (
+          <div className="w-full max-w-sm space-y-1.5">
+            <div
+              className="h-1.5 w-full overflow-hidden rounded-full"
+              role="progressbar"
+              aria-valuemin={0}
+              aria-valuemax={100}
+              aria-valuenow={percent}
+              aria-label="התקדמות הבדיקה"
+              style={{ background: "var(--color-paper-2, rgba(0,0,0,0.08))" }}
+            >
+              <div
+                className="h-full transition-[width] duration-1000 ease-linear"
+                style={{ width: `${percent}%`, background: "var(--color-gold-deep)" }}
+              />
+            </div>
+            <p
+              className="flex justify-between font-heebo tabular-nums"
+              style={{ fontSize: 12, color: "var(--color-ink-muted)" }}
+              dir="ltr"
+            >
+              <span>{clock(elapsedMs)}</span>
+              <span>~{clock(expectedMs)}</span>
+            </p>
+          </div>
+        ) : null}
+
         {justSubmitted ? (
           <p className="font-heebo" style={{ fontSize: 12, color: "var(--color-ink-muted)" }}>
             אם תסגור את הדף, אפשר לחזור לכתובת הזו בכל רגע ולראות את התוצאה.
@@ -186,6 +284,12 @@ function Waiting({
       </CardContent>
     </Card>
   );
+}
+
+/** 218450 -> "3:38". */
+function clock(ms: number): string {
+  const total = Math.max(0, Math.round(ms / 1000));
+  return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, "0")}`;
 }
 
 /* ─────────────────────────────── marked ──────────────────────────────── */
@@ -285,7 +389,7 @@ function Marked({
         </CardContent>
       </Card>
 
-      <div className="flex flex-wrap gap-3 pb-4">
+      <div className="flex flex-wrap items-center gap-4 pb-4">
         <Link href={`/writing-task/${answer.open_question_id}`}>
           <Button type="button" className="h-11 md:h-10">
             כתוב את המטלה שוב

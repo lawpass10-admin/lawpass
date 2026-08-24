@@ -36,7 +36,20 @@ function formatMinSec(total: number): string {
  * reload starts over. That is a deliberate limit of the study tool, not a
  * scoring surface — /exam remains the timed, server-authoritative one.
  */
-export function ExamTimerBar({ frozen = false }: { frozen?: boolean }) {
+export function ExamTimerBar({
+  frozen = false,
+  onStartedChange,
+}: {
+  frozen?: boolean;
+  /**
+   * Fired the moment the sitting actually begins. The workspace keeps the
+   * choices locked until then, so answering and the clock can't come apart —
+   * see MahotiWorkspace. Called from `handleStart` rather than an effect on
+   * `started`: that is the single place the flag flips, and an effect here
+   * would be a parent-setState-in-effect cascade.
+   */
+  onStartedChange?: (started: boolean) => void;
+}) {
   const [remaining, setRemaining] = useState(MAHOTI_TOTAL_SECONDS);
   const [running, setRunning] = useState(false);
   const [started, setStarted] = useState(false);
@@ -82,6 +95,7 @@ export function ExamTimerBar({ frozen = false }: { frozen?: boolean }) {
     deadlineRef.current = Date.now() + seconds * 1000;
     setStarted(true);
     setRunning(true);
+    onStartedChange?.(true);
   }
 
   function handlePauseToggle(): void {
@@ -106,10 +120,12 @@ export function ExamTimerBar({ frozen = false }: { frozen?: boolean }) {
   const finished = started && remaining === 0;
 
   return (
-    <div className="flex flex-wrap items-center gap-2.5 rounded-xl border border-border bg-card px-3 py-2.5 shadow-sm">
+    // h-9 with `size="sm"` buttons (h-8): the bar is one control row, and on
+    // this screen its height comes straight out of the reading area.
+    <div className="flex h-9 shrink-0 items-center gap-2 rounded-lg border border-border bg-card px-2 shadow-sm">
       <Button onClick={handleStart} disabled={running || frozen} size="sm">
-        <Play className="size-4" aria-hidden />
-        <span className="ms-1.5">
+        <Play className="size-3.5" aria-hidden />
+        <span className="ms-1.5 text-xs">
           {finished ? "התחל מחדש" : started ? "המשך בחינה" : "התחל בחינה"}
         </span>
       </Button>
@@ -123,13 +139,13 @@ export function ExamTimerBar({ frozen = false }: { frozen?: boolean }) {
       >
         {running ? (
           <>
-            <Pause className="size-4" aria-hidden />
-            <span className="ms-1.5">השהה</span>
+            <Pause className="size-3.5" aria-hidden />
+            <span className="ms-1.5 text-xs">השהה</span>
           </>
         ) : (
           <>
-            <Play className="size-4" aria-hidden />
-            <span className="ms-1.5">המשך</span>
+            <Play className="size-3.5" aria-hidden />
+            <span className="ms-1.5 text-xs">המשך</span>
           </>
         )}
       </Button>
@@ -140,8 +156,8 @@ export function ExamTimerBar({ frozen = false }: { frozen?: boolean }) {
       <div
         aria-hidden
         className={cn(
-          "ms-auto inline-flex items-center gap-2 rounded-md px-3 py-1.5",
-          "font-mono text-sm font-semibold tabular-nums",
+          "ms-auto inline-flex items-center gap-1.5 rounded-md px-2 py-1",
+          "font-mono text-xs font-semibold tabular-nums",
           TIMER_PHASE_CLASSES_LIGHT[phase]
         )}
       >

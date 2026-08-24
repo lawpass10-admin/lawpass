@@ -52,7 +52,7 @@ export function ExamPauseOverlay({
             הטיימר עוצר. ניתן להמשיך מהמקום שעצרת, או לצאת לדשבורד ולחזור
             מאוחר יותר. ההתקדמות נשמרה.
           </AlertDialog.Description>
-          <div className="mt-6 flex flex-col gap-2 sm:flex-row sm:justify-end">
+          <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:justify-end sm:gap-4">
             <Button
               variant="ghost"
               onClick={() => void onExit()}

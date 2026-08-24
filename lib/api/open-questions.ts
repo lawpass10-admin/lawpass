@@ -205,6 +205,25 @@ export type AnswerScore = {
   meta?: Record<string, unknown>;
 };
 
+/**
+ * How far along a marking run is, while it is still running.
+ *
+ * Present only when the server process answering the poll is also the one doing
+ * the marking — it is held in that process's memory, not on the row. Absent is
+ * normal (a run picked up by the CLI worker, or a server restart), and the page
+ * treats it as "no detail available" rather than as an error.
+ */
+export type GradingProgress = {
+  elapsed_ms: number;
+  /** The median of this server's recent runs — what to expect, not a promise. */
+  expected_ms: number;
+  /** Characters of marking received so far. Zero for as long as the model is
+   *  still thinking, which is most of the run. */
+  answer_chars: number;
+  /** Capped below 100: a run that outlives the estimate is still running. */
+  percent: number;
+};
+
 export type AnswerState = {
   answer_id: string;
   open_question_id: string;
@@ -217,6 +236,7 @@ export type AnswerState = {
   /** The photographed pages, when the answer was written by hand. */
   hand_writing: HandwritingPage[] | null;
   score: AnswerScore | null;
+  progress?: GradingProgress | null;
 };
 
 /**

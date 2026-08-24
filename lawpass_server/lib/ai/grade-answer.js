@@ -23,6 +23,7 @@
 // The grader receives the answer text and nothing else about who wrote it.
 
 const { getClient } = require("./client");
+const { startSpan } = require("../timing");
 
 const PROMPT_VERSION = "open-grade/1";
 
@@ -55,7 +56,19 @@ Apply a deduction only when the fault it describes is actually present, and say 
 Hebrew, addressed to the candidate, in the second person. Say what was required and what their answer did — not "the candidate failed to". Where a point was lost, the comment should tell them what would have earned it. This text appears on their results screen exactly as you write it.`;
 
 const DEFAULT_GRADE_PARAMS = {
-  model: { id: "claude-opus-5", max_tokens: 16000, effort: "high" },
+  // effort `medium`, not the API default of `high`.
+  //
+  // Thinking is on by default on this model and thinking tokens are billed and
+  // waited on as output tokens, so effort is the dial that sets how long a
+  // marking run takes. At `high` a real submission measured 218 seconds for
+  // 11,069 output tokens — the run time was the token count almost exactly, and
+  // the student watched a spinner for three and a half minutes.
+  //
+  // `medium` is a quality decision as much as a speed one: it is the one lever
+  // here that can change the mark a student receives. Raise it back to `high`
+  // (or pass `effort` through `params`) for any question where the marking is
+  // observed to get worse.
+  model: { id: "claude-opus-5", max_tokens: 16000, effort: "medium" },
   generation: {
     prompt_version: PROMPT_VERSION,
     prompt_cache: true,
@@ -393,6 +406,7 @@ async function gradeAnswer({
   rubric,
   studentText,
   params: paramsOverride = {},
+  onProgress,
 }) {
   if (!rubric?.dimensions?.content?.items?.length) {
     throw new Error("[grade] the rubric has no content items — nothing to mark against");
@@ -404,10 +418,20 @@ async function gradeAnswer({
   const client = getClient();
   const params = mergeGradeParams(paramsOverride);
 
+  const system = buildGradePrompt({ question, modelAnswer, rubric, params });
+  // Size of the cached prefix, in characters. Reported rather than estimated in
+  // tokens: the point is to see whether a rubric has grown large enough to
+  // matter, and characters are exact where a token estimate would not be.
+  const promptChars = system.reduce(
+    (total, block) => total + (block.text ? block.text.length : 0),
+    0
+  );
+
+  const modelSpan = startSpan();
   const stream = client.messages.stream({
     model: params.model.id,
     max_tokens: params.model.max_tokens,
-    system: buildGradePrompt({ question, modelAnswer, rubric, params }),
+    system,
     output_config: {
       effort: params.model.effort,
       format: { type: "json_schema", schema: GRADE_SCHEMA },
@@ -424,7 +448,27 @@ async function gradeAnswer({
     ],
   });
 
+  // The response was already streamed; nothing was ever done with the deltas.
+  // Reporting how much marking has arrived costs one handler and gives the
+  // results page something true to show while it waits.
+  //
+  // Note what this does NOT see: thinking is not returned as text by default,
+  // so on a run that thinks for two minutes and then writes, this stays at zero
+  // for the thinking and only then climbs. That is why the progress bar the
+  // page draws is driven by elapsed time, and this number is used for the
+  // wording — "reading" versus "writing" — rather than for the bar itself.
+  if (typeof onProgress === "function") {
+    stream.on("text", (_delta, snapshot) => {
+      onProgress({ chars: snapshot.length });
+    });
+  }
+
   const message = await stream.finalMessage();
+  // Everything above this line is network and model. Everything below is local
+  // work on an object already in memory — the two are separated because they
+  // have nothing in common except being in the same function, and only one of
+  // them has ever been slow.
+  const modelMs = modelSpan();
 
   if (message.stop_reason === "refusal") {
     throw new Error(`[grade] request refused: ${JSON.stringify(message.stop_details)}`);
@@ -436,7 +480,20 @@ async function gradeAnswer({
   const textBlock = message.content.find((b) => b.type === "text");
   if (!textBlock) throw new Error("[grade] no text block in response");
 
+  // How much of the response is the marking JSON we actually keep.
+  //
+  // `usage.output_tokens` counts thinking as well as visible output, and this
+  // model thinks by default, so the total on its own cannot say whether a long
+  // run was spent reasoning or writing. Comparing this against out= answers it:
+  // Hebrew runs roughly 2 characters per token, so an 11k-token response with a
+  // 10k-character JSON in it was mostly thinking, and the lever is `effort` —
+  // where the same total against a 40k-character JSON means we are simply
+  // asking for a great deal of text, and the lever is the schema.
+  const answerChars = textBlock.text.length;
+
+  const parseSpan = startSpan();
   const result = buildScore(JSON.parse(textBlock.text), rubric, studentText, params);
+  const parseMs = parseSpan();
   if (!result.ok) {
     throw new Error(`[grade] unusable marking: ${result.errors.join("; ")}`);
   }
@@ -453,6 +510,12 @@ async function gradeAnswer({
     },
     warnings: result.warnings,
     usage: message.usage,
+    timings: {
+      model_ms: modelMs,
+      parse_ms: parseMs,
+      prompt_chars: promptChars,
+      answer_chars: answerChars,
+    },
   };
 }
 

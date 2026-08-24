@@ -1,7 +1,7 @@
 "use client";
 
 import { ChevronLeft, ChevronRight, ClipboardCheck } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { NoCopyText } from "@/app/(app)/_components/no-copy-text";
 import { Choice } from "@/app/(app)/practice/play/_components/choice";
@@ -11,9 +11,97 @@ import {
 } from "@/app/(app)/exam/play/_components/exam-progress-strip";
 import { Button } from "@/components/ui/button";
 import type { MahotiLetter, MahotiSet } from "@/lib/db/mahoti";
+import { cn } from "@/lib/utils";
 
 import { ExamTimerBar } from "./exam-timer-bar";
 import { NotebookPane } from "./notebook-pane";
+import styles from "./question-fit.module.css";
+
+/** Type-scale bounds for the fit-to-box pass, in px. 15 is the size the
+ *  column was designed at; 13 is the floor for the column as a whole,
+ *  matching the notebook opposite it — the question is the thing being read,
+ *  so it must never end up smaller than the reference material beside it. */
+const FIT_MAX_FONT_PX = 15;
+const FIT_MIN_FONT_PX = 13;
+/** Floor for the options once the question has stopped shrinking. Below 10px
+ *  Heebo stops being comfortably readable, and a question whose options only
+ *  fit at 9px is one the layout genuinely cannot hold. */
+const ANSWER_MIN_FONT_PX = 10;
+const FIT_STEP_PX = 0.5;
+
+/**
+ * Shrinks the question column's type until the fact pattern and all four
+ * options clear the box, so the candidate never has to scroll to see an
+ * answer they are choosing between.
+ *
+ * Two stages. First the whole column steps down together, 15px to 13px. If
+ * that still overflows, the fact pattern holds at 13px and only the options
+ * keep shrinking — a long fact pattern is read once, while the four options
+ * are what the candidate compares against each other, and all four visible
+ * a size smaller beats three visible at full size.
+ *
+ * Writes the size straight to the DOM as a custom property rather than
+ * holding it in React state: this is a measure-then-paint loop, and a
+ * `setState` in an effect would both re-render the tree for a value only CSS
+ * consumes and trip React 19's `set-state-in-effect` rule.
+ *
+ * The ResizeObserver watches the box, whose own border box is fixed by the
+ * flex parent — changing the font size inside it moves `scrollHeight`, never
+ * the observed size — so the loop cannot feed itself.
+ */
+function useFitToBox(ref: React.RefObject<HTMLDivElement | null>, key: unknown) {
+  useEffect(() => {
+    const box = ref.current;
+    if (!box) return;
+
+    let frame = 0;
+    function fit(): void {
+      if (!box) return;
+      const overflows = () => box.scrollHeight > box.clientHeight;
+
+      // Stage 1 — the column steps down as a whole. Starts from the top of
+      // the range every pass, so a short question gets the full size back.
+      let question = FIT_MAX_FONT_PX;
+      box.style.setProperty("--mahoti-q-font", `${question}px`);
+      box.style.removeProperty("--mahoti-a-font");
+      while (question > FIT_MIN_FONT_PX && overflows()) {
+        question -= FIT_STEP_PX;
+        box.style.setProperty("--mahoti-q-font", `${question}px`);
+      }
+      if (!overflows()) return;
+
+      // Stage 2 — the question is at its floor; the options give way alone.
+      let answers = question;
+      while (answers > ANSWER_MIN_FONT_PX && overflows()) {
+        answers -= FIT_STEP_PX;
+        box.style.setProperty("--mahoti-a-font", `${answers}px`);
+      }
+    }
+    function schedule(): void {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(fit);
+    }
+
+    schedule();
+    const observer = new ResizeObserver(schedule);
+    observer.observe(box);
+
+    // The first pass can land before Heebo has swapped in, and fallback
+    // metrics measure short — the text would overflow the moment the real
+    // font arrived. A ResizeObserver never sees that: the swap moves
+    // scrollHeight, not the box. `fonts.ready` is the signal that does.
+    let cancelled = false;
+    void document.fonts?.ready.then(() => {
+      if (!cancelled) schedule();
+    });
+
+    return () => {
+      cancelled = true;
+      cancelAnimationFrame(frame);
+      observer.disconnect();
+    };
+  }, [ref, key]);
+}
 
 /**
  * The דיון מהותי study screen: the paper on the left, the notebook it was
@@ -32,6 +120,13 @@ export function MahotiWorkspace({ set }: { set: MahotiSet }) {
   const [position, setPosition] = useState(0);
   // Position -> chosen letter. Local only; nothing is persisted.
   const [answers, setAnswers] = useState<Record<number, MahotiLetter>>({});
+  // Flipped by the timer bar's "התחל בחינה". Until then the choices are
+  // inert: answering a timed paper while the clock reads a full 160:00 is
+  // not a run of the sitting, and the elapsed time the review reports would
+  // be meaningless. Browsing and reading the notebook stay open — only
+  // committing an answer waits for the clock.
+  const [examStarted, setExamStarted] = useState(false);
+  const fitRef = useRef<HTMLDivElement | null>(null);
 
   const total = set.questions.length;
   const question = set.questions[position];
@@ -61,29 +156,47 @@ export function MahotiWorkspace({ set }: { set: MahotiSet }) {
     setPosition(to);
   }
 
-  return (
-    <div className="space-y-4">
-      <ExamTimerBar frozen={allAnswered} />
+  // Re-fit whenever the question changes: the next fact pattern is a
+  // different length, so the size that fit the last one means nothing.
+  useFitToBox(fitRef, position);
 
-      <ExamProgressStrip
-        total={total}
-        current={position}
-        statuses={statuses}
-        onJump={go}
-      />
+  return (
+    // The whole screen is one non-scrolling column: the page itself never
+    // grows a scrollbar, and each pane scrolls inside its own box instead.
+    // That is what keeps the notebook's scrollbar, the prev/next pair and
+    // the submit bar all on screen at once, whatever the paper's length.
+    <div className="flex h-full min-h-0 flex-col gap-2">
+      <ExamTimerBar frozen={allAnswered} onStartedChange={setExamStarted} />
+
+      {/* Not sticky here (see the `sticky` prop's note in the strip): inside
+          a fixed-height column a sticky strip lifts off and covers the two
+          panes. In flow it stays the lid they hang from. */}
+      <div className="shrink-0 overflow-hidden rounded-lg">
+        <ExamProgressStrip
+          total={total}
+          current={position}
+          statuses={statuses}
+          onJump={go}
+          sticky={false}
+          className="py-1.5"
+        />
+      </div>
 
       {/* flex-col-reverse on small screens puts the question (second in the
           DOM) above the notebook. On lg the row is laid out RTL, so the
           notebook — first in the DOM — takes the start edge, which is the
           visual RIGHT, leaving the question on the left as asked. */}
-      <div className="flex flex-col-reverse gap-5 lg:flex-row lg:items-start">
+      <div className="flex min-h-0 flex-1 flex-col-reverse gap-4 lg:flex-row lg:items-stretch">
         {/* An even split, not a favoured side: half the row each, with the
-            gap-5 (1.25rem) taken half from each column so the two panes come
+            gap-4 (1rem) taken half from each column so the two panes come
             out exactly the same width. The question column is the only
-            flexible item, so it takes precisely the space this one leaves. */}
+            flexible item, so it takes precisely the space this one leaves.
+            `h-full` rather than the old sticky + calc(100vh-7rem): the
+            parent now owns the height, so the notebook can no longer
+            disagree with it by a header's worth of pixels. */}
         <aside
           aria-label="מחברת החקיקה"
-          className="lg:sticky lg:top-4 lg:h-[calc(100vh-7rem)] lg:w-[calc(50%-0.625rem)] lg:shrink-0"
+          className="min-h-0 shrink-0 basis-[40%] lg:h-full lg:w-[calc(50%-0.5rem)] lg:basis-auto"
         >
           {/* Sibling of the question column, not a child of it, so the
               notebook's own page state survives moving between questions —
@@ -92,75 +205,116 @@ export function MahotiWorkspace({ set }: { set: MahotiSet }) {
           <NotebookPane notebook={set.notebook} />
         </aside>
 
-        <section aria-label="שאלה" className="min-w-0 flex-1">
+        <section
+          aria-label="שאלה"
+          className="flex min-h-0 min-w-0 flex-1 flex-col"
+        >
           {/* Counter only. The question's law used to sit opposite it, but
               naming the law is half the answer while the candidate is still
               working — it belongs in the review, where the references list
               already carries it. */}
-          <div className="mb-3 flex items-center justify-between">
-            <span className="font-mono text-[11px] uppercase tracking-wider text-muted-foreground">
+          <div className="mb-1.5 flex shrink-0 items-baseline justify-between">
+            <span className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
               שאלה {position + 1} / {total}
             </span>
+            {!examStarted ? (
+              <span className="text-[10px] font-medium text-amber-700 dark:text-amber-500">
+                לחצו „התחל בחינה” כדי לענות
+              </span>
+            ) : null}
           </div>
 
-          {/* 16px, not the 19px this column carried at 56% width: a fact
-              pattern runs long, and at half the row the larger type pushed
-              the choices below the fold. Still a step above the notebook's
-              13px, so the question stays the thing being read. */}
-          <div className="mb-4 rounded-xl border border-border bg-card p-5 shadow-sm">
-            <NoCopyText
-              dir="auto"
-              className="text-[16px] leading-relaxed whitespace-pre-wrap"
+          {/* No scrollbar by design — `useFitToBox` above steps the type down
+              until the fact pattern and all four options clear this box, so
+              the whole question is readable in one look. `overflow-hidden` is
+              the backstop for the case where even the 13px floor is not
+              enough; the strip's question numbers remain the way out. */}
+          <div
+            ref={fitRef}
+            className={cn("min-h-0 flex-1 overflow-hidden", styles.fit)}
+          >
+            {/* Sized by --mahoti-q-font, not a fixed value: at half the row a
+                long fact pattern at 19px pushed the choices below the fold,
+                and even 15px does not always fit. */}
+            <div className="mb-2.5 rounded-xl border border-border bg-card p-3.5 shadow-sm">
+              <NoCopyText
+                dir="auto"
+                className="leading-relaxed whitespace-pre-wrap"
+              >
+                {[question.fact_pattern, question.stem]
+                  .filter((part) => part && part.trim())
+                  .join("\n\n")}
+              </NoCopyText>
+            </div>
+
+            {/* Dimmed as well as disabled while the clock is unstarted: a
+                <button disabled> alone gives no visual cue, and a candidate
+                clicking a choice that silently does nothing reads it as a
+                broken page rather than as a locked one. */}
+            <div
+              className={cn(
+                "flex flex-col gap-1.5 transition-opacity",
+                styles.answers,
+                !examStarted && "opacity-60"
+              )}
             >
-              {[question.fact_pattern, question.stem]
-                .filter((part) => part && part.trim())
-                .join("\n\n")}
-            </NoCopyText>
+              {question.options.map((option) => (
+                <Choice
+                  key={option.letter}
+                  letter={option.letter}
+                  text={option.text}
+                  isCorrect={undefined}
+                  selected={answers[position] === option.letter}
+                  revealed={false}
+                  disabled={!examStarted}
+                  onSelect={(letter) =>
+                    setAnswers((prev) => ({ ...prev, [position]: letter }))
+                  }
+                />
+              ))}
+            </div>
           </div>
 
-          <div className="mb-6 flex flex-col gap-2">
-            {question.options.map((option) => (
-              <Choice
-                key={option.letter}
-                letter={option.letter}
-                text={option.text}
-                isCorrect={undefined}
-                selected={answers[position] === option.letter}
-                revealed={false}
-                disabled={false}
-                onSelect={(letter) =>
-                  setAnswers((prev) => ({ ...prev, [position]: letter }))
-                }
-              />
-            ))}
-          </div>
+          {/* Pinned action stack. No left gutter needed: the accessibility
+              and QA launchers moved to the top-left corner, so nothing
+              floats over this row any more. */}
+          <div className="shrink-0 space-y-2 pt-2">
+            {/* px-3 matches the green bar's own padding below, so "השאלה
+                הבאה" and "שלח את המבחן לבדיקה" share one left edge and
+                "שאלה קודמת" lines up with the bar's text. Without it the
+                nav row runs to the column edge and the two primary buttons
+                sit 12px out of step. */}
+            <div className="flex items-center justify-between gap-4 px-3">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => go(position - 1)}
+                disabled={isFirst}
+              >
+                <ChevronRight className="size-4" aria-hidden />
+                <span className="ms-1.5">שאלה קודמת</span>
+              </Button>
+              <Button
+                size="sm"
+                onClick={() => go(position + 1)}
+                disabled={isLast}
+              >
+                <span>השאלה הבאה</span>
+                <ChevronLeft className="ms-1.5 size-4" aria-hidden />
+              </Button>
+            </div>
 
-          <div className="flex items-center justify-between gap-3">
-            <Button
-              variant="ghost"
-              onClick={() => go(position - 1)}
-              disabled={isFirst}
-            >
-              <ChevronRight className="size-4" aria-hidden />
-              <span className="ms-1.5">שאלה קודמת</span>
-            </Button>
-            <Button onClick={() => go(position + 1)} disabled={isLast}>
-              <span>השאלה הבאה</span>
-              <ChevronLeft className="ms-1.5 size-4" aria-hidden />
-            </Button>
-          </div>
-
-          {/* Appears only once every question has an answer. A plain link
-              rather than a button: the review is its own page, and opening
-              it in a new tab leaves this one intact — the candidate can go
-              back to a question with their answers still on screen. */}
-          {allAnswered ? (
-            <div className="mt-6 rounded-xl border border-emerald-500/40 bg-emerald-50 p-4 dark:bg-emerald-950/20">
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <p className="text-sm text-foreground/80">
+            {/* Appears only once every question has an answer. A plain link
+                rather than a button: the review is its own page, and opening
+                it in a new tab leaves this one intact — the candidate can go
+                back to a question with their answers still on screen. */}
+            {allAnswered ? (
+              <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-emerald-500/40 bg-emerald-50 px-3 py-2 dark:bg-emerald-950/20">
+                <p className="text-xs text-foreground/80">
                   ענית על כל {total} השאלות. השעון נעצר.
                 </p>
                 <Button
+                  size="sm"
                   render={
                     <a
                       href={`/mahoti/review?set=${encodeURIComponent(set.questionId)}&answers=${encodeURIComponent(answersParam)}`}
@@ -170,11 +324,11 @@ export function MahotiWorkspace({ set }: { set: MahotiSet }) {
                   }
                 >
                   <ClipboardCheck className="size-4" aria-hidden />
-                  <span className="ms-1.5">שלח שאלה לבדיקה</span>
+                  <span className="ms-1.5">שלח את המבחן לבדיקה</span>
                 </Button>
               </div>
-            </div>
-          ) : null}
+            ) : null}
+          </div>
         </section>
       </div>
     </div>

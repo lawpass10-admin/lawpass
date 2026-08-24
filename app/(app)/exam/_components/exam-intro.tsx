@@ -1,7 +1,6 @@
 "use client";
 
 import { Play } from "lucide-react";
-import Link from "next/link";
 import { useState, useTransition } from "react";
 import { toast } from "sonner";
 
@@ -86,13 +85,17 @@ export function ExamIntro() {
       <div className="mt-6 md:mt-10">
         <IntroStatsAndBox />
       </div>
-      <div className="mx-auto flex w-full max-w-3xl flex-col-reverse gap-2 pb-10 sm:flex-row sm:justify-end">
-        <Link
+      <div className="mx-auto flex w-full max-w-3xl flex-col-reverse gap-3 pb-10 sm:flex-row sm:justify-end sm:gap-4">
+        {/* Plain <a>, not <Link>: /exam is a FOCUS_ROUTE, and a soft
+            navigation back to /dashboard re-renders the layout against a
+            stale `x-pathname`, so it stays in focus mode and the sidebar
+            never mounts. Same reason exam-results.tsx hard-navigates. */}
+        <a
           href="/dashboard"
           className={cn(buttonVariants({ variant: "ghost" }), "sm:min-w-32")}
         >
           חזרה
-        </Link>
+        </a>
         <Button
           size="lg"
           onClick={handleStart}

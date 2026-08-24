@@ -17,7 +17,7 @@ const LETTERS: Letter[] = ["א", "ב", "ג", "ד"];
 
 /**
  * /mahoti/review — the full review for the generated paper, opened in its own
- * tab from "שלח שאלה לבדיקה" once every question has been answered.
+ * tab from "שלח את המבחן לבדיקה" once every question has been answered.
  *
  * The review body is the app's existing `<Learning360Panel>`, fed from the
  * `question_review` column: same nine sections, same look as practice play and
@@ -111,14 +111,25 @@ export default async function MahotiReviewPage({
  * own notebook, not the next question of this one. It is left out entirely
  * when the table holds only the paper just reviewed, since a button that
  * reloads the same exam would be a lie.
+ *
+ * "חזרה לתפריט ראשי" is a plain <a>, NOT <Link>, and that is load-bearing.
+ * /mahoti/* is one of the (app) layout's FOCUS_ROUTES, which hides the
+ * sidebar — a decision the layout makes from the `x-pathname` header. On a
+ * client-side <Link> transition to a sibling page the layout re-renders
+ * against the stale header, `isFocusRoute` stays true, and the dashboard
+ * arrives with no navy sidebar. A hard navigation goes through middleware,
+ * which stamps the new pathname, and the sidebar mounts. Same reasoning as
+ * the window.location.assign calls in exam-results.tsx — this is the server-
+ * component spelling of it. "למבחן הבא" below stays a <Link>: /mahoti is
+ * itself a focus route, so the stale value is the correct one.
  */
 function ReviewFooter({ nextSetId }: { nextSetId: string | null }) {
   return (
-    <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border pt-6">
+    <div className="flex flex-wrap items-center justify-between gap-4 border-t border-border pt-6">
       <Button
         variant="outline"
         size="lg"
-        render={<Link href="/dashboard" />}
+        render={<a href="/dashboard" />}
       >
         <LayoutDashboard className="size-4" aria-hidden />
         <span className="ms-1.5">חזרה לתפריט ראשי</span>

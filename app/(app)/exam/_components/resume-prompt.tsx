@@ -132,7 +132,7 @@ export function ResumePrompt({ session }: ResumePromptProps) {
             <AlertDialog.Description className="mt-2 text-sm text-muted-foreground">
               המשך מהמקום שעצרת, או התחל בחינה חדשה (הקודמת תיכנס לארכיון).
             </AlertDialog.Description>
-            <div className="mt-6 flex flex-col gap-2 sm:flex-row sm:justify-end">
+            <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:justify-end sm:gap-4">
               <Button
                 variant="ghost"
                 onClick={handleStartFresh}

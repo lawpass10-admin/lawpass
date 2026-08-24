@@ -51,7 +51,7 @@ export default function RootError({
             אירעה שגיאה. נסה שוב או חזור לדף הבית.
           </CardDescription>
         </CardHeader>
-        <CardContent className="flex flex-col gap-2">
+        <CardContent className="flex flex-col gap-3">
           <Button onClick={reset}>נסה שוב</Button>
           <Link
             href="/"

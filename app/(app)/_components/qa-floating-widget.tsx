@@ -28,9 +28,12 @@ import { getQaQuestionContext } from "./qa-question-store";
  *     select / copy text and paste into the form.
  *
  *   - The launcher button moved from bottom-START (visually
- *     bottom-right in RTL) to bottom-END (bottom-left in RTL), on
- *     the OPPOSITE side from the panel — so launcher + panel are
- *     never both fighting for the same corner.
+ *     bottom-right in RTL) to the TOP-left corner, beside the
+ *     accessibility launcher and on the OPPOSITE side from the panel —
+ *     so launcher + panel are never both fighting for the same corner.
+ *     It sat bottom-left until the fixed-height screens (/mahoti, the
+ *     writing-task results) grew pinned action rows there, which the
+ *     two circles then covered.
  *
  *   - The launcher is now DRAGGABLE. The tester drags it wherever it
  *     stays out of the way of whatever they're inspecting. Position
@@ -47,8 +50,8 @@ import { getQaQuestionContext } from "./qa-question-store";
  *     bounding box.
  */
 
-/** Launcher size in pixels — matches the h-12 w-12 utility classes. */
-const LAUNCHER_SIZE = 48;
+/** Launcher size in pixels — matches the h-8 w-8 utility classes. */
+const LAUNCHER_SIZE = 32;
 /** Movement threshold (pixels) before a pointer drag is treated as a
  *  drag rather than a click. Same magnitude the browser itself uses
  *  for distinguishing click from drag-start. */
@@ -58,12 +61,31 @@ const DRAG_THRESHOLD = 5;
  *  into a corner. */
 const EDGE_MARGIN = 8;
 
-type LauncherPosition = { left: number; bottom: number };
+/** Anchored from the TOP, not the bottom: both launchers now live in the
+ *  top-left corner, clear of the action rows that sit at the foot of
+ *  /mahoti and the writing-task results. */
+type LauncherPosition = { left: number; top: number };
 
-/** Default position — bottom-LEFT visually (in RTL). 16px from each
- *  edge. The component re-clamps on first measurement so we don't
- *  blow past narrow viewports. */
-const DEFAULT_POSITION: LauncherPosition = { left: 16, bottom: 16 };
+/** Geometry of the accessibility launcher, which the root layout pins to
+ *  the same top-LEFT corner (`.widgetRoot`/`.launcher` in
+ *  `app/_components/a11y-widget.module.css`). Mirrored here so this one can
+ *  sit beside it rather than on top of it. Both circles are the same size by
+ *  design — they read as one pair of controls, not a hierarchy. Keep these
+ *  in step if the a11y widget's CSS ever changes size or offset. */
+const A11Y_LAUNCHER_SIZE = 32;
+const A11Y_LAUNCHER_LEFT = 24;
+const A11Y_LAUNCHER_TOP = 12;
+/** Breathing room between the two side-by-side launchers. */
+const LAUNCHER_GAP = 12;
+
+/** Default position — immediately to the left of the accessibility
+ *  launcher and on the same baseline, which puts the pair above the clock
+ *  on the timed screens. Still fully draggable from here; the component
+ *  re-clamps on first measurement so we don't blow past narrow viewports. */
+const DEFAULT_POSITION: LauncherPosition = {
+  left: A11Y_LAUNCHER_LEFT + A11Y_LAUNCHER_SIZE + LAUNCHER_GAP,
+  top: A11Y_LAUNCHER_TOP,
+};
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(Math.max(value, min), max);
@@ -107,19 +129,19 @@ export function QaFloatingWidget({ isQaTester }: { isQaTester: boolean }) {
     function clampToViewport() {
       setPosition((prev) => {
         const maxLeft = window.innerWidth - LAUNCHER_SIZE - EDGE_MARGIN;
-        const maxBottom = window.innerHeight - LAUNCHER_SIZE - EDGE_MARGIN;
+        const maxTop = window.innerHeight - LAUNCHER_SIZE - EDGE_MARGIN;
         const nextLeft = clamp(
           prev.left,
           EDGE_MARGIN,
           Math.max(EDGE_MARGIN, maxLeft)
         );
-        const nextBottom = clamp(
-          prev.bottom,
+        const nextTop = clamp(
+          prev.top,
           EDGE_MARGIN,
-          Math.max(EDGE_MARGIN, maxBottom)
+          Math.max(EDGE_MARGIN, maxTop)
         );
-        if (nextLeft === prev.left && nextBottom === prev.bottom) return prev;
-        return { left: nextLeft, bottom: nextBottom };
+        if (nextLeft === prev.left && nextTop === prev.top) return prev;
+        return { left: nextLeft, top: nextTop };
       });
     }
     clampToViewport();
@@ -240,15 +262,15 @@ export function QaFloatingWidget({ isQaTester }: { isQaTester: boolean }) {
       typeof window !== "undefined"
         ? Math.max(EDGE_MARGIN, window.innerWidth - LAUNCHER_SIZE - EDGE_MARGIN)
         : state.basePos.left;
-    const maxBottom =
+    const maxTop =
       typeof window !== "undefined"
         ? Math.max(EDGE_MARGIN, window.innerHeight - LAUNCHER_SIZE - EDGE_MARGIN)
-        : state.basePos.bottom;
-    // Viewport y grows DOWNWARD, but we anchor with `bottom` which
-    // grows UPWARD — so the dy delta is subtracted.
+        : state.basePos.top;
+    // Anchored with `top`, which grows in the same direction as the
+    // viewport's y — so the dy delta is added, not subtracted.
     setPosition({
       left: clamp(state.basePos.left + dx, EDGE_MARGIN, maxLeft),
-      bottom: clamp(state.basePos.bottom - dy, EDGE_MARGIN, maxBottom),
+      top: clamp(state.basePos.top + dy, EDGE_MARGIN, maxTop),
     });
   }
 
@@ -290,12 +312,12 @@ export function QaFloatingWidget({ isQaTester }: { isQaTester: boolean }) {
         onClick={handleClick}
         style={{
           left: `${position.left}px`,
-          bottom: `${position.bottom}px`,
+          top: `${position.top}px`,
           touchAction: "none",
         }}
         className={cn(
           "fixed z-40",
-          "flex h-12 w-12 cursor-grab items-center justify-center rounded-full",
+          "flex h-8 w-8 cursor-grab items-center justify-center rounded-full",
           "border border-amber-300/60 bg-amber-500 text-primary-foreground shadow-lg",
           "transition-colors hover:bg-amber-600 active:cursor-grabbing",
           "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500/60"
@@ -303,14 +325,14 @@ export function QaFloatingWidget({ isQaTester }: { isQaTester: boolean }) {
       >
         {/* pointer-events-none on the icon so drag events register on
             the button surface, not the SVG. */}
-        <Bug className="pointer-events-none size-5" aria-hidden />
+        <Bug className="pointer-events-none size-3.5" aria-hidden />
       </button>
 
       {/*
         NON-MODAL side panel. No backdrop, no focus trap, no scroll
         lock — the page behind stays fully visible AND interactive.
         Anchored to the START edge (right in RTL) on desktop so the
-        bottom-end launcher remains accessible while the panel is
+        top-left launcher remains accessible while the panel is
         open. On mobile the panel is full-width by default; the
         max-w-sm cap keeps it ~384px on tablet/desktop.
 
@@ -449,7 +471,7 @@ export function QaFloatingWidget({ isQaTester }: { isQaTester: boolean }) {
               />
             </div>
 
-            <div className="flex justify-end gap-2 pt-2">
+            <div className="flex justify-end gap-4 pt-2">
               <Button
                 type="button"
                 variant="ghost"

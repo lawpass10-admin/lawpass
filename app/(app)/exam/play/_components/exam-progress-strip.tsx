@@ -21,6 +21,17 @@ type Props = {
   statuses: ExamProgressCellStatus[];
   onJump: (position: number) => void;
   disabled?: boolean;
+  /**
+   * The exam player pins the strip under its 48px topbar, so it must stay
+   * put while the question column scrolls beneath it. /mahoti lays the
+   * strip out in flow inside a full-height column that never scrolls as a
+   * page — there, `sticky top-12` detaches it and it floats over both
+   * panes. Opt out with `sticky={false}`.
+   */
+  sticky?: boolean;
+  /** Merged last, so a caller can override the strip's own padding —
+   *  /mahoti runs it denser to buy the panes below it more height. */
+  className?: string;
 };
 
 const STATUS_ARIA: Record<ExamProgressCellStatus, string> = {
@@ -50,9 +61,17 @@ export function ExamProgressStrip({
   statuses,
   onJump,
   disabled = false,
+  sticky = true,
+  className,
 }: Props) {
   return (
-    <div className="sticky top-12 z-10 bg-[#1a4f4d] px-4 py-2.5 sm:px-7">
+    <div
+      className={cn(
+        "z-10 bg-[#1a4f4d] px-4 py-2.5 sm:px-7",
+        sticky && "sticky top-12",
+        className
+      )}
+    >
       <div className="flex justify-between gap-1 overflow-x-auto">
         {Array.from({ length: total }).map((_, i) => {
           const status: ExamProgressCellStatus =

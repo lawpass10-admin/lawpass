@@ -1,5 +1,3 @@
-import Link from "next/link";
-
 import { requireActiveSubscription } from "@/lib/auth/subscription-gate";
 import { getMahotiSet } from "@/lib/db/mahoti";
 
@@ -32,7 +30,11 @@ export default async function MahotiPage({
   const set = await getMahotiSet(setId);
 
   return (
-    <div className="mx-auto w-full max-w-[1480px] space-y-6">
+    // One viewport-tall column that never scrolls as a page: `100dvh` less
+    // the `p-6` the (app) focus-route layout puts around <main>. The panes
+    // inside scroll on their own, which is what keeps the notebook, the
+    // prev/next pair and the submit bar simultaneously on screen.
+    <div className="mx-auto flex h-[calc(100dvh-3rem)] w-full max-w-[1480px] flex-col gap-2 overflow-hidden">
       <PageHead
         questionCount={set?.questions.length ?? 0}
         lawCount={set?.notebook.notebook.law_count ?? 0}
@@ -41,7 +43,9 @@ export default async function MahotiPage({
           without a key React would keep the workspace mounted and the previous
           paper's answers, position and clock would carry into the new one. */}
       {set ? (
-        <MahotiWorkspace key={set.questionId} set={set} />
+        <div className="min-h-0 flex-1">
+          <MahotiWorkspace key={set.questionId} set={set} />
+        </div>
       ) : (
         <EmptyState />
       )}
@@ -49,7 +53,14 @@ export default async function MahotiPage({
   );
 }
 
-/** Same head shape as /writing-task: breadcrumbs, H1, sub-line. */
+/**
+ * The /writing-task head — breadcrumbs, H1, sub-line — squeezed onto one
+ * short line. This screen has to fit two panes, a progress strip, a timer bar
+ * and a pinned action stack into a single viewport with no scrollbar
+ * anywhere, so every pixel the chrome gives up goes to the question and its
+ * four answers. The counts moved to `title`: they are orientation, read once,
+ * and not worth a row of height on every visit.
+ */
 function PageHead({
   questionCount,
   lawCount,
@@ -57,25 +68,32 @@ function PageHead({
   questionCount: number;
   lawCount: number;
 }) {
+  const summary =
+    questionCount > 0
+      ? `${questionCount} שאלות מול מחברת החקיקה שממנה נכתבו — ${lawCount} חוקים. כל ציטוט בשאלה נמצא במחברת שמימין.`
+      : "שאלות מול מחברת החקיקה שממנה נכתבו.";
+
   return (
-    <header className="space-y-2">
-      <nav
-        aria-label="breadcrumbs"
-        className="flex items-center gap-2 font-heebo"
-        style={{ fontSize: 13, color: "var(--color-ink-muted)" }}
+    <header
+      className="flex shrink-0 items-baseline gap-2 font-heebo leading-none"
+      title={summary}
+    >
+      {/* Plain <a>, not <Link> — /mahoti is a FOCUS_ROUTE and a soft
+          navigation to /dashboard leaves the layout on a stale `x-pathname`,
+          so the sidebar never mounts. See ReviewFooter in review/page.tsx. */}
+      <a
+        href="/dashboard"
+        className="text-[11px] text-muted-foreground hover:underline"
       >
-        <Link href="/dashboard" className="hover:underline">
-          דשבורד
-        </Link>
-        <span aria-hidden>›</span>
-        <span>דיון מהותי</span>
-      </nav>
-      <h1 className="text-3xl font-bold">דיון מהותי</h1>
-      <p className="text-sm text-muted-foreground">
-        {questionCount > 0
-          ? `${questionCount} שאלות מול מחברת החקיקה שממנה נכתבו — ${lawCount} חוקים. כל ציטוט בשאלה נמצא במחברת שמימין.`
-          : "שאלות מול מחברת החקיקה שממנה נכתבו."}
-      </p>
+        דשבורד
+      </a>
+      <span aria-hidden className="text-[11px] text-muted-foreground">
+        ›
+      </span>
+      <h1 className="text-[13px] font-bold">דיון מהותי</h1>
+      <span className="text-[11px] text-muted-foreground">
+        {questionCount > 0 ? `${questionCount} שאלות · ${lawCount} חוקים` : ""}
+      </span>
     </header>
   );
 }

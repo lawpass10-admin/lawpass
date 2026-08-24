@@ -393,7 +393,7 @@ export function PracticeSummary({
       )}
 
       {/* CTAs */}
-      <div className="flex flex-col gap-2 pt-2 sm:flex-row sm:justify-center">
+      <div className="flex flex-col gap-3 pt-2 sm:flex-row sm:justify-center sm:gap-4">
         <Link
           href="/dashboard"
           className={cn(buttonVariants({ variant: "ghost", size: "lg" }))}

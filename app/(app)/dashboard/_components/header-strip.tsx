@@ -149,8 +149,8 @@ export function HeaderStrip({ fullName, examDate, daysToExam }: Props) {
           container's left edge below. On desktop the parent flex flips
           to row + items-end, the cluster becomes content-sized, so
           `justify-between` has no visible effect (the two buttons sit
-          gap-2.5 apart as before). */}
-      <div className="flex shrink-0 gap-2.5 justify-between">
+          gap-3 apart, matching the CTA-pair spacing used across the app). */}
+      <div className="flex shrink-0 gap-3 justify-between">
         <Link
           href="/practice"
           className={cn(

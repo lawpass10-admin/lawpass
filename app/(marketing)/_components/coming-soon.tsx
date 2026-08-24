@@ -52,7 +52,7 @@ export function ComingSoon() {
         primary/ghost pattern — gold pill for the brighter action,
         white outline for the secondary.
       */}
-      <div className="mt-10 flex w-full max-w-xs flex-col items-stretch gap-3 sm:max-w-md sm:flex-row sm:justify-center">
+      <div className="mt-10 flex w-full max-w-xs flex-col items-stretch gap-3 sm:max-w-md sm:flex-row sm:justify-center sm:gap-4">
         <Link
           href="/signup"
           className="inline-flex h-12 items-center justify-center rounded-full px-7 text-base font-bold transition-[filter,transform] duration-200 hover:brightness-105 hover:-translate-y-0.5 sm:h-11"

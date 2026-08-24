@@ -767,16 +767,17 @@ export function A11yWidgetClient({
 // ─────────────────────────────────────────────────────────────────────────
 // Inline icon — universal person-in-circle accessibility glyph (Vitruvian-
 // style outstretched-arms human figure, the W3C / IEC 80416-3 convention).
-// 28×28 visual inside the 56×56 button; white stroke on navy-ink
-// background = ~15.6:1 contrast (well above SC 1.4.11 3:1 floor for non-
-// text contrast).
+// 18×18 visual inside the 32×32 button (see `.launcher svg` in the CSS
+// module, which is the authority on the rendered size); white stroke on
+// navy-ink background = ~15.6:1 contrast (well above SC 1.4.11 3:1 floor
+// for non-text contrast).
 
 function AccessibilityIcon() {
   return (
     <svg
       viewBox="0 0 24 24"
-      width="28"
-      height="28"
+      width="18"
+      height="18"
       aria-hidden
       focusable="false"
     >

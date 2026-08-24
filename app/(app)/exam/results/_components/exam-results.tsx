@@ -381,7 +381,7 @@ export function ExamResults({ aggregate, notedIdentities }: Props) {
           stays true and the sidebar stays hidden on /dashboard. Hard
           nav forces a fresh request through middleware so the new
           x-pathname='/dashboard' lands and the sidebar mounts. */}
-      <div className="flex flex-col-reverse items-stretch gap-2 pb-10 sm:flex-row sm:justify-center">
+      <div className="flex flex-col-reverse items-stretch gap-3 pb-10 sm:flex-row sm:justify-center sm:gap-4">
         <Button
           variant="ghost"
           size="lg"

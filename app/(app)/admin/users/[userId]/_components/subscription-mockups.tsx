@@ -81,7 +81,7 @@ export default function SubscriptionMockups({
   return (
     <div className="space-y-2">
       <h3 className="text-sm font-semibold">ניהול מנוי</h3>
-      <div className="flex flex-wrap gap-2">
+      <div className="flex flex-wrap gap-3">
         <Button
           type="button"
           variant="outline"

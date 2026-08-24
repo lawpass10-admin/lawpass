@@ -127,7 +127,7 @@ export default function UserActions({
 
         <div className="space-y-2">
           <h3 className="text-sm font-semibold">פעולות אבטחה</h3>
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap gap-3">
             <Button
               type="button"
               variant="outline"
@@ -167,7 +167,7 @@ export default function UserActions({
 
         <div className="space-y-2">
           <h3 className="text-sm font-semibold">הרשאות</h3>
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex flex-wrap items-center gap-3">
             <Button
               type="button"
               variant={qaTesterLocal ? "destructive" : "outline"}
@@ -194,7 +194,7 @@ export default function UserActions({
 
         <div className="space-y-2">
           <h3 className="text-sm font-semibold">העתקת מזהים</h3>
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap gap-3">
             <Button
               type="button"
               variant="outline"

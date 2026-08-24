@@ -1,0 +1,68 @@
+/**
+ * Fit-to-screen type scale for the /mahoti question column.
+ *
+ * The candidate has to see the fact pattern and all four answers at once —
+ * a scrollbar here means reading the question and reading the options are
+ * two separate acts, which is not how the paper is sat. Content length
+ * varies per question, so no fixed font size can promise a fit; instead
+ * `MahotiWorkspace` measures the box and steps two variables down.
+ *
+ *   --mahoti-q-font   the column, question card included. 15px down to 13px,
+ *                     the notebook's size, which is the floor: the question
+ *                     must never read smaller than the reference material
+ *                     beside it.
+ *   --mahoti-a-font   the four options alone. Only used when the whole
+ *                     column at 13px still overflows — the options then keep
+ *                     shrinking while the fact pattern holds. Four options
+ *                     set a little small is a worse-looking screen; four
+ *                     options with the last one cut off is an unusable one.
+ *
+ * Defaulting `--mahoti-a-font` to `--mahoti-q-font` means stage two is
+ * simply absent until the JS writes it.
+ */
+
+.fit {
+  font-size: var(--mahoti-q-font, 15px);
+}
+
+.fit p,
+.fit span,
+.fit h3 {
+  font-size: inherit;
+}
+
+.answers {
+  font-size: var(--mahoti-a-font, var(--mahoti-q-font, 15px));
+}
+
+/* 0-2-1, so these win over the `.fit p, .fit span` rules above regardless
+   of source order — the options must be free to diverge from the column. */
+.fit .answers p,
+.fit .answers span {
+  font-size: inherit;
+}
+
+/**
+ * Choice rows, restated in `em` so they follow the type down.
+ *
+ * <Choice> sizes its letter badge (`h-8 w-8`) and padding (`px-4 py-3`) in
+ * fixed px. Those don't care what the font does, so shrinking the text alone
+ * left every row costing ~58px however small the letters got — the fit pass
+ * would run all the way to its floor and the fourth option would still be
+ * clipped. In `em` a step down takes the box with it, which is what makes
+ * the answers-only stage actually recover height.
+ *
+ * Element descendants outscore the utilities they replace (0-1-0) without
+ * `!important`, and the rules are scoped to this module's class, so
+ * /practice and /exam keep the px sizing.
+ */
+.answers button {
+  padding-inline: 0.85em;
+  padding-block: 0.5em;
+  gap: 0.7em;
+}
+
+.answers button > span:first-child {
+  width: 1.9em;
+  height: 1.9em;
+}

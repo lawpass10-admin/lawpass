@@ -579,7 +579,7 @@ export function ExamQuestion({
           ))}
         </div>
 
-        <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center justify-between gap-4">
           <Button
             variant="ghost"
             onClick={() => navigate(position - 1)}
