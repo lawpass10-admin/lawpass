@@ -25,6 +25,34 @@ export function apiEnabled(): boolean {
 }
 
 /**
+ * Reports, once per page load, what got compiled into this bundle.
+ *
+ * When the API is disabled the UI shows "שרת ה-API אינו זמין", which reads
+ * like the server is down — but the far more common cause is that
+ * NEXT_PUBLIC_API_BASE_URL was empty when the bundle was BUILT, so no
+ * request is ever attempted and the network tab stays silent. This line
+ * distinguishes the two without opening a bundle in a text editor: an empty
+ * value here means rebuild, not restart.
+ */
+let announced = false;
+function announceOnce(): void {
+  if (announced || typeof window === "undefined") return;
+  announced = true;
+  const base = apiBaseUrl();
+  if (base) {
+    console.info(`[api] enabled — base URL compiled into this build: ${base}`);
+  } else {
+    console.warn(
+      "[api] DISABLED — NEXT_PUBLIC_API_BASE_URL was empty at BUILD time. " +
+        "Setting it on the host is not enough; the value is inlined into this " +
+        "bundle, so it needs a rebuild (clear build cache) to take effect."
+    );
+  }
+}
+
+if (typeof window !== "undefined") announceOnce();
+
+/**
  * Dev tracing for the server extraction. Logs each request to the Express
  * API and the response it returns, so you can confirm in the browser
  * console that the call actually hit lawpass_server (port 4000) and see the
