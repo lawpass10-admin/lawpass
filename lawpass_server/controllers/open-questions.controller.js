@@ -48,6 +48,24 @@ const STUDENT_FIELDS = [
 /** Quote fields — the sources printed on the exam paper, verbatim. */
 const QUOTE_FIELDS = ["id", "type", "citation", "text"];
 
+/**
+ * Model-answer fields the student may see AFTER their own answer has been
+ * marked ("צפה בפתרון המלא"). An allowlist for the same reason STUDENT_FIELDS
+ * is one, though what it excludes is different: `origin`, `status`,
+ * `quote_ids`, `external_id` and `question_external_id` are bookkeeping from
+ * the generator, and `rubric_coverage` is the writer arguing to the marker
+ * that the model answer earns each rubric point — internal reasoning about
+ * marking, not the document a candidate was meant to produce.
+ */
+const PARTY_FIELDS = [
+  "applicant",
+  "respondent",
+  "applicant_role",
+  "respondent_role",
+];
+const EXHIBIT_FIELDS = ["marker", "description"];
+const SOURCE_USED_FIELDS = ["quote_id", "role"];
+
 function pick(source, fields) {
   const out = {};
   for (const f of fields) {
@@ -66,6 +84,41 @@ function toStudentQuestion(row) {
     created_at: row.created_at,
     ...pick(q, STUDENT_FIELDS),
     quotes: (q.quotes ?? []).map((quote) => pick(quote, QUOTE_FIELDS)),
+  };
+}
+
+/**
+ * The stored model answer -> the document the review screen renders.
+ *
+ * Paragraphs are accepted both as plain strings (what the loader writes today)
+ * and as `{ text }` objects (what the generator's rendered preview produces),
+ * the same two shapes buildGradePrompt already normalises — one of these
+ * files reading the column differently from the other is exactly the bug that
+ * would show up as an empty solution on screen.
+ *
+ * Returns null for a question the generator never wrote an answer for, which
+ * the caller reports as "no solution available" rather than as an error.
+ */
+function toStudentSolution(answers) {
+  const a = Array.isArray(answers) ? answers[0] : answers;
+  if (!a || typeof a !== "object") return null;
+
+  return {
+    document_type: a.document_type ?? null,
+    court: a.court ?? null,
+    case_number: a.case_number ?? null,
+    parties: a.parties ? pick(a.parties, PARTY_FIELDS) : null,
+    opening: a.opening ?? null,
+    sections: (a.sections ?? []).map((s) => ({
+      heading: s?.heading ?? "",
+      paragraphs: (s?.paragraphs ?? [])
+        .map((p) => (typeof p === "string" ? p : (p?.text ?? "")))
+        .filter((text) => text.trim().length > 0),
+    })),
+    exhibits: (a.exhibits ?? []).map((e) => pick(e, EXHIBIT_FIELDS)),
+    closing: a.closing ?? null,
+    signature_line: a.signature_line ?? null,
+    sources_used: (a.sources_used ?? []).map((s) => pick(s, SOURCE_USED_FIELDS)),
   };
 }
 
@@ -401,6 +454,57 @@ async function getAnswer(req, res) {
   });
 }
 
+/**
+ * GET /api/open-questions/answers/:id/solution — the model answer, unlocked.
+ *
+ * Keyed by the ANSWER id, not the question id, and that is the whole gate:
+ *   1. the answer row is loaded under the caller's RLS client, so it is either
+ *      the caller's own submission or nothing — someone else's id is a miss;
+ *   2. its marking must be finished. Before that the student either has not
+ *      sat the task or is still being marked on it, and either way handing
+ *      over the model answer turns the exercise into a reading comprehension.
+ *      `failed` counts as finished: the student did the work, and a marker
+ *      that gave up is our problem, not a reason to withhold the solution.
+ *
+ * There is deliberately no /open-questions/:id/solution. A question id alone
+ * proves nothing about whether the person asking has written anything.
+ */
+const MARKING_FINISHED = new Set(["graded", "failed"]);
+
+async function getSolution(req, res) {
+  const answer = await db.getAnswerForUser(req.supabase, req.params.id);
+  if (!answer) {
+    console.info(
+      `[open-questions] solution MISS user=${req.user.id} id=${req.params.id}`
+    );
+    return res.json({ ok: false, error: "התשובה לא נמצאה" });
+  }
+
+  if (!MARKING_FINISHED.has(answer.grading_status)) {
+    console.info(
+      `[open-questions] solution LOCKED user=${req.user.id} id=${answer.answer_id} status=${answer.grading_status}`
+    );
+    return res.json({
+      ok: false,
+      error: "הפתרון המלא נפתח לאחר שהבדיקה מסתיימת",
+    });
+  }
+
+  const row = await db.getModelAnswerFor(req.supabase, answer.open_question_id);
+  const solution = row ? toStudentSolution(row.answers) : null;
+  if (!solution) {
+    console.info(
+      `[open-questions] solution EMPTY user=${req.user.id} question=${answer.open_question_id}`
+    );
+    return res.json({ ok: false, error: "לא נמצא פתרון מלא למטלה הזו" });
+  }
+
+  console.info(
+    `[open-questions] solution OK user=${req.user.id} answer=${answer.answer_id} sections=${solution.sections.length}`
+  );
+  return res.json({ ok: true, solution });
+}
+
 module.exports = {
   getSubjects,
   getQuestionsBySubject,
@@ -408,6 +512,8 @@ module.exports = {
   submitAnswer,
   uploadHandwriting,
   getAnswer,
+  getSolution,
   toStudentQuestion,
   toListEntry,
+  toStudentSolution,
 };

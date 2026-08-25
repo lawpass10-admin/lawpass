@@ -1,17 +1,30 @@
 "use client";
 
-import { CheckCircle2, CircleSlash, Loader2, MinusCircle, RefreshCw } from "lucide-react";
+import {
+  BookOpenCheck,
+  CheckCircle2,
+  ChevronDown,
+  ChevronUp,
+  CircleSlash,
+  Loader2,
+  MinusCircle,
+  RefreshCw,
+} from "lucide-react";
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 
+import { NoCopyText } from "@/app/(app)/_components/no-copy-text";
+import { NavigationGuard } from "@/components/app/navigation-guard";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import {
   fetchAnswer,
   fetchQuestion,
+  fetchSolution,
   type AnswerScore,
   type AnswerState,
   type GradingProgress,
+  type ModelSolution,
   type ScoredItem,
 } from "@/lib/api/open-questions";
 
@@ -122,13 +135,25 @@ export function AnswerFeedback({ answerId }: { answerId: string }) {
 
   if (phase === "waiting") {
     return (
-      <Waiting
-        title={title}
-        attempt={answer?.attempt_number ?? 0}
-        justSubmitted
-        progress={answer?.progress ?? null}
-        startedAt={gradingStartedAt}
-      />
+      <>
+        {/* Held while the marker has it. The submission itself is already
+            safe on the row and the run continues server-side either way —
+            what leaving actually costs is the student's place: they land
+            somewhere else, the polling stops, and the score they waited for
+            is sitting at a URL they have to find again. */}
+        <NavigationGuard
+          active
+          title="הבדיקה עדיין רצה"
+          description="המערכת עדיין בודקת את התשובה שלך. התשובה כבר נשמרה והבדיקה תמשיך גם אם תצא — אבל כדי לראות את הציון תצטרך לחזור לכתובת הזו."
+        />
+        <Waiting
+          title={title}
+          attempt={answer?.attempt_number ?? 0}
+          justSubmitted
+          progress={answer?.progress ?? null}
+          startedAt={gradingStartedAt}
+        />
+      </>
     );
   }
 
@@ -389,6 +414,8 @@ function Marked({
         </CardContent>
       </Card>
 
+      <SolutionPanel answerId={answer.answer_id} />
+
       <div className="flex flex-wrap items-center gap-4 pb-4">
         <Link href={`/writing-task/${answer.open_question_id}`}>
           <Button type="button" className="h-11 md:h-10">
@@ -401,6 +428,257 @@ function Marked({
           </Button>
         </Link>
       </div>
+    </div>
+  );
+}
+
+/* ────────────────────────────── the solution ─────────────────────────────── */
+
+/**
+ * "צפה בפתרון המלא" — the model answer for this task, fetched on demand.
+ *
+ * On demand, and not with the rest of the page, for two reasons. The document
+ * is long, and most of the time the student came here for their score; and it
+ * is content the server only releases once THIS submission has been marked
+ * (see getSolution), so requesting it eagerly on a page that is still polling
+ * would just collect a refusal.
+ *
+ * Kept once fetched: the toggle then costs nothing, and a student reading the
+ * feedback beside the model answer opens and closes it repeatedly.
+ */
+function SolutionPanel({ answerId }: { answerId: string }) {
+  const [solution, setSolution] = useState<ModelSolution | null>(null);
+  const [open, setOpen] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+
+  const toggle = async () => {
+    if (open) {
+      setOpen(false);
+      return;
+    }
+    if (solution) {
+      setOpen(true);
+      return;
+    }
+    setLoading(true);
+    setError("");
+    const result = await fetchSolution(answerId);
+    setLoading(false);
+    if (!result.ok) {
+      setError(result.error);
+      return;
+    }
+    setSolution(result.data);
+    setOpen(true);
+  };
+
+  return (
+    <div className="space-y-3">
+      <Button
+        type="button"
+        variant="outline"
+        onClick={toggle}
+        disabled={loading}
+        aria-expanded={open}
+        className="h-11 md:h-10"
+      >
+        {loading ? (
+          <Loader2 className="size-4 animate-spin" aria-hidden />
+        ) : (
+          <BookOpenCheck className="size-4" aria-hidden />
+        )}
+        <span className="ms-1.5">
+          {open ? "הסתר את הפתרון" : "צפה בפתרון המלא"}
+        </span>
+        {open ? (
+          <ChevronUp className="ms-1 size-4" aria-hidden />
+        ) : (
+          <ChevronDown className="ms-1 size-4" aria-hidden />
+        )}
+      </Button>
+
+      {error ? <Notice tone="danger">{error}</Notice> : null}
+      {open && solution ? <SolutionDocument solution={solution} /> : null}
+    </div>
+  );
+}
+
+/**
+ * The model answer laid out as the document it is — caption, opening, numbered
+ * paragraphs under their headings, exhibits, closing, signature.
+ *
+ * Paragraphs are numbered continuously across sections, facts included, which
+ * is how the instrument itself is numbered and how the marker refers to it.
+ */
+function SolutionDocument({ solution }: { solution: ModelSolution }) {
+  // How many paragraphs precede each section, so the numbering can run across
+  // section boundaries. Derived rather than counted up during the render — a
+  // counter mutated inside the JSX map is not stable across re-renders.
+  const paragraphsBefore = solution.sections.map((_, index) =>
+    solution.sections
+      .slice(0, index)
+      .reduce((sum, section) => sum + section.paragraphs.length, 0)
+  );
+
+  return (
+    <Card>
+      <CardContent className="space-y-5 px-5 py-6 md:px-7">
+        <header className="space-y-1 border-b pb-4" style={{ borderColor: "var(--color-border, rgba(0,0,0,0.12))" }}>
+          <p
+            className="font-heebo font-semibold"
+            style={{ fontSize: 12, letterSpacing: "0.08em", color: "var(--color-gold-deep)" }}
+          >
+            הפתרון המלא
+          </p>
+          <h2
+            className="font-heebo font-extrabold"
+            style={{ fontSize: 19, lineHeight: 1.3, color: "var(--color-navy-ink)" }}
+          >
+            {solution.document_type || "תשובה לדוגמה"}
+          </h2>
+          {solution.court || solution.case_number ? (
+            <p className="font-heebo" style={{ fontSize: 13, color: "var(--color-ink-muted)" }}>
+              {[solution.court, solution.case_number].filter(Boolean).join(" · ")}
+            </p>
+          ) : null}
+        </header>
+
+        <NoCopyText as="div" className="space-y-5">
+          {solution.parties ? <Parties parties={solution.parties} /> : null}
+
+          {solution.opening ? (
+            <p
+              className="font-heebo"
+              style={{ fontSize: 15, lineHeight: 1.9, color: "var(--color-ink)" }}
+            >
+              {solution.opening}
+            </p>
+          ) : null}
+
+          {solution.sections.map((section, index) => (
+            <section key={`${section.heading}-${index}`} className="space-y-2">
+              {section.heading ? (
+                <h3
+                  className="font-heebo font-bold"
+                  style={{ fontSize: 15.5, color: "var(--color-navy-ink)" }}
+                >
+                  {section.heading}
+                </h3>
+              ) : null}
+              <ol className="space-y-2.5">
+                {section.paragraphs.map((text, i) => (
+                  <li
+                    key={i}
+                    className="flex gap-2.5 font-heebo"
+                    style={{ fontSize: 15, lineHeight: 1.9, color: "var(--color-ink)" }}
+                  >
+                    <span
+                      className="shrink-0 font-bold tabular-nums"
+                      style={{ color: "var(--color-ink-muted)" }}
+                      aria-hidden
+                    >
+                      {paragraphsBefore[index] + i + 1}.
+                    </span>
+                    <span className="whitespace-pre-wrap">{text}</span>
+                  </li>
+                ))}
+              </ol>
+            </section>
+          ))}
+
+          {solution.closing ? (
+            <p
+              className="font-heebo"
+              style={{ fontSize: 15, lineHeight: 1.9, color: "var(--color-ink)" }}
+            >
+              {solution.closing}
+            </p>
+          ) : null}
+
+          {solution.exhibits.length > 0 ? (
+            <SolutionList
+              heading="נספחים"
+              items={solution.exhibits.map((e) =>
+                [e.marker ? `נספח ${e.marker}` : "", e.description]
+                  .filter(Boolean)
+                  .join(" — ")
+              )}
+            />
+          ) : null}
+
+          {solution.signature_line ? (
+            <p
+              className="font-heebo"
+              style={{ fontSize: 14, color: "var(--color-ink-dim)" }}
+            >
+              {solution.signature_line}
+            </p>
+          ) : null}
+
+          {solution.sources_used.length > 0 ? (
+            <SolutionList
+              heading="המקורות שנעשה בהם שימוש"
+              items={solution.sources_used.map((s) =>
+                [s.quote_id, s.role].filter(Boolean).join(" — ")
+              )}
+            />
+          ) : null}
+        </NoCopyText>
+      </CardContent>
+    </Card>
+  );
+}
+
+function Parties({
+  parties,
+}: {
+  parties: NonNullable<ModelSolution["parties"]>;
+}) {
+  const rows = [
+    { role: parties.applicant_role, name: parties.applicant },
+    { role: parties.respondent_role, name: parties.respondent },
+  ].filter((row) => row.name);
+
+  if (rows.length === 0) return null;
+
+  return (
+    <dl className="space-y-1.5">
+      {rows.map((row, i) => (
+        <div key={i} className="flex flex-wrap gap-x-2 font-heebo" style={{ fontSize: 13.5 }}>
+          <dt className="font-bold" style={{ color: "var(--color-ink-dim)" }}>
+            {row.role || "צד"}:
+          </dt>
+          <dd style={{ color: "var(--color-ink)" }}>{row.name}</dd>
+        </div>
+      ))}
+    </dl>
+  );
+}
+
+function SolutionList({ heading, items }: { heading: string; items: string[] }) {
+  return (
+    <div
+      className="rounded-lg border px-4 py-3"
+      style={{ borderColor: "var(--color-border, rgba(0,0,0,0.12))" }}
+    >
+      <h3
+        className="mb-1.5 font-heebo font-bold"
+        style={{ fontSize: 14, color: "var(--color-navy-ink)" }}
+      >
+        {heading}
+      </h3>
+      <ul className="space-y-1">
+        {items.map((item, i) => (
+          <li
+            key={i}
+            className="font-heebo"
+            style={{ fontSize: 13.5, lineHeight: 1.75, color: "var(--color-ink-dim)" }}
+          >
+            {item}
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }

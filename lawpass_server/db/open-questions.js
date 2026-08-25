@@ -7,10 +7,13 @@
 // come back. Nothing here re-checks authorization.
 //
 // Shape of a row: question jsonb, answers jsonb, subject text, type text.
-// The answers column is NEVER selected by anything in this file — it holds the
-// model answer, and the student picking a question must not be able to fetch it
-// from the network tab. When a review screen needs it, that is a separate
-// endpoint with its own gate, not a widened select here.
+// The answers column is selected by exactly ONE function here —
+// getModelAnswerFor, which exists for the "צפה בפתרון המלא" review screen and
+// is reached only through a controller that has already checked the caller
+// filed an answer to this question and that its marking is finished. It holds
+// the model answer, so the student picking a question must never be able to
+// fetch it from the network tab: no other query below may name it, and the
+// student projections (STUDENT_COLUMNS) deliberately do not.
 //
 // type='new' ONLY. The 'source' rows are the real exam papers, and they exist
 // here as INPUT to the offline generator — a student who was handed one would
@@ -157,10 +160,40 @@ async function getAnswerForUser(supabase, answerId) {
   return data ?? null;
 }
 
+/**
+ * The model answer stored on one question, for the review screen.
+ *
+ * The ONLY select in this file that names `answers`. It is not a student
+ * projection and must never become one: the caller (getSolution) first loads
+ * the student's OWN answer row for this question and refuses unless its
+ * marking has finished, so a question the student has not sat cannot be opened
+ * this way. Handing over the model answer earlier would turn every task into a
+ * reading exercise.
+ *
+ * Runs under the caller's RLS client like everything else here, so the
+ * type='new' policy still applies underneath and a 'source' paper — whose
+ * official answer is published — cannot be reached at all. Null when the
+ * question is gone, is a source row, or was never given an answer by the
+ * generator (`answers` is nullable, and a question can exist before one is
+ * written).
+ */
+async function getModelAnswerFor(supabase, questionId) {
+  const { data, error } = await supabase
+    .from("open_questions")
+    .select("open_question_id, answers")
+    .eq("type", STUDENT_TYPE)
+    .eq("open_question_id", questionId)
+    .maybeSingle();
+
+  if (error) throw error;
+  return data ?? null;
+}
+
 module.exports = {
   listSubjects,
   listQuestionsBySubject,
   getQuestionById,
   insertAnswer,
   getAnswerForUser,
+  getModelAnswerFor,
 };

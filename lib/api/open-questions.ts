@@ -331,6 +331,63 @@ export async function fetchAnswer(answerId: string): Promise<Result<AnswerState>
   }
 }
 
+/* ─────────────────────────── the model answer ─────────────────────────── */
+
+export type SolutionSection = { heading: string; paragraphs: string[] };
+export type SolutionExhibit = { marker?: string; description?: string };
+export type SolutionSourceUsed = { quote_id?: string; role?: string };
+
+/**
+ * The model answer for a task, as the review screen renders it: the document a
+ * candidate was meant to produce, not the marking notes behind it. The server
+ * projects it through its own allowlist (see toStudentSolution) — the rubric
+ * reasoning attached to the stored answer never reaches the browser.
+ */
+export type ModelSolution = {
+  document_type: string | null;
+  court: string | null;
+  case_number: string | null;
+  parties: {
+    applicant?: string;
+    respondent?: string;
+    applicant_role?: string;
+    respondent_role?: string;
+  } | null;
+  opening: string | null;
+  sections: SolutionSection[];
+  exhibits: SolutionExhibit[];
+  closing: string | null;
+  signature_line: string | null;
+  sources_used: SolutionSourceUsed[];
+};
+
+/**
+ * The model answer for the task this submission belongs to.
+ *
+ * Keyed by the ANSWER id: the server unlocks the solution only for a
+ * submission the caller owns whose marking has finished, so this cannot be
+ * used to read the answer to a task the student has not sat yet. A locked or
+ * missing solution comes back as `{ ok: false }` with the reason in Hebrew,
+ * which the button shows as-is.
+ */
+export async function fetchSolution(
+  answerId: string
+): Promise<Result<ModelSolution>> {
+  if (!apiEnabled()) return { ok: false, error: DISABLED_ERROR };
+  try {
+    const body = await apiGetJson(
+      `/api/open-questions/answers/${encodeURIComponent(answerId)}/solution`,
+      { auth: true }
+    );
+    if (body.ok === true) {
+      return { ok: true, data: body.solution as ModelSolution };
+    }
+    return failed(body);
+  } catch {
+    return { ok: false, error: FALLBACK_ERROR };
+  }
+}
+
 export async function fetchQuestion(
   id: string
 ): Promise<Result<OpenQuestionDetail>> {

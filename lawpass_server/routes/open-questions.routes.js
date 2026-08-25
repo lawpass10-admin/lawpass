@@ -46,6 +46,16 @@ router.get(
   asyncHandler(c.getAnswer)
 );
 
+// "צפה בפתרון המלא" on the results screen. Nested under the answer, not under
+// the question, because the answer is what proves the student already sat this
+// task — see getSolution for the gate it applies on top.
+router.get(
+  "/answers/:id/solution",
+  authenticate,
+  requireSubscription,
+  asyncHandler(c.getSolution)
+);
+
 router.get(
   "/:id",
   authenticate,
