@@ -32,4 +32,19 @@ export async function register(): Promise<void> {
       report("NODE_ENV"),
     ].join("  |  ")
   );
+
+  // Every NEXT_PUBLIC_* key the process can actually see, JSON-quoted.
+  //
+  // A key with a trailing space reads as `NEXT_PUBLIC_API_BASE_URL` in a
+  // hosting dashboard and as undefined in code — the two are impossible to
+  // tell apart by eye. Quoting turns that invisible difference into a
+  // visible one: "NEXT_PUBLIC_API_BASE_URL " with the space inside the
+  // quotes, rather than a name that merely looks right.
+  const publicKeys = Object.keys(process.env)
+    .filter((key) => key.startsWith("NEXT_PUBLIC"))
+    .sort();
+  console.info(
+    `[boot] NEXT_PUBLIC_* keys visible to the process (${publicKeys.length}):`,
+    publicKeys.map((key) => JSON.stringify(key)).join(", ") || "(none)"
+  );
 }

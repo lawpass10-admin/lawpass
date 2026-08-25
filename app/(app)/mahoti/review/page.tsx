@@ -112,16 +112,12 @@ export default async function MahotiReviewPage({
  * when the table holds only the paper just reviewed, since a button that
  * reloads the same exam would be a lie.
  *
- * "חזרה לתפריט ראשי" is a plain <a>, NOT <Link>, and that is load-bearing.
- * /mahoti/* is one of the (app) layout's FOCUS_ROUTES, which hides the
- * sidebar — a decision the layout makes from the `x-pathname` header. On a
- * client-side <Link> transition to a sibling page the layout re-renders
- * against the stale header, `isFocusRoute` stays true, and the dashboard
- * arrives with no navy sidebar. A hard navigation goes through middleware,
- * which stamps the new pathname, and the sidebar mounts. Same reasoning as
- * the window.location.assign calls in exam-results.tsx — this is the server-
- * component spelling of it. "למבחן הבא" below stays a <Link>: /mahoti is
- * itself a focus route, so the stale value is the correct one.
+ * "חזרה לתפריט ראשי" used to be a plain <a> — a forced full page load — because
+ * the (app) layout picked focus mode from the `x-pathname` header, which a
+ * client-side <Link> transition leaves stale, so the dashboard arrived with no
+ * navy sidebar. That decision now lives in <AppShell> and is made from
+ * `usePathname()`, which tracks soft navigations, so this is a plain <Link>
+ * again and leaving the review costs no reload.
  */
 function ReviewFooter({ nextSetId }: { nextSetId: string | null }) {
   return (
@@ -129,7 +125,7 @@ function ReviewFooter({ nextSetId }: { nextSetId: string | null }) {
       <Button
         variant="outline"
         size="lg"
-        render={<a href="/dashboard" />}
+        render={<Link href="/dashboard" />}
       >
         <LayoutDashboard className="size-4" aria-hidden />
         <span className="ms-1.5">חזרה לתפריט ראשי</span>

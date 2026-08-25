@@ -8,6 +8,7 @@ import {
   Play,
   X,
 } from "lucide-react";
+import Link from "next/link";
 import { useState, useTransition } from "react";
 import { toast } from "sonner";
 
@@ -169,10 +170,8 @@ export function ExamResults({ aggregate, notedIdentities }: Props) {
           sticky bars in the exam flow share the same visual idiom
           instead of blending into the page surface.
 
-          Uses window.location.assign (NOT <Link>) for the same
-          reason the footer CTAs do: the (app) layout reads a stale
-          x-pathname on client-side <Link> transitions and the
-          sidebar stays hidden. See the footer comment below.
+          A <Link> again (it used to force a full page load) — see
+          the footer comment below.
           Icon: lucide ArrowRight — in RTL Hebrew it visually points
           right, which reads as "back" in the script direction. */}
       <div className="sticky top-0 z-30 -mx-6 bg-primary py-2 text-primary-foreground">
@@ -180,9 +179,7 @@ export function ExamResults({ aggregate, notedIdentities }: Props) {
           <Button
             variant="ghost"
             size="sm"
-            onClick={() => {
-              window.location.assign("/dashboard");
-            }}
+            render={<Link href="/dashboard" />}
             className="text-primary-foreground hover:bg-white/10 hover:text-primary-foreground"
           >
             <ArrowRight className="size-4" aria-hidden />
@@ -372,22 +369,19 @@ export function ExamResults({ aggregate, notedIdentities }: Props) {
       </section>
 
       {/* D. Footer CTAs.
-          Both use window.location.assign (hard nav) rather than <Link>
-          or router.push. Reason: the (app) layout's sidebar branch
-          reads `headers().get('x-pathname')`. Next.js App Router reuses
-          the parent layout across client-side <Link> transitions
-          between sibling pages, so the layout re-renders against a
-          stale x-pathname='/exam/results/...' value — isExamRoute
-          stays true and the sidebar stays hidden on /dashboard. Hard
-          nav forces a fresh request through middleware so the new
-          x-pathname='/dashboard' lands and the sidebar mounts. */}
+          "חזור לדשבורד" used to be a window.location.assign (hard nav)
+          rather than a <Link>: the (app) layout picked focus mode from
+          `headers().get('x-pathname')`, and the App Router reuses a shared
+          layout across client-side transitions, so it re-rendered against a
+          stale '/exam/results/...' and the sidebar stayed hidden on
+          /dashboard. That decision moved into <AppShell>, which reads
+          `usePathname()` and therefore tracks soft navigations — so a plain
+          <Link> now brings the sidebar back, with no page reload. */}
       <div className="flex flex-col-reverse items-stretch gap-3 pb-10 sm:flex-row sm:justify-center sm:gap-4">
         <Button
           variant="ghost"
           size="lg"
-          onClick={() => {
-            window.location.assign("/dashboard");
-          }}
+          render={<Link href="/dashboard" />}
           className="sm:min-w-44"
         >
           חזור לדשבורד

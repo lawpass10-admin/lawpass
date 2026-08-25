@@ -2,14 +2,11 @@ import type { User } from "@supabase/supabase-js";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 
-import { AppSidebar } from "@/components/app/app-sidebar";
-import { MobileTopBar } from "@/components/app/mobile-top-bar";
-import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { getActiveBookmarkAndMistakeCounts } from "@/lib/db/practice";
 import { createClient } from "@/lib/supabase/server";
 
+import { AppShell } from "./_components/app-shell";
 import { NoCopyBypassProvider } from "./_components/no-copy-bypass-provider";
-import { QaFloatingWidget } from "./_components/qa-floating-widget";
 
 // Routes inside (app) that don't require an active subscription. The user
 // must be able to reach /pricing to choose a plan, /checkout to enter
@@ -109,24 +106,11 @@ export default async function AppLayout({
     redirect("/pricing");
   }
 
-  // Focus routes hide the sidebar to give a focused, no-distractions
-  // simulation feel (SPEC §7.0.4). The SubscriptionGate above still
-  // ran — these are subscription-protected like every other (app) route.
-  // We skip the sidebar mount AND the bookmark/mistake count queries,
-  // since neither sidebar nor badges render on them.
-  //
-  // /mahoti joins /exam here for a different reason than distraction: it
-  // is a split screen, question beside notebook, and the navy sidebar
-  // costs it ~16rem of the width both panes are competing for.
-  const FOCUS_ROUTES = ["/exam", "/mahoti"];
-  const isFocusRoute = FOCUS_ROUTES.some(
-    (route) => pathname === route || pathname.startsWith(`${route}/`)
-  );
-  // Slice 10 — surface the QA widget for testers across BOTH branches
-  // of the layout (exam-focused branch + sidebar branch). The widget
-  // is fixed-position and renders into a Portal when open, so JSX
-  // placement is layout-irrelevant; we keep it as a sibling of <main>
-  // to mirror the sidebar's placement-as-sibling convention.
+  // Whether the sidebar renders at all is decided in <AppShell> from
+  // `usePathname()`, NOT here. The header above is only correct on a full
+  // document load — the App Router keeps this shared layout mounted across
+  // client-side <Link> transitions inside (app), so a server-side decision
+  // would stay pinned to the first-loaded route. See _components/app-shell.tsx.
   const isQaTester = profile.is_qa_tester === true;
   // Slice 63 — QA users (testers + admins) bypass the Slice 37
   // copy/paste deterrent so reviewers can paste questions + 360
@@ -136,20 +120,6 @@ export default async function AppLayout({
   // above; no new query. Normal users see `bypass=false` and the
   // deterrent renders unchanged.
   const canCopy = isQaTester || profile.is_admin === true;
-
-  if (isFocusRoute) {
-    return (
-      <NoCopyBypassProvider bypass={canCopy}>
-        {/* Slice 51 — id="main-content" added so the universal skip-link
-            (set up by the a11y widget) lands on the actual main element.
-            Previously only the landing + legal pages had this id. */}
-        <main id="main-content" className="page-fade-in flex-1 p-6">
-          {children}
-        </main>
-        <QaFloatingWidget isQaTester={isQaTester} />
-      </NoCopyBypassProvider>
-    );
-  }
 
   // Counts for sidebar badges. Both tables' RLS policies require
   // has_active_subscription(); for users on subscription-exempt routes
@@ -161,31 +131,30 @@ export default async function AppLayout({
   // read predicate can't be expressed with `count: exact, head: true`,
   // so we now fetch the rows minimally (id columns only) and count
   // post-filter. See lib/db/practice.ts for the shared helper.
+  //
+  // This runs for focus routes too, even though they render no badges. It
+  // used to be skipped for them, but that was only safe while the branch was
+  // taken here on the server: now a soft navigation OUT of a focus route has
+  // to find the counts already in the layout's props, since the layout will
+  // not re-render to fetch them. One small indexed count per focus-route load
+  // is the price of the sidebar appearing without a refresh.
   const { bookmarksCount, mistakesCount, notesCount } =
     await getActiveBookmarkAndMistakeCounts(supabase, user.id);
 
   return (
     <NoCopyBypassProvider bypass={canCopy}>
-      <SidebarProvider>
-        <AppSidebar
-          userEmail={user.email ?? ""}
-          profileFullName={profile.full_name}
-          subscription={subscription}
-          bookmarksCount={bookmarksCount}
-          mistakesCount={mistakesCount}
-          notesCount={notesCount}
-          isAdmin={profile.is_admin === true}
-        />
-        <SidebarInset>
-          <MobileTopBar />
-          {/* Slice 51 — id="main-content" added (see exam-branch comment
-              above for context). */}
-          <main id="main-content" className="page-fade-in flex-1 p-4 md:p-6">
-            {children}
-          </main>
-        </SidebarInset>
-        <QaFloatingWidget isQaTester={isQaTester} />
-      </SidebarProvider>
+      <AppShell
+        userEmail={user.email ?? ""}
+        profileFullName={profile.full_name}
+        subscription={subscription}
+        bookmarksCount={bookmarksCount}
+        mistakesCount={mistakesCount}
+        notesCount={notesCount}
+        isAdmin={profile.is_admin === true}
+        isQaTester={isQaTester}
+      >
+        {children}
+      </AppShell>
     </NoCopyBypassProvider>
   );
 }

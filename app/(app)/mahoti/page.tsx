@@ -1,3 +1,5 @@
+import Link from "next/link";
+
 import { requireActiveSubscription } from "@/lib/auth/subscription-gate";
 import { getMahotiSet } from "@/lib/db/mahoti";
 
@@ -78,15 +80,15 @@ function PageHead({
       className="flex shrink-0 items-baseline gap-2 font-heebo leading-none"
       title={summary}
     >
-      {/* Plain <a>, not <Link> — /mahoti is a FOCUS_ROUTE and a soft
-          navigation to /dashboard leaves the layout on a stale `x-pathname`,
-          so the sidebar never mounts. See ReviewFooter in review/page.tsx. */}
-      <a
+      {/* A plain <Link>: <AppShell> decides focus mode from `usePathname()`,
+          so the navy sidebar comes back on this soft navigation. It used to
+          need a hard <a> — see ReviewFooter in review/page.tsx. */}
+      <Link
         href="/dashboard"
         className="text-[11px] text-muted-foreground hover:underline"
       >
         דשבורד
-      </a>
+      </Link>
       <span aria-hidden className="text-[11px] text-muted-foreground">
         ›
       </span>
