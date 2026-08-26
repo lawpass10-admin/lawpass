@@ -5,6 +5,7 @@ import { Learning360Panel } from "@/app/(app)/practice/play/_components/learning
 import { Button } from "@/components/ui/button";
 import { requireActiveSubscription } from "@/lib/auth/subscription-gate";
 import {
+  getMahotiAttempt,
   getMahotiReview,
   getNextMahotiSetId,
   type MahotiReviewItem,
@@ -23,21 +24,37 @@ const LETTERS: Letter[] = ["א", "ב", "ג", "ד"];
  * `question_review` column: same nine sections, same look as practice play and
  * exam results, so nothing here is a second dialect of the same content.
  *
- * The candidate's answers arrive in the `answers` query parameter (one letter
- * per question, dash-separated) rather than from a table — this screen has no
- * session behind it. They are only used to mark each question right or wrong;
- * a missing or malformed parameter degrades to the plain review, which is
- * still the useful half.
+ * WHERE THE ANSWERS COME FROM. `?attempt=<answer_id>` is the current form: the
+ * sitting was filed and marked server-side (mahoti_answers), and this screen
+ * reads that row — the same letters, the same right/wrong, and the same score
+ * that is in the table. One marking run, one number, everywhere.
+ *
+ * `?answers=א-ב-ג…&set=…` is the older form and still works, for links made
+ * before sittings were stored. It is marked here instead, by POSITION, which
+ * is only equivalent while every question of the paper reaches `review.items`
+ * — a question dropped for having no correct option would shift every answer
+ * after it. That is the reason the attempt form exists and is preferred; this
+ * one is kept because breaking a bookmarked tab is worse than the risk.
+ *
+ * Either way a missing or unreadable parameter degrades to the plain review,
+ * which is still the useful half.
  */
 export default async function MahotiReviewPage({
   searchParams,
 }: {
-  searchParams: Promise<{ answers?: string; set?: string }>;
+  searchParams: Promise<{ answers?: string; set?: string; attempt?: string }>;
 }) {
   await requireActiveSubscription();
 
-  const { answers, set } = await searchParams;
-  const review = await getMahotiReview(set);
+  const { answers, set, attempt: attemptId } = await searchParams;
+
+  // RLS scopes this to the caller's own sittings, so someone else's id reads
+  // as null and lands on the unmarked review — see getMahotiAttempt.
+  const attempt = attemptId ? await getMahotiAttempt(attemptId) : null;
+
+  // The paper is the one the sitting was filed against; `?set=` only decides
+  // it when there is no attempt to ask.
+  const review = await getMahotiReview(attempt?.questionId ?? set);
 
   // Which paper "למבחן הבא" leads to. Resolved from the row actually being
   // reviewed, so it does not depend on the `set` parameter being present.
@@ -53,13 +70,32 @@ export default async function MahotiReviewPage({
     );
   }
 
-  const given = parseAnswers(answers, review.items.length);
-  const scored = given.filter((letter) => letter !== null).length;
-  const correct = review.items.reduce(
-    (total, item, i) =>
-      given[i] === item.correctChoice.letter ? total + 1 : total,
-    0
+  // A filed sitting is matched to the review by question NUMBER, which is what
+  // makes it immune to the positional drift the `?answers=` path can suffer.
+  // The fallback still fills the array by position, from the URL.
+  const byNumber = new Map(
+    (attempt?.given ?? []).map((entry) => [entry.number, entry.letter])
   );
+  const positional = parseAnswers(answers, review.items.length);
+  const given: (Letter | null)[] = attempt
+    ? review.items.map((item) => byNumber.get(item.number) ?? null)
+    : positional;
+
+  const scored = given.filter((letter) => letter !== null).length;
+  // The stored score is READ, never recomputed: it is what the table holds and
+  // what any report will quote, so a second calculation here could only
+  // disagree with it. Only the fallback path counts, having nothing to read.
+  const correct =
+    attempt?.correct ??
+    review.items.reduce(
+      (total, item, i) =>
+        given[i] === item.correctChoice.letter ? total + 1 : total,
+      0
+    );
+  const total = attempt?.total ?? review.items.length;
+  const percent =
+    attempt?.score ??
+    (total > 0 ? Math.round((correct / total) * 1000) / 10 : 0);
 
   return (
     <div className="mx-auto w-full max-w-3xl space-y-6 py-2">
@@ -79,9 +115,13 @@ export default async function MahotiReviewPage({
           <span>בדיקה</span>
         </nav>
         <h1 className="text-3xl font-bold">בדיקת השאלות</h1>
-        {scored > 0 ? (
+        {/* A filed sitting always gets its score line, even one submitted
+            entirely blank — 0 מתוך 40 is a result, and hiding it would make a
+            recorded attempt look like a page nobody sat. */}
+        {attempt || scored > 0 ? (
           <p className="text-sm text-muted-foreground">
-            {correct} מתוך {review.items.length} תשובות נכונות
+            {attempt ? `ניסיון ${attempt.attempts} · ` : ""}
+            {correct} מתוך {total} תשובות נכונות ({percent}%)
           </p>
         ) : (
           <p className="text-sm text-muted-foreground">

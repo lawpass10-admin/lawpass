@@ -14,6 +14,7 @@ const accountRoutes = require("./account.routes");
 const dashboardRoutes = require("./dashboard.routes");
 const earlyAccessRoutes = require("./early-access.routes");
 const openQuestionsRoutes = require("./open-questions.routes");
+const mahotiRoutes = require("./mahoti.routes");
 
 const router = Router();
 
@@ -33,5 +34,8 @@ router.use("/dashboard", dashboardRoutes);
 router.use("/early-access", earlyAccessRoutes);
 // Read-only; the writing task (מטלת כתיבה) picker and question page.
 router.use("/open-questions", openQuestionsRoutes);
+// דיון מהותי — filing and scoring a sitting. The paper itself is still served
+// by the Next.js side.
+router.use("/mahoti", mahotiRoutes);
 
 module.exports = router;

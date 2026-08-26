@@ -1,7 +1,8 @@
 "use client";
 
-import { ChevronLeft, ChevronRight, ClipboardCheck } from "lucide-react";
+import { ChevronLeft, ChevronRight, ClipboardCheck, Loader2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import { toast } from "sonner";
 
 import { NoCopyText } from "@/app/(app)/_components/no-copy-text";
 import { Choice } from "@/app/(app)/practice/play/_components/choice";
@@ -10,6 +11,7 @@ import {
   type ExamProgressCellStatus,
 } from "@/app/(app)/exam/play/_components/exam-progress-strip";
 import { Button } from "@/components/ui/button";
+import { submitMahotiAttempt, type MahotiAttempt } from "@/lib/api/mahoti";
 import type { MahotiLetter, MahotiSet } from "@/lib/db/mahoti";
 import { cn } from "@/lib/utils";
 
@@ -126,6 +128,11 @@ export function MahotiWorkspace({ set }: { set: MahotiSet }) {
   // be meaningless. Browsing and reading the notebook stay open — only
   // committing an answer waits for the clock.
   const [examStarted, setExamStarted] = useState(false);
+  // The filed sitting, once "שלח את המבחן לבדיקה" has been through the server.
+  // Holding it here is what stops a second click filing a second attempt for
+  // one run of the paper — re-sitting is allowed, but only by sitting it again.
+  const [attempt, setAttempt] = useState<MahotiAttempt | null>(null);
+  const [submitting, setSubmitting] = useState(false);
   const fitRef = useRef<HTMLDivElement | null>(null);
 
   const total = set.questions.length;
@@ -144,16 +151,66 @@ export function MahotiWorkspace({ set }: { set: MahotiSet }) {
   const allAnswered =
     total > 0 && set.questions.every((_, i) => Boolean(answers[i]));
 
-  // One letter per question, dash-separated, in question order. Unanswered
-  // positions cannot occur here (the link only renders once all are in), but
-  // the review page tolerates gaps anyway.
-  const answersParam = set.questions
-    .map((_, i) => answers[i] ?? "")
-    .join("-");
+  // The review is addressed by the FILED sitting, not by the letters: it then
+  // shows the score that is in the table rather than one it worked out again
+  // from a URL, and matches answers to questions by number rather than by
+  // position. There is no link to it before the submit has been through the
+  // server, because until then there is no sitting to point at.
+  function reviewUrlFor(answerId: string): string {
+    return `/mahoti/review?attempt=${encodeURIComponent(answerId)}`;
+  }
 
   function go(to: number): void {
     if (to < 0 || to > total - 1) return;
     setPosition(to);
+  }
+
+  /**
+   * File the sitting, then open its review.
+   *
+   * The marking is the server's: the paper arrives here without
+   * `correct_answer` (lib/db/mahoti.ts strips it), so this sends the letters
+   * and is told what they were worth. The review tab is then opened on the row
+   * that was just written, which is what makes the score on screen and the
+   * score in the table the same number rather than two calculations of it.
+   *
+   * The tab is opened BEFORE the await, empty, and pointed at the review
+   * afterwards. A tab opened after an await is no longer attributable to the
+   * click and popup blockers eat it.
+   *
+   * Answers are sent by question NUMBER, not by position: `answers` is keyed by
+   * where the question sits on screen, and the two agree only for as long as
+   * nothing ever reorders a paper.
+   */
+  async function handleSubmit(): Promise<void> {
+    if (submitting || attempt) return;
+    const tab = window.open("", "_blank");
+    if (tab) tab.opener = null;
+    setSubmitting(true);
+
+    const result = await submitMahotiAttempt(
+      set.questionId,
+      set.questions.map((question, i) => ({
+        number: question.number,
+        letter: answers[i] ?? null,
+      }))
+    );
+    setSubmitting(false);
+
+    if (!result.ok) {
+      // Nothing was filed, so leaving an empty tab open would be a second
+      // thing gone wrong on screen.
+      tab?.close();
+      toast.error(result.error);
+      return;
+    }
+
+    setAttempt(result.data);
+    // Built from the response rather than from state: setAttempt has not been
+    // applied yet at this point in the same tick.
+    const url = reviewUrlFor(result.data.answer_id);
+    if (tab) tab.location.href = url;
+    else window.open(url, "_blank", "noopener");
   }
 
   // Re-fit whenever the question changes: the next fact pattern is a
@@ -304,28 +361,43 @@ export function MahotiWorkspace({ set }: { set: MahotiSet }) {
               </Button>
             </div>
 
-            {/* Appears only once every question has an answer. A plain link
-                rather than a button: the review is its own page, and opening
-                it in a new tab leaves this one intact — the candidate can go
-                back to a question with their answers still on screen. */}
+            {/* Appears only once every question has an answer. The review
+                opens in a new tab so this one stays intact — the candidate can
+                go back to a question with their answers still on screen. */}
             {allAnswered ? (
               <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-emerald-500/40 bg-emerald-50 px-3 py-2 dark:bg-emerald-950/20">
                 <p className="text-xs text-foreground/80">
-                  ענית על כל {total} השאלות. השעון נעצר.
+                  {attempt
+                    ? `ניסיון ${attempt.attempts} נשמר · ${attempt.correct}/${attempt.total} (${attempt.score}%)`
+                    : `ענית על כל ${total} השאלות. השעון נעצר.`}
                 </p>
-                <Button
-                  size="sm"
-                  render={
-                    <a
-                      href={`/mahoti/review?set=${encodeURIComponent(set.questionId)}&answers=${encodeURIComponent(answersParam)}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                    />
-                  }
-                >
-                  <ClipboardCheck className="size-4" aria-hidden />
-                  <span className="ms-1.5">שלח את המבחן לבדיקה</span>
-                </Button>
+                {attempt ? (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    render={
+                      <a
+                        href={reviewUrlFor(attempt.answer_id)}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                      />
+                    }
+                  >
+                    <ClipboardCheck className="size-4" aria-hidden />
+                    <span className="ms-1.5">פתח שוב את הבדיקה</span>
+                  </Button>
+                ) : (
+                  <Button size="sm" onClick={handleSubmit} disabled={submitting}>
+                    {submitting ? (
+                      <Loader2 className="size-4 animate-spin" aria-hidden />
+                    ) : (
+                      <ClipboardCheck className="size-4" aria-hidden />
+                    )}
+                    <span className="ms-1.5">
+                      {submitting ? "שולח…" : "שלח את המבחן לבדיקה"}
+                    </span>
+                  </Button>
+                )}
               </div>
             ) : null}
           </div>

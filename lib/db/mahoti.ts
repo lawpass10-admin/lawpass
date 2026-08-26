@@ -20,6 +20,7 @@
  */
 
 import { createAdminClient } from "@/lib/supabase/admin";
+import { createClient } from "@/lib/supabase/server";
 import type { Choice, Question360 } from "@/lib/db/practice";
 
 const TABLE = "mahoti_questions";
@@ -361,5 +362,100 @@ export async function getMahotiReview(
     questionId: data.question_id,
     title: data.questions.exam?.title ?? "דיון מהותי",
     items,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Sittings — what a candidate answered, as it was filed and marked
+// ---------------------------------------------------------------------------
+
+/** One question of a filed sitting, as `answer_body.given` stores it. */
+export type MahotiGivenAnswer = {
+  number: number;
+  /** Null when the question was left blank. */
+  letter: MahotiLetter | null;
+  /** The key AT THE TIME OF MARKING — snapshot, not looked up again. */
+  correct_letter: MahotiLetter | null;
+  is_correct: boolean;
+};
+
+/**
+ * One filed sitting of a paper: which letters were chosen, how they were
+ * marked, and the score that marking produced.
+ *
+ * `score` is the stored `answer_score` column — correct out of total as a
+ * percentage. It is read, never recomputed: the whole point of filing it was
+ * that one calculation decides what the sitting was worth, so a screen that
+ * re-derived it could disagree with the table it came from.
+ */
+export type MahotiAttempt = {
+  answerId: string;
+  questionId: string;
+  /** 1-based sitting number for this candidate on this paper. */
+  attempts: number;
+  score: number;
+  correct: number;
+  answered: number;
+  total: number;
+  given: MahotiGivenAnswer[];
+};
+
+type AttemptRow = {
+  answer_id: string;
+  question_id: string;
+  attempts: number;
+  answer_score: number;
+  answer_body: {
+    given?: MahotiGivenAnswer[] | null;
+    correct?: number;
+    answered?: number;
+    total?: number;
+  } | null;
+};
+
+/**
+ * One of the caller's OWN sittings, by id.
+ *
+ * Read through the SSR client, not the service-role client the rest of this
+ * module uses — and that difference is the authorization. `mahoti_answers` has
+ * a students-select-own policy (20260826000001), so RLS scopes this to
+ * `user_id = auth.uid()`: someone else's answer id simply returns no row. That
+ * is why there is no ownership check in this function, and why there must not
+ * be a service-role read here.
+ *
+ * Null covers every miss — no such id, a malformed one, or a row belonging to
+ * another candidate — on purpose: a caller probing ids learns nothing about
+ * which ones exist. The review page treats null as "show the paper without
+ * marking", which is the same thing it does for a visitor who never sat it.
+ */
+export async function getMahotiAttempt(
+  answerId: string
+): Promise<MahotiAttempt | null> {
+  const supabase = await createClient();
+
+  const { data, error } = await supabase
+    .from("mahoti_answers")
+    .select("answer_id, question_id, attempts, answer_score, answer_body")
+    .eq("answer_id", answerId)
+    .maybeSingle<AttemptRow>();
+
+  // A malformed uuid is a Postgres cast error rather than an empty result.
+  // It means the same thing to this caller as a miss, so it reads as one.
+  if (error || !data) return null;
+
+  const given = data.answer_body?.given ?? [];
+
+  return {
+    answerId: data.answer_id,
+    questionId: data.question_id,
+    attempts: data.attempts,
+    score: data.answer_score,
+    // The counts are stored beside the answers, but fall back to counting the
+    // array so a row written before they were added still reports correctly.
+    correct: data.answer_body?.correct ?? given.filter((g) => g.is_correct).length,
+    answered:
+      data.answer_body?.answered ?? given.filter((g) => g.letter !== null).length,
+    total: data.answer_body?.total ?? given.length,
+    given,
   };
 }
