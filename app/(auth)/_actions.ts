@@ -6,6 +6,7 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 
+import { SUBSCRIPTION_GATE_ENABLED } from "@/lib/auth/subscription-gate";
 import { isValidPlanId, type PlanId } from "@/lib/billing/plans";
 import { createClient } from "@/lib/supabase/server";
 import type { AcademicInstitution } from "@/lib/profile/institutions";
@@ -434,12 +435,18 @@ export async function verifyOtpAction(input: {
     .gt("ends_at", new Date().toISOString())
     .maybeSingle();
 
+  // With SUBSCRIPTION_GATE_ENABLED off, a fresh account goes straight to the
+  // dashboard: /pricing and /checkout are disconnected from the signup flow,
+  // and sending someone to a plan picker the app will not ask them to complete
+  // would be a dead end rather than a step. Flipping the flag back restores
+  // both branches below, including the pre-selected-plan shortcut.
   const intendedPlan = metaParsed.data.intended_plan;
-  const url = subscription
-    ? "/dashboard"
-    : intendedPlan
-      ? `/checkout?plan=${intendedPlan}`
-      : "/pricing";
+  const url =
+    subscription || !SUBSCRIPTION_GATE_ENABLED
+      ? "/dashboard"
+      : intendedPlan
+        ? `/checkout?plan=${intendedPlan}`
+        : "/pricing";
 
   return { ok: true, url };
 }

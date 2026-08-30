@@ -70,9 +70,18 @@ export default async function DashboardPage() {
   // negative ratios). `currentPlanDay` is still anchored to
   // `profile.created_at` because the Journey card represents the
   // user's personal study journey, not their billing window.
-  const subscriptionTotalDays =
-    SUBSCRIPTION_PLAN_TOTAL_DAYS[subscription.plan_type] ?? 90;
-  const subscriptionDaysRemaining = daysRemainingUntilISO(subscription.ends_at);
+  //
+  // `subscription` is null while SUBSCRIPTION_GATE_ENABLED is off and the user
+  // has not bought a plan — the gate that used to guarantee one here no longer
+  // redirects. The ring then shows a full 90-day window with all of it left,
+  // which is the honest reading of "no plan is counting down" and keeps the
+  // hero from rendering a NaN arc.
+  const subscriptionTotalDays = subscription
+    ? (SUBSCRIPTION_PLAN_TOTAL_DAYS[subscription.plan_type] ?? 90)
+    : 90;
+  const subscriptionDaysRemaining = subscription
+    ? daysRemainingUntilISO(subscription.ends_at)
+    : subscriptionTotalDays;
   // `currentPlanDay` is still consumed by `<HeroRowAsync>` (rendered
   // as "יום N מתוך 100" inside the hero ring). Slice 29 only stops
   // using it for the bottom-slot JourneyCard — the hero binding

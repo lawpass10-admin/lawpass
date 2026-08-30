@@ -165,6 +165,7 @@ function ReviewFooter({ nextSetId }: { nextSetId: string | null }) {
       <Button
         variant="outline"
         size="lg"
+        nativeButton={false}
         render={<Link href="/dashboard" />}
       >
         <LayoutDashboard className="size-4" aria-hidden />
@@ -174,6 +175,7 @@ function ReviewFooter({ nextSetId }: { nextSetId: string | null }) {
       {nextSetId ? (
         <Button
           size="lg"
+          nativeButton={false}
           render={
             <Link href={`/mahoti?set=${encodeURIComponent(nextSetId)}`} />
           }

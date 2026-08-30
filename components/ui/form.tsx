@@ -88,8 +88,25 @@ function FormItem({ className, ...props }: React.ComponentProps<"div">) {
 
 function FormLabel({
   className,
+  children,
+  required,
   ...props
-}: React.ComponentProps<typeof Label>) {
+}: React.ComponentProps<typeof Label> & {
+  /**
+   * Appends the red asterisk that marks a mandatory field.
+   *
+   * A prop here rather than an asterisk typed into each label string: the
+   * mark then looks the same on every form, and a field that becomes optional
+   * later loses it by deleting one word instead of by editing Hebrew copy.
+   *
+   * The asterisk is aria-hidden — read aloud it becomes "star", which tells a
+   * screen-reader user nothing. What conveys the requirement to them is
+   * `aria-required` on the control itself and the validation message under it;
+   * the forms that use this also print a "* שדה חובה" legend for sighted users
+   * who need the convention spelled out.
+   */
+  required?: boolean
+}) {
   const { error, formItemId } = useFormField()
 
   return (
@@ -99,7 +116,14 @@ function FormLabel({
       className={cn("data-[error=true]:text-destructive", className)}
       htmlFor={formItemId}
       {...props}
-    />
+    >
+      {children}
+      {required ? (
+        <span aria-hidden className="ms-0.5 text-destructive">
+          *
+        </span>
+      ) : null}
+    </Label>
   )
 }
 

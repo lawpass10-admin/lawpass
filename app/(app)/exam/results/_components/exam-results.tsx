@@ -179,6 +179,7 @@ export function ExamResults({ aggregate, notedIdentities }: Props) {
           <Button
             variant="ghost"
             size="sm"
+            nativeButton={false}
             render={<Link href="/dashboard" />}
             className="text-primary-foreground hover:bg-white/10 hover:text-primary-foreground"
           >
@@ -381,6 +382,7 @@ export function ExamResults({ aggregate, notedIdentities }: Props) {
         <Button
           variant="ghost"
           size="lg"
+          nativeButton={false}
           render={<Link href="/dashboard" />}
           className="sm:min-w-44"
         >

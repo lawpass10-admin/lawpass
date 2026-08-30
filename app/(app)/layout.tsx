@@ -2,6 +2,7 @@ import type { User } from "@supabase/supabase-js";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 
+import { SUBSCRIPTION_GATE_ENABLED } from "@/lib/auth/subscription-gate";
 import { getActiveBookmarkAndMistakeCounts } from "@/lib/db/practice";
 import { createClient } from "@/lib/supabase/server";
 
@@ -99,10 +100,17 @@ export default async function AppLayout({
   const headerList = await headers();
   const pathname = headerList.get("x-pathname") ?? "";
 
-  // The redirect-to-/pricing gate fires only for non-exempt routes.
-  // `subscription` was already fetched above in the Promise.all alongside
-  // the profile query.
-  if (!subscription && !isSubscriptionExempt(pathname)) {
+  // The redirect-to-/pricing gate fires only for non-exempt routes, and only
+  // while SUBSCRIPTION_GATE_ENABLED is on — it is currently off, which is what
+  // keeps a subscription-less user on the page they asked for instead of the
+  // plan picker. See the constant for what the switch does and does not reach.
+  // `subscription` was already fetched above in the Promise.all alongside the
+  // profile query.
+  if (
+    SUBSCRIPTION_GATE_ENABLED &&
+    !subscription &&
+    !isSubscriptionExempt(pathname)
+  ) {
     redirect("/pricing");
   }
 

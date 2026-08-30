@@ -11,6 +11,14 @@ import {
   type ExamProgressCellStatus,
 } from "@/app/(app)/exam/play/_components/exam-progress-strip";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { submitMahotiAttempt, type MahotiAttempt } from "@/lib/api/mahoti";
 import type { MahotiLetter, MahotiSet } from "@/lib/db/mahoti";
 import { cn } from "@/lib/utils";
@@ -30,6 +38,20 @@ const FIT_MIN_FONT_PX = 13;
  *  fit at 9px is one the layout genuinely cannot hold. */
 const ANSWER_MIN_FONT_PX = 10;
 const FIT_STEP_PX = 0.5;
+
+/**
+ * How many answers unlock "שלח את המבחן לבדיקה" before the paper is finished.
+ *
+ * A generated paper is 40 questions, and a candidate who has answered 30 has
+ * done enough for the marking to be worth reading — waiting for all 40 turns a
+ * useful review into an all-or-nothing one. The remaining questions still count
+ * against the score (they are marked as unanswered, out of the paper's full
+ * total), which is what the bar says before the button is pressed.
+ *
+ * Capped at the paper's own length by the caller, so a paper shorter than this
+ * unlocks when it is genuinely complete rather than never.
+ */
+const SUBMIT_UNLOCK_AT = 30;
 
 /**
  * Shrinks the question column's type until the fact pattern and all four
@@ -133,6 +155,9 @@ export function MahotiWorkspace({ set }: { set: MahotiSet }) {
   // one run of the paper — re-sitting is allowed, but only by sitting it again.
   const [attempt, setAttempt] = useState<MahotiAttempt | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  // Open while an early submit — one with questions still unanswered — waits
+  // for the candidate to confirm it.
+  const [confirmOpen, setConfirmOpen] = useState(false);
   const fitRef = useRef<HTMLDivElement | null>(null);
 
   const total = set.questions.length;
@@ -144,12 +169,24 @@ export function MahotiWorkspace({ set }: { set: MahotiSet }) {
     answers[i] ? "answered" : "pending"
   );
 
+  const answeredCount = set.questions.reduce(
+    (count, _, i) => (answers[i] ? count + 1 : count),
+    0
+  );
+  const unanswered = total - answeredCount;
+
   // "Answered the last question" is read as "nothing is left unanswered".
   // Taken literally — position === total - 1 — a candidate who jumped to the
   // last question first would stop their own clock with five questions still
   // open. Answering them in order lands on the same moment either way.
-  const allAnswered =
-    total > 0 && set.questions.every((_, i) => Boolean(answers[i]));
+  const allAnswered = total > 0 && answeredCount === total;
+
+  // The submit bar appears at SUBMIT_UNLOCK_AT answers and stays for the rest
+  // of the sitting — finishing the paper is still the expected path, it is just
+  // no longer the only one. min() with `total` keeps a paper shorter than the
+  // threshold from being unsubmittable.
+  const canSubmit =
+    total > 0 && answeredCount >= Math.min(SUBMIT_UNLOCK_AT, total);
 
   // The review is addressed by the FILED sitting, not by the letters: it then
   // shows the score that is in the table rather than one it worked out again
@@ -223,7 +260,12 @@ export function MahotiWorkspace({ set }: { set: MahotiSet }) {
     // That is what keeps the notebook's scrollbar, the prev/next pair and
     // the submit bar all on screen at once, whatever the paper's length.
     <div className="flex h-full min-h-0 flex-col gap-2">
-      <ExamTimerBar frozen={allAnswered} onStartedChange={setExamStarted} />
+      {/* Also frozen once the sitting is filed: a clock still running after
+          the paper has been marked is counting nothing. */}
+      <ExamTimerBar
+        frozen={allAnswered || attempt !== null}
+        onStartedChange={setExamStarted}
+      />
 
       {/* Not sticky here (see the `sticky` prop's note in the strip): inside
           a fixed-height column a sticky strip lifts off and covers the two
@@ -361,15 +403,26 @@ export function MahotiWorkspace({ set }: { set: MahotiSet }) {
               </Button>
             </div>
 
-            {/* Appears only once every question has an answer. The review
-                opens in a new tab so this one stays intact — the candidate can
-                go back to a question with their answers still on screen. */}
-            {allAnswered ? (
-              <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-emerald-500/40 bg-emerald-50 px-3 py-2 dark:bg-emerald-950/20">
+            {/* Appears at SUBMIT_UNLOCK_AT answers and stays. The review opens
+                in a new tab so this one stays intact — the candidate can go
+                back to a question with their answers still on screen. */}
+            {canSubmit ? (
+              <div
+                className={cn(
+                  "flex flex-wrap items-center justify-between gap-3 rounded-xl border px-3 py-2",
+                  // Amber while questions are still open: the bar is an offer,
+                  // not the finish line, and green would read as "done".
+                  allAnswered || attempt
+                    ? "border-emerald-500/40 bg-emerald-50 dark:bg-emerald-950/20"
+                    : "border-amber-500/40 bg-amber-50 dark:bg-amber-950/20"
+                )}
+              >
                 <p className="text-xs text-foreground/80">
                   {attempt
                     ? `ניסיון ${attempt.attempts} נשמר · ${attempt.correct}/${attempt.total} (${attempt.score}%)`
-                    : `ענית על כל ${total} השאלות. השעון נעצר.`}
+                    : allAnswered
+                      ? `ענית על כל ${total} השאלות. השעון נעצר.`
+                      : `ענית על ${answeredCount} מתוך ${total} שאלות. אפשר לשלוח לבדיקה עכשיו — ${unanswered} שאלות שלא נענו ייחשבו כשגויות.`}
                 </p>
                 {attempt ? (
                   <Button
@@ -387,7 +440,17 @@ export function MahotiWorkspace({ set }: { set: MahotiSet }) {
                     <span className="ms-1.5">פתח שוב את הבדיקה</span>
                   </Button>
                 ) : (
-                  <Button size="sm" onClick={handleSubmit} disabled={submitting}>
+                  <Button
+                    size="sm"
+                    // With questions still open the click asks first. Filing is
+                    // a recorded sitting with a score on it, and a stray click
+                    // at question 30 would otherwise cost the candidate the
+                    // other ten before they knew it was possible.
+                    onClick={() =>
+                      unanswered > 0 ? setConfirmOpen(true) : handleSubmit()
+                    }
+                    disabled={submitting}
+                  >
                     {submitting ? (
                       <Loader2 className="size-4 animate-spin" aria-hidden />
                     ) : (
@@ -403,6 +466,40 @@ export function MahotiWorkspace({ set }: { set: MahotiSet }) {
           </div>
         </section>
       </div>
+
+      {/* The early-submit confirmation. Rendered here rather than beside the
+          button so it is not inside the fit-to-box column, whose type-shrinking
+          measures its own scrollHeight. */}
+      <Dialog open={confirmOpen} onOpenChange={setConfirmOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>לשלוח את המבחן עכשיו?</DialogTitle>
+            <DialogDescription>
+              ענית על {answeredCount} מתוך {total} שאלות. {unanswered} שאלות
+              שנשארו ללא מענה ייחשבו כשגויות בציון. אפשר גם להמשיך לענות ולשלוח
+              בסוף — ואפשר לגשת למבחן הזה שוב בכל עת.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setConfirmOpen(false)}
+            >
+              המשך לענות
+            </Button>
+            <Button
+              type="button"
+              onClick={() => {
+                setConfirmOpen(false);
+                void handleSubmit();
+              }}
+            >
+              שלח לבדיקה
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

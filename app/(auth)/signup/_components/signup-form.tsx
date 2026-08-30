@@ -34,6 +34,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { RequiredLegend } from "@/components/ui/required-legend";
 import {
   Select,
   SelectContent,
@@ -145,12 +146,19 @@ function StepIndicator({ current }: { current: Step }) {
         const active = n === current;
         return (
           <div key={n} className="flex items-center">
+            {/* Done is gold, current is navy-outlined, ahead is quiet. The
+                completed steps carrying the brand accent makes progress read
+                as something earned rather than as three identical dots. */}
             <div
               className={cn(
-                "flex h-8 w-8 items-center justify-center rounded-full text-sm font-medium transition-colors",
-                done && "bg-primary text-primary-foreground",
-                active && "border border-primary bg-primary/10 text-primary",
-                !done && !active && "bg-muted text-muted-foreground"
+                "flex h-9 w-9 items-center justify-center rounded-full text-sm font-semibold transition-colors",
+                done &&
+                  "bg-[var(--color-gold)] text-[var(--color-navy-ink)] shadow-[0_2px_8px_-2px_rgba(201,161,73,0.6)]",
+                active &&
+                  "border-2 border-[var(--color-navy)] bg-white text-[var(--color-navy)]",
+                !done &&
+                  !active &&
+                  "bg-[var(--color-line)] text-[var(--color-ink-muted)]"
               )}
               aria-hidden
             >
@@ -159,8 +167,8 @@ function StepIndicator({ current }: { current: Step }) {
             {i < 2 && (
               <div
                 className={cn(
-                  "mx-1 h-0.5 w-8",
-                  done ? "bg-primary" : "bg-muted"
+                  "mx-1.5 h-0.5 w-10 rounded-full",
+                  done ? "bg-[var(--color-gold)]" : "bg-[var(--color-line)]"
                 )}
                 aria-hidden
               />
@@ -322,8 +330,11 @@ export default function SignupForm() {
 
   return (
     <Card>
-      <CardHeader>
-        <CardTitle className="text-center">הרשמה ל-LawPass</CardTitle>
+      <CardHeader className="pb-2 text-center">
+        <CardTitle>הרשמה ל-LawPass</CardTitle>
+        <p className="text-sm text-[var(--color-ink-dim)]">
+          שלוש דקות, ואתם בפנים
+        </p>
       </CardHeader>
       <CardContent>
         <StepIndicator current={step} />
@@ -334,6 +345,10 @@ export default function SignupForm() {
             className="space-y-4"
             noValidate
           >
+            {/* One legend for the whole wizard rather than one per step: the
+                convention is the same on all three, and repeating it would
+                just be three lines of the same sentence. */}
+            <RequiredLegend />
             {step === 1 && <Step1 form={form} />}
             {step === 2 && <Step2 form={form} />}
             {step === 3 && (
@@ -427,7 +442,7 @@ function Step1({ form }: { form: UseFormReturn<SignupInput> }) {
         name="email"
         render={({ field }) => (
           <FormItem>
-            <FormLabel>אימייל</FormLabel>
+            <FormLabel required>אימייל</FormLabel>
             <FormControl>
               <Input
                 type="email"
@@ -446,7 +461,7 @@ function Step1({ form }: { form: UseFormReturn<SignupInput> }) {
         name="password"
         render={({ field }) => (
           <FormItem>
-            <FormLabel>סיסמה</FormLabel>
+            <FormLabel required>סיסמה</FormLabel>
             <FormControl>
               <Input
                 type="password"
@@ -464,7 +479,7 @@ function Step1({ form }: { form: UseFormReturn<SignupInput> }) {
         name="confirmPassword"
         render={({ field }) => (
           <FormItem>
-            <FormLabel>אישור סיסמה</FormLabel>
+            <FormLabel required>אישור סיסמה</FormLabel>
             <FormControl>
               <Input
                 type="password"
@@ -497,7 +512,7 @@ function Step2({
         name="full_name"
         render={({ field }) => (
           <FormItem>
-            <FormLabel>שם מלא</FormLabel>
+            <FormLabel required>שם מלא</FormLabel>
             <FormControl>
               <Input autoComplete="name" {...field} />
             </FormControl>
@@ -510,7 +525,7 @@ function Step2({
         name="phone"
         render={({ field }) => (
           <FormItem>
-            <FormLabel>מספר טלפון</FormLabel>
+            <FormLabel required>מספר טלפון</FormLabel>
             <FormControl>
               <Input
                 type="tel"
@@ -529,7 +544,7 @@ function Step2({
         name="gender"
         render={({ field }) => (
           <FormItem>
-            <FormLabel>מגדר</FormLabel>
+            <FormLabel required>מגדר</FormLabel>
             <FormControl>
               {/* TODO(slice-7): RadioGroupItem fires Base UI's "uncontrolled →
                   controlled value state" warning on first gender selection
@@ -580,7 +595,7 @@ function Step2({
         name="birth_date"
         render={({ field }) => (
           <FormItem>
-            <FormLabel>תאריך לידה</FormLabel>
+            <FormLabel required>תאריך לידה</FormLabel>
             <BirthDateSelects
               value={field.value ?? ""}
               onChange={field.onChange}
@@ -689,7 +704,7 @@ function Step3({
         name="academic_institution"
         render={({ field }) => (
           <FormItem>
-            <FormLabel>מוסד אקדמי</FormLabel>
+            <FormLabel required>מוסד אקדמי</FormLabel>
             <FormControl>
               <Select
                 value={field.value ?? ""}
@@ -723,7 +738,7 @@ function Step3({
         name="legal_specialization"
         render={({ field }) => (
           <FormItem>
-            <FormLabel>תחום התמחות</FormLabel>
+            <FormLabel required>תחום התמחות</FormLabel>
             <FormControl>
               <Select
                 value={field.value ?? ""}
@@ -785,6 +800,11 @@ function Step3({
                   >
                     מדיניות הפרטיות
                   </Link>
+                  {/* Mandatory like the fields above it — Zod requires
+                      literal(true), so an unticked box fails submit. */}
+                  <span aria-hidden className="ms-0.5 text-destructive">
+                    *
+                  </span>
                 </Label>
               </div>
             </FormControl>

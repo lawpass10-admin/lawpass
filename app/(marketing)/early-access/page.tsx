@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Image from "next/image";
 
+import { AuthEntry } from "./_components/auth-entry";
 import { EarlyAccessForm } from "./_components/early-access-form";
 
 /**
@@ -127,6 +128,11 @@ export default async function EarlyAccessPage({
         <div className="mt-10 w-full max-w-md">
           <EarlyAccessForm source={source} />
         </div>
+
+        {/* The way in for people who already have an account, or are ready to
+            open one. Below the waitlist and behind its own rule — see
+            AuthEntry for why it is not given equal billing. */}
+        <AuthEntry />
       </div>
     </main>
   );
