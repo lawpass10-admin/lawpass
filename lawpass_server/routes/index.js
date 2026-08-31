@@ -15,6 +15,7 @@ const dashboardRoutes = require("./dashboard.routes");
 const earlyAccessRoutes = require("./early-access.routes");
 const openQuestionsRoutes = require("./open-questions.routes");
 const mahotiRoutes = require("./mahoti.routes");
+const diuniRoutes = require("./diuni.routes");
 
 const router = Router();
 
@@ -37,5 +38,7 @@ router.use("/open-questions", openQuestionsRoutes);
 // דיון מהותי — filing and scoring a sitting. The paper itself is still served
 // by the Next.js side.
 router.use("/mahoti", mahotiRoutes);
+// דין דיוני — same arrangement, questions grounded in verdict_list.
+router.use("/diuni", diuniRoutes);
 
 module.exports = router;

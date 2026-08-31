@@ -4,6 +4,7 @@ import {
   Bookmark,
   BookOpen,
   FileText,
+  Gavel,
   Gauge,
   LogOut,
   Pencil,
@@ -68,6 +69,7 @@ const NAV_LEARNING = [
   { href: "/exam", label: "סימולציות בחינה", Icon: Timer },
   { href: "/writing-task", label: "מטלת כתיבה", Icon: FileText },
   { href: "/mahoti", label: "דיון מהותי", Icon: BookOpen },
+  { href: "/diuni", label: "דין דיוני", Icon: Gavel },
 ] as const;
 
 const NAV_LIBRARY = [

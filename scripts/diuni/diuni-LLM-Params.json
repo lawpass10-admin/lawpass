@@ -1,0 +1,101 @@
+{
+  "_readme": [
+    "Tunable parameters for דין דיוני question generation from real judgments.",
+    "Edit this file instead of the code, then re-run scripts/diuni/generate-diuni-set.mjs.",
+    "CLI flags (e.g. --effort=max, --count=3) override anything set here.",
+    "",
+    "NOT tunable here, by design: the grounding rules. A question must be answerable",
+    "from the judgment it was built on, and every quote must appear in that judgment",
+    "verbatim. Those live in the generator because loosening them would silently",
+    "produce plausible questions with invented law instead of failing loudly."
+  ],
+  "version": 1,
+
+  "model": {
+    "id": "claude-opus-5",
+    "max_tokens": 16000,
+    "effort": "high"
+  },
+
+  "generation": {
+    "prompt_version": "diuni-verdict/1",
+    "prompt_cache": true
+  },
+
+  "structure": {
+    "option_letters": ["א", "ב", "ג", "ד"],
+    "answer_distribution": {
+      "mode": "rotate",
+      "sequence": ["א", "ב", "ג", "ד"]
+    },
+    "variations_360": 4,
+    "concepts_min": 3,
+    "concepts_max": 8,
+    "fact_pattern_chars": { "min": 220, "max": 900 }
+  },
+
+  "selection": {
+    "order": "random",
+    "min_text_chars": 1500,
+    "only_areas": [],
+    "exclude_areas": [],
+    "min_confidence": null
+  },
+
+  "grounding": {
+    "mix": { "verdict": 0.6, "law": 0.4 },
+    "law": {
+      "min_section_chars": 400,
+      "max_section_chars": 6000,
+      "only_law_ids": [],
+      "exclude_law_ids": []
+    }
+  },
+
+  "exemplars": {
+    "file": "exemplars.json",
+    "count": 3,
+    "pick": "spread"
+  },
+
+  "authoring": {
+    "difficulty": "match_exemplars",
+    "fact_pattern_length": "match_exemplars",
+    "register": "SCOPE THIS TO THE FACT PATTERN ONLY. Write the scenario the way the Bar's own papers do — third person, plain procedural Hebrew, named parties (עו\"ד לוי, משה, החברה), concrete steps in the order they happened. State what each side did and what the court decided, and stop. Do not name the doctrine, do not signpost which rule applies, do not hint at the answer: identifying the governing rule IS the question. Everything else — the stem, the analysis, the explanation, the distractor analysis — stays in precise legal Hebrew.",
+    "extra_instructions": "The four options must be genuinely competitive: each wrong one should be the answer a candidate reaches by making ONE identifiable mistake — wrong forum, wrong stage of the proceeding, right rule applied to the wrong party, or a rule that exists but does not govern these facts. Never write a filler option that nobody would pick. WORDING: introduce every calendar date with בתאריך, never with ביום. Leave the fixed expression בו ביום alone."
+  },
+
+  "validation": {
+    "require_verbatim_quote": true,
+    "min_quote_chars": 25,
+    "quote_normalise_whitespace": true,
+    "forbid_verdict_identifiers": true,
+    "identifier_min_length": 4
+  },
+
+  "_options": {
+    "model.id": "any current Claude model id; claude-opus-5 recommended for legal Hebrew",
+    "model.max_tokens": "hard ceiling on thinking + answer together. Raise if output truncates",
+    "model.effort": "low | medium | high | xhigh | max — controls depth and cost",
+    "generation.prompt_cache": "true caches the system+exemplars prefix; the 2nd question onward is much cheaper",
+    "structure.answer_distribution.mode": "rotate | none. rotate walks `sequence` so the correct answer lands on a different letter each question — left to itself the model favours one letter, and on a 40-question paper a candidate who always guesses it would score far above chance. The rotation continues across runs (it counts what is already in generated/), so a second batch does not restart at the first letter",
+    "structure.answer_distribution.sequence": "the cycle. ['א','ב','ג','ד'] spreads evenly; repeat a letter to weight it",
+    "structure.variations_360": "how many Q&A cards חשיבה 360° carries. The panel parses whatever it is given; 4 is the current product decision",
+    "structure.fact_pattern_chars": "guard rails, not targets — the generator rejects outside this range",
+    "selection.order": "newest | oldest | random — which verdict_list rows are offered first. random draws from the WHOLE table, so a run is not confined to the most recently scraped judgments",
+    "grounding.mix": "how a batch splits between the two kinds of source. The counts are worked out for the batch and then SHUFFLED, so the ratio is guaranteed while which question is which is not — pure per-question randomness would let a run of ten come out all one kind. Set { verdict: 1, law: 0 } for verdicts only",
+    "grounding.law.min_section_chars": "skip statutory sections too short to build a question from. A one-line definition has nothing to test",
+    "grounding.law.max_section_chars": "skip sections so long they are really a chapter; the model would pick its own topic out of them and the question stops being about a rule",
+    "grounding.law.only_law_ids / exclude_law_ids": "Knesset law ids (mahoti_laws.law_id), e.g. [2000798] for חוק לשכת עורכי הדין. Empty = no filter",
+    "selection.min_text_chars": "skip judgments too short to build a question from",
+    "selection.only_areas / exclude_areas": "judgment_area_id slugs, e.g. ['banking_law']. Empty = no filter",
+    "selection.min_confidence": "null | low | medium | high — the classifier's own confidence in the area label",
+    "exemplars.count": "how many real Bar questions are shown as style anchors. More is better style, more input tokens",
+    "exemplars.pick": "spread | first | random — spread takes them evenly across the paper",
+    "authoring.difficulty": "match_exemplars | easy | medium | hard",
+    "authoring.register": "free text — the voice of the fact pattern",
+    "authoring.extra_instructions": "free text appended to the prompt — the main tuning knob",
+    "validation.require_verbatim_quote": "every cited passage must appear in the judgment character for character (after whitespace normalisation). Turning this off removes the only mechanical check that the question is grounded in real law",
+    "validation.forbid_verdict_identifiers": "reject a question whose fact pattern leaks the case number or party names — a candidate who can search the judgment is not answering the question"
+  }
+}

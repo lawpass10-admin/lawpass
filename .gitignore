@@ -50,6 +50,11 @@ __pycache__/
 # vercel
 .vercel
 
+# claude code — personal settings for this checkout (model choice etc).
+# The rest of .claude/ IS committed: skills/, agents/ and launch.json are
+# project knowledge the next person needs.
+.claude/settings.local.json
+
 # typescript
 *.tsbuildinfo
 next-env.d.ts

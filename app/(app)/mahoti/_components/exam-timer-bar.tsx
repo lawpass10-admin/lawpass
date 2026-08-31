@@ -10,6 +10,9 @@ import { cn } from "@/lib/utils";
 /** 160 minutes, the length of the דין־מהותי sitting. */
 export const MAHOTI_TOTAL_SECONDS = 160 * 60;
 
+/** 100 minutes, the length of the דין דיוני sitting (חלק ב' of the paper). */
+export const DIUNI_TOTAL_SECONDS = 100 * 60;
+
 /** Amber under 5 minutes, red under 1. */
 const WARNING_SECONDS = 5 * 60;
 const DANGER_SECONDS = 60;
@@ -38,9 +41,17 @@ function formatMinSec(total: number): string {
  */
 export function ExamTimerBar({
   frozen = false,
+  totalSeconds = MAHOTI_TOTAL_SECONDS,
   onStartedChange,
 }: {
   frozen?: boolean;
+  /**
+   * Length of the sitting. Defaults to the mahoti figure so the original
+   * caller is unchanged; /diuni passes its own 100 minutes. A prop rather
+   * than a second copy of this file — the clock's real content is the
+   * deadline arithmetic below, which is identical for both sittings.
+   */
+  totalSeconds?: number;
   /**
    * Fired the moment the sitting actually begins. The workspace keeps the
    * choices locked until then, so answering and the clock can't come apart —
@@ -50,7 +61,7 @@ export function ExamTimerBar({
    */
   onStartedChange?: (started: boolean) => void;
 }) {
-  const [remaining, setRemaining] = useState(MAHOTI_TOTAL_SECONDS);
+  const [remaining, setRemaining] = useState(totalSeconds);
   const [running, setRunning] = useState(false);
   const [started, setStarted] = useState(false);
   // Absolute deadline while running; null while paused or not started.
@@ -90,7 +101,7 @@ export function ExamTimerBar({
 
   function handleStart(): void {
     // Also the restart path once the clock has run out.
-    const seconds = remaining > 0 ? remaining : MAHOTI_TOTAL_SECONDS;
+    const seconds = remaining > 0 ? remaining : totalSeconds;
     setRemaining(seconds);
     deadlineRef.current = Date.now() + seconds * 1000;
     setStarted(true);

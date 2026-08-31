@@ -14,8 +14,12 @@ import { QaFloatingWidget } from "./qa-floating-widget";
  * /exam is a focused, no-distractions simulation (SPEC §7.0.4). /mahoti joins
  * it for a different reason: it is a split screen, question beside notebook,
  * and the sidebar costs it ~16rem of the width both panes compete for.
+ *
+ * /diuni is here for the first reason rather than the second — it has no
+ * notebook and does not need the width, but it is a clocked sitting, and a
+ * navigation rail beside a running exam invites the candidate out of it.
  */
-const FOCUS_ROUTES = ["/exam", "/mahoti"];
+const FOCUS_ROUTES = ["/exam", "/mahoti", "/diuni"];
 
 function isFocusRoute(pathname: string): boolean {
   return FOCUS_ROUTES.some(
