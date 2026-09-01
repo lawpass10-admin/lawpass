@@ -243,12 +243,48 @@ function parseQuestions(allPages) {
 // everything between, cleaned up — it is reference material for a human, and
 // over-parsing it would drop the parts that do not fit a pattern.
 
+/**
+ * The answer letter as the key writes it.
+ *
+ * Papers differ on which side the geresh falls — the June 2026 sheet emits
+ * `'ב` and the December 2025 one `ג'` — and the apostrophe may be ASCII or the
+ * Hebrew geresh U+05F3. Anchored to the line start either way so a citation
+ * line that merely contains a letter cannot be mistaken for the answer.
+ */
+const ANSWER_LETTER_RE =
+  /^[.\s]*(?:['׳’]\s*([אבגד])|([אבגד])\s*['׳’])/;
+/**
+ * A question the Bar struck after the sitting carries no letter — the sheet
+ * says נפסלה where the answer would be. Recognising that is what lets the scan
+ * move past it: the entry numbers must run 1,2,3…, so an annulled question with
+ * nothing matching would stall the sequence and silently truncate the key at
+ * that point (this paper annulled Q20, and the key stopped at 19).
+ *
+ * The entry is still consumed, with a null letter, and dropped at the merge —
+ * an annulled question is not an exemplar.
+ */
+const ANNULLED_RE = /נפסלה|בוטלה|ללא\s*ניקוד/;
+
+const answerLetterOf = (line) => {
+  const m = line.match(ANSWER_LETTER_RE);
+  return m ? (m[1] ?? m[2]) : null;
+};
+
 function parseAnswerKey(pages) {
-  const lines = pages.join("\n").split("\n").map((l) => l.trim());
+  const lines = pages
+    .join("\n")
+    .split("\n")
+    .map((l) => l.trim());
   const key = new Map();
 
   let current = null;
   let buffer = [];
+  // Entry numbers must run 1, 2, 3… A bare number that is not the one we are
+  // waiting for is a section number out of a citation, not a new entry — the
+  // sheet is full of them ("סעיף 51", "תקנה 74"), and without this gate they
+  // split the previous entry's citation and swallow the entry after it.
+  let expected = 1;
+
   const flush = () => {
     if (current !== null) {
       key.set(current.number, {
@@ -261,13 +297,19 @@ function parseAnswerKey(pages) {
 
   for (let i = 0; i < lines.length; i++) {
     const numOnly = lines[i].match(/^(\d{1,2})\s*\.?\s*$/);
-    const nextLetter = lines.slice(i + 1, i + 4).find((l) => /^[אבגד]'/.test(l));
-    if (numOnly && nextLetter) {
-      flush();
-      current = { number: Number(numOnly[1]), letter: nextLetter[0] };
-      continue;
+    if (numOnly && Number(numOnly[1]) === expected) {
+      const ahead = lines.slice(i + 1, i + 4);
+      const letter = ahead.map(answerLetterOf).find(Boolean) ?? null;
+      // An annulled question carries no letter. Consume it anyway — leaving the
+      // sequence stalled there truncates the whole key from that point on.
+      if (letter || ahead.some((l) => ANNULLED_RE.test(l))) {
+        flush();
+        current = { number: expected, letter };
+        expected++;
+        continue;
+      }
     }
-    if (current && !/^[אבגד]'/.test(lines[i])) buffer.push(lines[i]);
+    if (current && !answerLetterOf(lines[i])) buffer.push(lines[i]);
   }
   flush();
   return key;

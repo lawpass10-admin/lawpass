@@ -29,6 +29,18 @@ type Props = {
    * panes. Opt out with `sticky={false}`.
    */
   sticky?: boolean;
+  /**
+   * Lay every cell out in ONE straight row, shrinking them to fit rather than
+   * scrolling.
+   *
+   * The default is a horizontally scrolling strip with a 24px floor per cell,
+   * which is right for /exam and /mahoti on a narrow viewport: 40 cells crushed
+   * to 12px are unreadable, so scrolling is the better trade. On /diuni the
+   * numbering is meant to be a whole paper you take in at a glance, and a strip
+   * that scrolls hides the far end of it. With `fit` the cells give up their
+   * minimum width and compress instead — a row you can always see end to end.
+   */
+  fit?: boolean;
   /** Merged last, so a caller can override the strip's own padding —
    *  /mahoti runs it denser to buy the panes below it more height. */
   className?: string;
@@ -62,6 +74,7 @@ export function ExamProgressStrip({
   onJump,
   disabled = false,
   sticky = true,
+  fit = false,
   className,
 }: Props) {
   return (
@@ -72,7 +85,12 @@ export function ExamProgressStrip({
         className
       )}
     >
-      <div className="flex justify-between gap-1 overflow-x-auto">
+      <div
+        className={cn(
+          "flex justify-between gap-1",
+          fit ? "overflow-x-hidden" : "overflow-x-auto"
+        )}
+      >
         {Array.from({ length: total }).map((_, i) => {
           const status: ExamProgressCellStatus =
             i === current ? "current" : (statuses[i] ?? "pending");
@@ -85,7 +103,10 @@ export function ExamProgressStrip({
               aria-label={`שאלה ${i + 1}, ${STATUS_ARIA[status]}`}
               aria-current={i === current || undefined}
               className={cn(
-                "h-6 w-6 min-w-6 shrink-0 rounded font-mono text-[10px] font-semibold tabular-nums transition-all",
+                "h-6 rounded font-mono text-[10px] font-semibold tabular-nums transition-all",
+                // Fixed 24px and never shrinking by default; under `fit` the
+                // cell drops its floor and shares the row instead.
+                fit ? "min-w-0 flex-1 basis-0" : "w-6 min-w-6 shrink-0",
                 "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-300",
                 status === "current" &&
                   "bg-white text-[#0a2624] outline outline-2 outline-amber-400 ring-2 ring-amber-300",

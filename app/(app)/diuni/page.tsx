@@ -41,7 +41,14 @@ export default async function DiuniPage({
     // `p-6` the (app) focus-route layout puts around <main>. The question pane
     // scrolls inside itself, which is what keeps the timer, the progress strip
     // and the prev/next pair on screen at once.
-    <div className="mx-auto flex h-[calc(100dvh-3rem)] w-full max-w-[1100px] flex-col gap-2 overflow-hidden">
+    //
+    // Width matches /mahoti (1480px) even though this screen has no notebook to
+    // fill it. The progress strip lays its cells out at a 24px minimum and
+    // scrolls horizontally when they do not fit — at 1100px a 40-question paper
+    // overflowed and the numbering became a scrollable band instead of a row you
+    // can see at a glance. The question text does NOT use the extra width; it is
+    // capped to a readable measure inside the workspace.
+    <div className="mx-auto flex h-[calc(100dvh-3rem)] w-full max-w-[1480px] flex-col gap-2 overflow-hidden">
       <PageHead questionCount={set?.questions.length ?? 0} />
       {/* Keyed by the paper: moving to another `?set=` stays on this route, so
           without a key React would keep the workspace mounted and the previous

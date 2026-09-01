@@ -1,6 +1,11 @@
 "use client";
 
-import { ChevronLeft, ChevronRight, ClipboardCheck, Loader2 } from "lucide-react";
+import {
+  ChevronLeft,
+  ChevronRight,
+  ClipboardCheck,
+  Loader2,
+} from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 
@@ -71,12 +76,12 @@ export function DiuniWorkspace({ set }: { set: DiuniSet }) {
   const isLast = position === total - 1;
 
   const statuses: ExamProgressCellStatus[] = set.questions.map((_, i) =>
-    answers[i] ? "answered" : "pending"
+    answers[i] ? "answered" : "pending",
   );
 
   const answeredCount = set.questions.reduce(
     (count, _, i) => (answers[i] ? count + 1 : count),
-    0
+    0,
   );
   const unanswered = total - answeredCount;
   const allAnswered = total > 0 && answeredCount === total;
@@ -116,7 +121,7 @@ export function DiuniWorkspace({ set }: { set: DiuniSet }) {
       set.questions.map((q, i) => ({
         number: q.number,
         letter: answers[i] ?? null,
-      }))
+      })),
     );
     setSubmitting(false);
 
@@ -152,12 +157,16 @@ export function DiuniWorkspace({ set }: { set: DiuniSet }) {
           statuses={statuses}
           onJump={go}
           sticky={false}
+          fit
           className="py-1.5"
         />
       </div>
 
       <section className="flex min-h-0 flex-1 flex-col rounded-xl border border-border bg-card">
-        <div className="flex shrink-0 items-baseline justify-between gap-3 px-5 pt-4">
+        {/* Capped to the same measure as the reading column below, so the
+            question counter and the nav row line up with the prose rather than
+            drifting out to the card's edges. */}
+        <div className="mx-auto flex w-full max-w-[980px] shrink-0 items-baseline justify-between gap-3 px-5 pt-4">
           <span className="font-mono text-[11px] uppercase tracking-wider text-muted-foreground">
             שאלה {position + 1} / {total}
           </span>
@@ -173,9 +182,17 @@ export function DiuniWorkspace({ set }: { set: DiuniSet }) {
             the type-shrinking pass /mahoti needs — and where a very long one
             does not, scrolling the column is better than shrinking the four
             answers the candidate is comparing. */}
-        <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
+        {/* The reading column is capped and centred rather than filling the
+            card. The page is as wide as /mahoti so the progress strip can lay
+            34-40 cells out in one straight row, but a fact pattern set across
+            1480px runs to ~180 characters a line, which nobody reads twice.
+            The strip gets the width; the prose does not. */}
+        <div className="mx-auto min-h-0 w-full max-w-[980px] flex-1 overflow-y-auto px-5 py-4">
           <div className="rounded-lg border border-border bg-background p-5">
-            <NoCopyText dir="auto" className="leading-relaxed whitespace-pre-wrap">
+            <NoCopyText
+              dir="auto"
+              className="leading-relaxed whitespace-pre-wrap"
+            >
               {[question.fact_pattern, question.stem]
                 .filter((part) => part && part.trim())
                 .join("\n\n")}
@@ -189,7 +206,7 @@ export function DiuniWorkspace({ set }: { set: DiuniSet }) {
           <div
             className={cn(
               "mt-4 flex flex-col gap-2 transition-opacity",
-              !examStarted && "opacity-60"
+              !examStarted && "opacity-60",
             )}
           >
             {question.options.map((option) => (
@@ -209,77 +226,85 @@ export function DiuniWorkspace({ set }: { set: DiuniSet }) {
           </div>
         </div>
 
-        <div className="shrink-0 space-y-2 border-t border-border px-5 py-3">
-          <div className="flex items-center justify-between gap-4">
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => go(position - 1)}
-              disabled={isFirst}
-            >
-              <ChevronRight className="size-4" aria-hidden />
-              <span className="ms-1.5">שאלה קודמת</span>
-            </Button>
-            <Button size="sm" onClick={() => go(position + 1)} disabled={isLast}>
-              <span>השאלה הבאה</span>
-              <ChevronLeft className="ms-1.5 size-4" aria-hidden />
-            </Button>
-          </div>
-
-          {canSubmit ? (
-            <div
-              className={cn(
-                "flex flex-wrap items-center justify-between gap-3 rounded-xl border px-3 py-2",
-                // Amber while questions are still open: the bar is an offer,
-                // not the finish line, and green would read as "done".
-                allAnswered || attempt
-                  ? "border-emerald-500/40 bg-emerald-50 dark:bg-emerald-950/20"
-                  : "border-amber-500/40 bg-amber-50 dark:bg-amber-950/20"
-              )}
-            >
-              <p className="text-xs text-foreground/80">
-                {attempt
-                  ? `ניסיון ${attempt.attempts} נשמר · ${attempt.correct}/${attempt.total} (${attempt.score}%)`
-                  : allAnswered
-                    ? `ענית על כל ${total} השאלות. השעון נעצר.`
-                    : `ענית על ${answeredCount} מתוך ${total} שאלות. אפשר לשלוח לבדיקה עכשיו — ${unanswered} שאלות שלא נענו ייחשבו כשגויות.`}
-              </p>
-              {attempt ? (
-                <Button
-                  size="sm"
-                  variant="outline"
-                  nativeButton={false}
-                  render={
-                    <a
-                      href={reviewUrlFor(attempt.answer_id)}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                    />
-                  }
-                >
-                  <ClipboardCheck className="size-4" aria-hidden />
-                  <span className="ms-1.5">פתח שוב את הבדיקה</span>
-                </Button>
-              ) : (
-                <Button
-                  size="sm"
-                  onClick={() =>
-                    unanswered > 0 ? setConfirmOpen(true) : handleSubmit()
-                  }
-                  disabled={submitting}
-                >
-                  {submitting ? (
-                    <Loader2 className="size-4 animate-spin" aria-hidden />
-                  ) : (
-                    <ClipboardCheck className="size-4" aria-hidden />
-                  )}
-                  <span className="ms-1.5">
-                    {submitting ? "שולח…" : "שלח את המבחן לבדיקה"}
-                  </span>
-                </Button>
-              )}
+        {/* The rule spans the whole card; its contents sit on the same 980px
+            measure as everything above. */}
+        <div className="shrink-0 border-t border-border">
+          <div className="mx-auto w-full max-w-[980px] space-y-2 px-5 py-3">
+            <div className="flex items-center justify-between gap-4">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => go(position - 1)}
+                disabled={isFirst}
+              >
+                <ChevronRight className="size-4" aria-hidden />
+                <span className="ms-1.5">שאלה קודמת</span>
+              </Button>
+              <Button
+                size="sm"
+                onClick={() => go(position + 1)}
+                disabled={isLast}
+              >
+                <span>השאלה הבאה</span>
+                <ChevronLeft className="ms-1.5 size-4" aria-hidden />
+              </Button>
             </div>
-          ) : null}
+
+            {canSubmit ? (
+              <div
+                className={cn(
+                  "flex flex-wrap items-center justify-between gap-3 rounded-xl border px-3 py-2",
+                  // Amber while questions are still open: the bar is an offer,
+                  // not the finish line, and green would read as "done".
+                  allAnswered || attempt
+                    ? "border-emerald-500/40 bg-emerald-50 dark:bg-emerald-950/20"
+                    : "border-amber-500/40 bg-amber-50 dark:bg-amber-950/20",
+                )}
+              >
+                <p className="text-xs text-foreground/80">
+                  {attempt
+                    ? `ניסיון ${attempt.attempts} נשמר · ${attempt.correct}/${attempt.total} (${attempt.score}%)`
+                    : allAnswered
+                      ? `ענית על כל ${total} השאלות. השעון נעצר.`
+                      : `ענית על ${answeredCount} מתוך ${total} שאלות. אפשר לשלוח לבדיקה עכשיו — ${unanswered} שאלות שלא נענו ייחשבו כשגויות.`}
+                </p>
+                {attempt ? (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    nativeButton={false}
+                    render={
+                      <a
+                        href={reviewUrlFor(attempt.answer_id)}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                      />
+                    }
+                  >
+                    <ClipboardCheck className="size-4" aria-hidden />
+                    <span className="ms-1.5">פתח שוב את הבדיקה</span>
+                  </Button>
+                ) : (
+                  <Button
+                    size="sm"
+                    onClick={() =>
+                      unanswered > 0 ? setConfirmOpen(true) : handleSubmit()
+                    }
+                    disabled={submitting}
+                  >
+                    {submitting ? (
+                      <Loader2 className="size-4 animate-spin" aria-hidden />
+                    ) : (
+                      <ClipboardCheck className="size-4" aria-hidden />
+                    )}
+                    <span className="ms-1.5">
+                      {submitting ? "שולח…" : "שלח את המבחן לבדיקה"}
+                    </span>
+                  </Button>
+                )}
+              </div>
+            ) : null}
+          </div>
         </div>
       </section>
 

@@ -35,7 +35,7 @@
   },
 
   "selection": {
-    "order": "random",
+    "order": "balanced",
     "min_text_chars": 1500,
     "only_areas": [],
     "exclude_areas": [],
@@ -54,8 +54,8 @@
 
   "exemplars": {
     "file": "exemplars.json",
-    "count": 3,
-    "pick": "spread"
+    "count": 10,
+    "pick": "balanced"
   },
 
   "authoring": {
@@ -82,7 +82,7 @@
     "structure.answer_distribution.sequence": "the cycle. ['א','ב','ג','ד'] spreads evenly; repeat a letter to weight it",
     "structure.variations_360": "how many Q&A cards חשיבה 360° carries. The panel parses whatever it is given; 4 is the current product decision",
     "structure.fact_pattern_chars": "guard rails, not targets — the generator rejects outside this range",
-    "selection.order": "newest | oldest | random — which verdict_list rows are offered first. random draws from the WHOLE table, so a run is not confined to the most recently scraped judgments",
+    "selection.order": "balanced | random | newest | oldest. balanced spreads the batch across judgment_area_id and, weighted higher, the docket category — random over the whole table LOOKS spread and is not: it drew 7 of 11 judgments from תק (small claims), a category that is 22% of the pool, and every small-claims judgment ends with the same appeal-rights paragraph, which is what made 7 of 13 questions ask how to appeal. Counts are seeded from drafts already written so a second batch continues the spread",
     "grounding.mix": "how a batch splits between the two kinds of source. The counts are worked out for the batch and then SHUFFLED, so the ratio is guaranteed while which question is which is not — pure per-question randomness would let a run of ten come out all one kind. Set { verdict: 1, law: 0 } for verdicts only",
     "grounding.law.min_section_chars": "skip statutory sections too short to build a question from. A one-line definition has nothing to test",
     "grounding.law.max_section_chars": "skip sections so long they are really a chapter; the model would pick its own topic out of them and the question stops being about a rule",
@@ -90,8 +90,8 @@
     "selection.min_text_chars": "skip judgments too short to build a question from",
     "selection.only_areas / exclude_areas": "judgment_area_id slugs, e.g. ['banking_law']. Empty = no filter",
     "selection.min_confidence": "null | low | medium | high — the classifier's own confidence in the area label",
-    "exemplars.count": "how many real Bar questions are shown as style anchors. More is better style, more input tokens",
-    "exemplars.pick": "spread | first | random — spread takes them evenly across the paper",
+    "exemplars.count": "how many real Bar questions are shown as style anchors. Cached, so each one costs ~0.006c per question to re-read — 10 is ~15c per 40-question run. Few-shot returns flatten past ~15",
+    "exemplars.pick": "balanced | form | spread | first | random. balanced spreads on TWO axes — stem form and the statute the answer key cites — because diversifying phrasing alone concentrated the subject: 10 form-diverse anchors produced a batch where 8 of 13 questions asked how to appeal a judgment. form is that earlier strategy, kept so the comparison can be re-run. spread is the original positional sample",
     "authoring.difficulty": "match_exemplars | easy | medium | hard",
     "authoring.register": "free text — the voice of the fact pattern",
     "authoring.extra_instructions": "free text appended to the prompt — the main tuning knob",

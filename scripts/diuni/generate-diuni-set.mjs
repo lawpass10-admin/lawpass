@@ -3,7 +3,7 @@
 //   node scripts/diuni/generate-diuni-set.mjs                 # 1 question
 //   node scripts/diuni/generate-diuni-set.mjs --count=6       # mixed per the params
 //   node scripts/diuni/generate-diuni-set.mjs --source=law --count=3
-//   node scripts/diuni/generate-diuni-set.mjs --law=2000798   # one statute only
+//   node scripts/diuni/generate-diuni-set.mjs --law=2000798 --section=112
 //   node scripts/diuni/generate-diuni-set.mjs --case=78546-08-25
 //   node scripts/diuni/generate-diuni-set.mjs --area=banking_law --effort=max
 //   node scripts/diuni/generate-diuni-set.mjs --dry-run       # show the prompt, call nothing
@@ -71,6 +71,10 @@ const DRY_RUN = has("dry-run");
 // --law=<law_id> narrows the statute pool to one law.
 const SOURCE_KIND = flag("source");
 const LAW_ID = flag("law");
+// --section=<n> pins the statutory section, which is what makes a like-for-like
+// re-generation possible: without it --law picks a random section of that law
+// and any comparison is measuring two different questions.
+const SECTION = flag("section");
 if (SOURCE_KIND && !["verdict", "law"].includes(SOURCE_KIND)) {
   console.error("--source must be verdict or law");
   process.exit(1);
@@ -339,15 +343,18 @@ async function fetchVerdicts(client, limit) {
     where.push(`judgment_area_id <> ALL($${args.length})`);
   }
 
+  // `balanced` still draws the CANDIDATE POOL at random — the spread is applied
+  // to that pool in JS, where area and category counts are visible. Ordering by
+  // anything else here would hand the spread a biased pool to start from.
   const order =
-    params.selection.order === "random"
+    params.selection.order === "random" || params.selection.order === "balanced"
       ? "random()"
       : params.selection.order === "oldest"
         ? "decided_on ASC NULLS LAST"
         : "decided_on DESC NULLS LAST";
 
   const { rows } = await client.query(
-    `SELECT verdict_id, case_number, court, doc_type, decided_on,
+    `SELECT verdict_id, case_number, court, doc_type, decided_on, category,
             judgment_area, judgment_area_id, judgment_topic,
             full_text->>'body' AS body, text_chars
        FROM public.verdict_list
@@ -357,6 +364,55 @@ async function fetchVerdicts(client, limit) {
     args
   );
   return rows;
+}
+
+/**
+ * Spread a candidate pool across judgment areas and docket categories.
+ *
+ * WHY THIS EXISTS. `random()` over the whole table looks like it spreads and
+ * does not: the first thirteen questions drew 7 of 11 judgments from
+ * `תק - תביעה קטנה`, a category that is only ~22% of the pool. That mattered
+ * because every small-claims judgment closes with the same appeal-rights
+ * paragraph — "זכות לבקש רשות ערעור... תוך 30 יום" — which is the cleanest
+ * quotable procedural rule in the document, so the grounding requirement steers
+ * the model straight at it. Seven of thirteen questions came out asking how to
+ * challenge a judgment. No amount of exemplar tuning moved that; it is a
+ * property of what the generator was handed.
+ *
+ * CATEGORY IS WEIGHTED ABOVE AREA. Two judgments can sit in different legal
+ * areas and still both be small claims, and it is the docket type — not the
+ * area — that decides which procedural rules are visible in the text.
+ *
+ * Counts are seeded from the drafts already written, so a second batch
+ * continues the spread instead of restarting and re-drawing the same
+ * categories.
+ */
+function spreadByArea(pool, n, seed) {
+  const picked = [];
+  const seenArea = new Map(seed?.areas ?? []);
+  const seenCat = new Map(seed?.categories ?? []);
+  const remaining = [...pool];
+
+  while (picked.length < n && remaining.length > 0) {
+    let bestAt = 0;
+    let bestScore = Infinity;
+    for (let i = 0; i < remaining.length; i++) {
+      const v = remaining[i];
+      const a = seenArea.get(v.judgment_area_id ?? "—") ?? 0;
+      const c = seenCat.get(v.category ?? "—") ?? 0;
+      const score = c * 3 + a;
+      if (score < bestScore) {
+        bestScore = score;
+        bestAt = i;
+        if (score === 0) break;
+      }
+    }
+    const [v] = remaining.splice(bestAt, 1);
+    picked.push(v);
+    seenArea.set(v.judgment_area_id ?? "—", (seenArea.get(v.judgment_area_id ?? "—") ?? 0) + 1);
+    seenCat.set(v.category ?? "—", (seenCat.get(v.category ?? "—") ?? 0) + 1);
+  }
+  return picked;
 }
 
 /**
@@ -384,6 +440,10 @@ async function fetchLawSections(client, limit) {
   if (LAW_ID) {
     args.push(Number(LAW_ID));
     where.push(`l.law_id = $${args.length}`);
+    if (SECTION) {
+      args.push(String(SECTION));
+      where.push(`s->>'number' = $${args.length}`);
+    }
   } else {
     if (cfg.only_law_ids.length) {
       args.push(cfg.only_law_ids);
@@ -538,13 +598,118 @@ const allExemplars = JSON.parse(readFileSync(exemplarsPath, "utf8")).questions;
 
 /** Spread takes them evenly across the paper so the anchors are not all from
  *  one topic — the first three questions of a Bar paper share a subject. */
+/**
+ * The stem form a question takes — "מה הדין?", "איזה מבין ההיגדים הבאים…",
+ * "האם צדק…? מדוע?" and so on. Normalised to the opening words, because that
+ * is what carries the form; the rest of a stem is about the particular facts.
+ */
+function stemForm(q) {
+  return (q.stem || "")
+    .replace(/\s+/g, " ")
+    .replace(/[?.,;:"'״׳]/g, "")
+    .trim()
+    .split(" ")
+    .slice(0, 3)
+    .join(" ");
+}
+
+/**
+ * The instrument a question is about, read off the answer key's citation —
+ * "לחוק ההוצאה לפועל", "לתקנות סדר הדין האזרחי".
+ *
+ * This is the SUBJECT axis, and it exists because form alone was not enough.
+ * Picking ten exemplars diverse in form produced a batch where eight of
+ * thirteen generated questions asked how to appeal a judgment: three of those
+ * ten anchors happened to be forum-and-jurisdiction questions, and the model
+ * followed the subject rather than the phrasing. Diversifying the wording while
+ * concentrating the topic is worse than not diversifying at all.
+ */
+function stemTopic(q) {
+  const m = (q.source_citation || "").match(
+    /ל(?:חוק|תקנות|פקודת|כללי)\s+[^,;]{3,45}/
+  );
+  return m ? m[0].replace(/\s+/g, " ").trim() : "—";
+}
+
+/**
+ * Choose the exemplars the model learns the house style from.
+ *
+ * `balanced` (the default) is a greedy three-axis spread: each pick is the
+ * candidate whose stem form, whose statute, and whose sitting are least
+ * represented among those already chosen. With 106 exemplars across three
+ * sittings that yields ten anchors with ten different forms, close to ten
+ * different instruments, and all three papers represented.
+ *
+ * `form` diversifies phrasing only — kept because it is what produced the
+ * appeal-heavy batch, and the comparison is worth being able to re-run.
+ * `spread`, `first` and `random` are the earlier strategies.
+ */
 function pickExemplars(pool, n) {
-  if (params.exemplars.pick === "first") return pool.slice(0, n);
-  if (params.exemplars.pick === "random") {
+  const mode = params.exemplars.pick;
+  if (mode === "first") return pool.slice(0, n);
+  if (mode === "random") {
     return [...pool].sort(() => Math.random() - 0.5).slice(0, n);
   }
-  const step = Math.max(1, Math.floor(pool.length / n));
-  return Array.from({ length: n }, (_, i) => pool[i * step]).filter(Boolean);
+  if (mode === "spread") {
+    const step = Math.max(1, Math.floor(pool.length / n));
+    return Array.from({ length: n }, (_, i) => pool[i * step]).filter(Boolean);
+  }
+
+  if (mode === "form") {
+    const groups = new Map();
+    for (const q of pool) {
+      const k = stemForm(q);
+      if (!groups.has(k)) groups.set(k, []);
+      groups.get(k).push(q);
+    }
+    const ordered = [...groups.values()].sort((a, b) => b.length - a.length);
+    const picked = [];
+    for (let round = 0; picked.length < n; round++) {
+      let took = false;
+      for (const g of ordered) {
+        if (round < g.length && picked.length < n) {
+          picked.push(g[round]);
+          took = true;
+        }
+      }
+      if (!took) break;
+    }
+    return picked;
+  }
+
+  // balanced: greedy least-represented across three axes.
+  const picked = [];
+  const seenForm = new Map();
+  const seenTopic = new Map();
+  const seenPaper = new Map();
+  const remaining = [...pool];
+  while (picked.length < n && remaining.length > 0) {
+    let bestAt = 0;
+    let bestScore = Infinity;
+    for (let i = 0; i < remaining.length; i++) {
+      const q = remaining[i];
+      const f = seenForm.get(stemForm(q)) ?? 0;
+      const t = seenTopic.get(stemTopic(q)) ?? 0;
+      const s = seenPaper.get(q.paper ?? "—") ?? 0;
+      // Form heaviest, then subject, then sitting. Without the third term the
+      // greedy takes all ten anchors from whichever paper sits first in the
+      // pool — it walks in order and the first sitting alone can satisfy both
+      // other axes. Sittings differ in register and in what they test, and
+      // showing the model only one throws that away.
+      const score = f * 3 + t * 2 + s;
+      if (score < bestScore) {
+        bestScore = score;
+        bestAt = i;
+        if (score === 0) break;
+      }
+    }
+    const [q] = remaining.splice(bestAt, 1);
+    picked.push(q);
+    seenForm.set(stemForm(q), (seenForm.get(stemForm(q)) ?? 0) + 1);
+    seenTopic.set(stemTopic(q), (seenTopic.get(stemTopic(q)) ?? 0) + 1);
+    seenPaper.set(q.paper ?? "—", (seenPaper.get(q.paper ?? "—") ?? 0) + 1);
+  }
+  return picked;
 }
 const exemplars = pickExemplars(allExemplars, params.exemplars.count);
 
@@ -588,7 +753,23 @@ mkdirSync(outDirEarly, { recursive: true });
  */
 const existing = readdirSync(outDirEarly).filter((f) => f.endsWith(".json"));
 const alreadyWritten = existing.length;
-const countFor = (key) => existing.filter((f) => f.startsWith(`${key}-Q`)).length;
+const draftsFor = (key) => existing.filter((f) => f.startsWith(`${key}-Q`));
+const countFor = (key) => draftsFor(key).length;
+
+/**
+ * The next free draft index for a source — HIGHEST existing + 1, not count + 1.
+ *
+ * Counting breaks as soon as a draft is moved or deleted: with only `-Q2` left,
+ * a count of 1 would write `-Q2` again and silently overwrite the very draft
+ * that was kept. Reading the numbers off the filenames is the only version of
+ * this that survives a human curating the folder, which is exactly what the
+ * folder is for.
+ */
+const nextSeqFor = (key) =>
+  draftsFor(key).reduce((max, f) => {
+    const n = Number(f.match(/-Q(\d+)\.json$/)?.[1] ?? 0);
+    return n > max ? n : max;
+  }, 0) + 1;
 
 const FORCE = has("force");
 
@@ -600,6 +781,38 @@ const FORCE = has("force");
  * should produce one more judgment question, not a short batch and no
  * explanation.
  */
+/**
+ * What the drafts already written drew on, so a new batch continues the spread
+ * rather than restarting it. Without this, two batches of six each spread
+ * beautifully within themselves and still hand the paper twelve small-claims
+ * judgments between them.
+ */
+function seedFromDrafts() {
+  const areas = new Map();
+  const categories = new Map();
+  for (const f of existing) {
+    try {
+      const g = JSON.parse(readFileSync(join(outDirEarly, f), "utf8")).generated_from;
+      if (g?.grounding_kind === "law") continue;
+      const a = g?.judgment_area_id ?? "—";
+      const c = g?.category ?? "—";
+      areas.set(a, (areas.get(a) ?? 0) + 1);
+      categories.set(c, (categories.get(c) ?? 0) + 1);
+    } catch {
+      // A draft we cannot read is one we cannot count. Skipping it biases the
+      // spread slightly toward its category, which is far better than aborting
+      // a run over an unparsable file.
+    }
+  }
+  return { areas: [...areas], categories: [...categories] };
+}
+
+// Order the verdict pool so the batch spreads across areas and docket types.
+// `--case=` pins one judgment, so there is nothing to spread.
+if (!CASE && params.selection.order === "balanced" && verdictPool.length > 1) {
+  verdictPool = spreadByArea(verdictPool, verdictPool.length, seedFromDrafts());
+}
+
 const items = [];
 const skipped = [];
 const usedKeys = new Set();
@@ -788,6 +1001,7 @@ for (const [i, item] of items.entries()) {
           verdict_id: item.source.verdict_id,
           case_number: item.source.case_number,
           court: item.source.court,
+          category: item.source.category,
           decided_on: item.source.decided_on,
           judgment_area: item.source.judgment_area,
           judgment_area_id: item.source.judgment_area_id,
@@ -802,6 +1016,16 @@ for (const [i, item] of items.entries()) {
       answer_letter: q.correct_answer,
       answer_placement: target ? (remapped ? "remapped" : "as_asked") : "free",
       exemplars: exemplars.map((e) => e.number),
+      // The settings this draft was written under. Recorded because the draft
+      // NUMBER does not identify the configuration: a brand-new source gets
+      // `-Q1` whatever the params were, so a `-Q1` from today and a `-Q1` from
+      // the first batch look alike on disk and were generated very differently.
+      // measure-spread.mjs reads these rather than guessing from the filename.
+      config: {
+        exemplars_count: exemplars.length,
+        exemplars_pick: params.exemplars.pick,
+        selection_order: params.selection.order,
+      },
       usage: message.usage,
     },
     question: {
@@ -828,7 +1052,7 @@ for (const [i, item] of items.entries()) {
     grounding_quotes: q.grounding_quotes,
   };
 
-  const seq = countFor(key) + 1;
+  const seq = nextSeqFor(key);
   const outPath = join(outDir, `${key}-Q${seq}.json`);
   writeFileSync(outPath, JSON.stringify(payload, null, 2) + "\n", "utf8");
   written++;
