@@ -7,6 +7,9 @@
 //   node scripts/diuni/generate-diuni-set.mjs --case=78546-08-25
 //   node scripts/diuni/generate-diuni-set.mjs --area=banking_law --effort=max
 //   node scripts/diuni/generate-diuni-set.mjs --dry-run       # show the prompt, call nothing
+//   node scripts/diuni/generate-diuni-set.mjs --count=27 --batch-api   # half price
+//   node scripts/diuni/generate-diuni-set.mjs --list-batches           # resumable jobs
+//   node scripts/diuni/generate-diuni-set.mjs --resume=msgbatch_123    # collect one
 //
 // THE SHAPE OF THE THING. One piece of real legal material goes in; one
 // multiple-choice question in the Bar's דין דיוני format comes out, together
@@ -67,6 +70,25 @@ const MODEL = flag("model") ?? params.model.id;
 const CASE = flag("case");
 const AREA = flag("area") ?? (params.selection.only_areas[0] ?? null);
 const DRY_RUN = has("dry-run");
+/**
+ * Send the whole run through the Batch API instead of one live call per
+ * question. Half price on input and output; the questions are identical.
+ *
+ * The trade is different here than it is for mahoti. This script is sequential
+ * and prints each question as it lands, so a long run is watchable and a bad
+ * prompt shows itself on question 1. Batching gives that up: nothing returns
+ * until every question is done. Worth it for a settled prompt and a large
+ * --count, not while iterating.
+ *
+ * ON THE PROMPT CACHE. Unlike mahoti, caching here is real — the exemplar
+ * prefix is ~12.7k tokens and every question of the same kind reuses it. The
+ * cache still applies inside a batch, but requests may start together rather
+ * than in a queue, so more of them can write the prefix instead of reading it.
+ * That claws back part of the discount; it does not reverse it, because the
+ * prefix is a small share of a run dominated by output tokens. See --estimate
+ * on the wrapper for the arithmetic.
+ */
+const BATCH_API = has("batch-api");
 // --source=law|verdict forces one kind for the whole run, overriding the mix.
 // --law=<law_id> narrows the statute pool to one law.
 const SOURCE_KIND = flag("source");
@@ -713,30 +735,106 @@ function pickExemplars(pool, n) {
 }
 const exemplars = pickExemplars(allExemplars, params.exemplars.count);
 
-const dbUrl = process.env.DIRECT_URL || process.env.DATABASE_URL;
-if (!dbUrl) {
-  console.error("no DIRECT_URL or DATABASE_URL in .env.local");
-  process.exit(1);
+// ---------------------------------------------------------------------------
+// Resume
+// ---------------------------------------------------------------------------
+
+/**
+ * --resume=<batch_id> collects a batch that was submitted earlier.
+ *
+ * WHY A MANIFEST AND NOT JUST THE BATCH ID. The results come back keyed by
+ * `custom_id`, which is the question's index — and the index means nothing on
+ * its own, because the sources are chosen fresh on every run: `spreadByArea`
+ * reorders the pool, and anything already on disk is filtered out. Re-selecting
+ * on resume would map index 7 to a different judgment than the one question 7
+ * was written from, and `checkQuotes` would then verify the answer against the
+ * wrong document — rejecting good questions, or passing bad ones.
+ *
+ * So the submission writes down exactly what it sent, and resume reads it back
+ * instead of choosing again. The manifest also carries the ANSWER TARGETS and
+ * the provenance of the run that produced them, because both drift: the letter
+ * rotation is keyed to how many drafts existed at submission time, and drafts
+ * written in between would rotate it somewhere else.
+ */
+const RESUME = flag("resume");
+const batchesDir = join(here, "generated", ".batches");
+const manifestPathFor = (id) => join(batchesDir, `${id}.json`);
+
+// A batch id is a long opaque string that is easy to lose from a terminal that
+// has scrolled. The manifests are the record of what was submitted, so listing
+// them is the way back to one.
+if (has("list-batches")) {
+  const files = existsSync(batchesDir)
+    ? readdirSync(batchesDir).filter((f) => f.endsWith(".json"))
+    : [];
+  if (files.length === 0) {
+    console.log(`no batch manifests in ${batchesDir}`);
+    console.log("Manifests are written when a run is submitted with --batch-api.");
+    process.exit(0);
+  }
+  console.log(`resumable batches in ${batchesDir}:\n`);
+  for (const f of files) {
+    try {
+      const m = JSON.parse(readFileSync(join(batchesDir, f), "utf8"));
+      console.log(
+        `  ${m.batch_id}\n    ${m.items.length} questions, submitted ${m.submitted_at}, ` +
+          `${m.generator.model} effort ${m.generator.effort}`
+      );
+    } catch {
+      console.log(`  ${f} — unreadable manifest`);
+    }
+  }
+  console.log("\nCollect one with --resume=<batch_id>.");
+  process.exit(0);
 }
 
-const client = new pg.Client({
-  connectionString: dbUrl,
-  ssl: { rejectUnauthorized: false },
-});
-await client.connect();
+let manifest = null;
+if (RESUME) {
+  const p = manifestPathFor(RESUME);
+  if (!existsSync(p)) {
+    console.error(`no manifest for batch ${RESUME}.`);
+    console.error(`looked in: ${p}`);
+    console.error("Only batches submitted by this script with --batch-api can be resumed.");
+    process.exit(1);
+  }
+  manifest = JSON.parse(readFileSync(p, "utf8"));
+  console.log(`resuming batch ${RESUME}`);
+  console.log(`  submitted  : ${manifest.submitted_at}`);
+  console.log(`  questions  : ${manifest.items.length}`);
+  console.log(`  model      : ${manifest.generator.model} (effort ${manifest.generator.effort})`);
+  console.log("");
+}
 
 // Candidate pools rather than exactly COUNT rows: material already written is
 // filtered out below, so asking for exactly COUNT would keep returning the same
 // already-used sources. 200 of each is a pool, not a limit on either table.
+//
+// Skipped entirely on resume — the sources are read from the manifest, so there
+// is nothing to select and no reason to open a connection.
 let verdictPool = [];
 let lawPool = [];
-try {
-  const plan = planGrounding(COUNT);
-  if (plan.includes("verdict")) verdictPool = await fetchVerdicts(client, 200);
-  if (plan.includes("law")) lawPool = await fetchLawSections(client, 200);
-  var groundingPlan = plan;
-} finally {
-  await client.end();
+let groundingPlan = [];
+if (!RESUME) {
+  const dbUrl = process.env.DIRECT_URL || process.env.DATABASE_URL;
+  if (!dbUrl) {
+    console.error("no DIRECT_URL or DATABASE_URL in .env.local");
+    process.exit(1);
+  }
+
+  const client = new pg.Client({
+    connectionString: dbUrl,
+    ssl: { rejectUnauthorized: false },
+  });
+  await client.connect();
+
+  try {
+    const plan = planGrounding(COUNT);
+    if (plan.includes("verdict")) verdictPool = await fetchVerdicts(client, 200);
+    if (plan.includes("law")) lawPool = await fetchLawSections(client, 200);
+    groundingPlan = plan;
+  } finally {
+    await client.end();
+  }
 }
 
 const outDirEarly = join(here, "generated");
@@ -807,43 +905,51 @@ function seedFromDrafts() {
   return { areas: [...areas], categories: [...categories] };
 }
 
-// Order the verdict pool so the batch spreads across areas and docket types.
-// `--case=` pins one judgment, so there is nothing to spread.
-if (!CASE && params.selection.order === "balanced" && verdictPool.length > 1) {
-  verdictPool = spreadByArea(verdictPool, verdictPool.length, seedFromDrafts());
-}
+let items = [];
 
-const items = [];
-const skipped = [];
-const usedKeys = new Set();
-const takeFrom = (pool, kind) => {
-  for (const source of pool) {
-    const item = { kind, source };
-    const key = sourceKeyOf(item);
-    if (usedKeys.has(key)) continue;
-    if (!FORCE && countFor(key) > 0) {
-      skipped.push(key);
-      continue;
-    }
-    usedKeys.add(key);
-    return item;
+if (RESUME) {
+  // Straight from the manifest, in submission order. No selection, no spread,
+  // no skip-what-exists: the questions were written from these sources and
+  // index i has to keep meaning what it meant when the batch was sent.
+  items = manifest.items.map(({ kind, source }) => ({ kind, source }));
+} else {
+  // Order the verdict pool so the batch spreads across areas and docket types.
+  // `--case=` pins one judgment, so there is nothing to spread.
+  if (!CASE && params.selection.order === "balanced" && verdictPool.length > 1) {
+    verdictPool = spreadByArea(verdictPool, verdictPool.length, seedFromDrafts());
   }
-  return null;
-};
 
-for (const kind of groundingPlan) {
-  const first = kind === "law" ? lawPool : verdictPool;
-  const second = kind === "law" ? verdictPool : lawPool;
-  const item = takeFrom(first, kind) ?? takeFrom(second, kind === "law" ? "verdict" : "law");
-  if (item) items.push(item);
-}
+  const skipped = [];
+  const usedKeys = new Set();
+  const takeFrom = (pool, kind) => {
+    for (const source of pool) {
+      const item = { kind, source };
+      const key = sourceKeyOf(item);
+      if (usedKeys.has(key)) continue;
+      if (!FORCE && countFor(key) > 0) {
+        skipped.push(key);
+        continue;
+      }
+      usedKeys.add(key);
+      return item;
+    }
+    return null;
+  };
 
-if (skipped.length) {
-  const shown = [...new Set(skipped)].slice(0, 6);
-  console.log(
-    `skipping ${new Set(skipped).size} already generated: ${shown.join(", ")}` +
-      `${new Set(skipped).size > shown.length ? ", …" : ""}  (--force to redo)`
-  );
+  for (const kind of groundingPlan) {
+    const first = kind === "law" ? lawPool : verdictPool;
+    const second = kind === "law" ? verdictPool : lawPool;
+    const item = takeFrom(first, kind) ?? takeFrom(second, kind === "law" ? "verdict" : "law");
+    if (item) items.push(item);
+  }
+
+  if (skipped.length) {
+    const shown = [...new Set(skipped)].slice(0, 6);
+    console.log(
+      `skipping ${new Set(skipped).size} already generated: ${shown.join(", ")}` +
+        `${new Set(skipped).size > shown.length ? ", …" : ""}  (--force to redo)`
+    );
+  }
 }
 
 if (items.length === 0) {
@@ -851,9 +957,43 @@ if (items.length === 0) {
   process.exit(1);
 }
 
+/**
+ * What actually produced these questions, for the draft's provenance.
+ *
+ * On resume this is the manifest's, not this invocation's. A draft collected
+ * today from a batch submitted under effort=xhigh with a different exemplar
+ * pick must say so — stamping it with whatever flags the resume happened to
+ * carry would make the provenance a record of the collection rather than of
+ * the generation, and measure-spread.mjs reads exactly these fields.
+ */
+const GEN = RESUME
+  ? manifest.generator
+  : {
+      model: MODEL,
+      effort: EFFORT,
+      prompt_version: params.generation.prompt_version,
+      exemplars: exemplars.map((e) => e.number),
+      config: {
+        exemplars_count: exemplars.length,
+        exemplars_pick: params.exemplars.pick,
+        selection_order: params.selection.order,
+      },
+    };
+
+/**
+ * The letter this question's answer belongs on.
+ *
+ * Stored per item at submission and replayed on resume. Recomputing would use
+ * today's `alreadyWritten`, and any draft written between submitting and
+ * collecting would rotate the whole run onto different letters than the model
+ * was actually asked for — quietly undoing the answer-distribution balancing.
+ */
+const targetAt = (i) =>
+  RESUME ? (manifest.items[i]?.target ?? null) : targetLetterFor(i, alreadyWritten);
+
 const verdictN = items.filter((i) => i.kind === "verdict").length;
-console.log(`model      : ${MODEL} (effort ${EFFORT})`);
-console.log(`exemplars  : ${exemplars.map((e) => e.number).join(", ")}`);
+console.log(`model      : ${GEN.model} (effort ${GEN.effort})`);
+console.log(`exemplars  : ${GEN.exemplars.join(", ")}`);
 console.log(`grounding  : ${verdictN} verdict, ${items.length - verdictN} law`);
 console.log(`sources    : ${items.map(sourceKeyOf).join(", ")}`);
 console.log(`360 cards  : ${VARIATIONS}`);
@@ -863,7 +1003,7 @@ if (DRY_RUN) {
   const sys = buildSystemPrompt(exemplars, items[0].kind);
   console.log(`=== SYSTEM (${items[0].kind}) ===`);
   for (const b of sys) console.log(b.text.slice(0, 1200) + "\n---");
-  const user = buildUserPrompt(items[0], targetLetterFor(0, alreadyWritten));
+  const user = buildUserPrompt(items[0], targetAt(0));
   console.log("=== USER (head) ===");
   console.log(user.slice(0, 700));
   // The tail matters as much as the head: the judgment sits in the middle, and
@@ -874,7 +1014,7 @@ if (DRY_RUN) {
   console.log(user.slice(-500));
   console.log("\n=== rotation for this run ===");
   items.forEach((it, i) =>
-    console.log(`  [${it.kind}] ${sourceKeyOf(it)} → ${targetLetterFor(i, alreadyWritten) ?? "free"}`)
+    console.log(`  [${it.kind}] ${sourceKeyOf(it)} → ${targetAt(i) ?? "free"}`)
   );
   process.exit(0);
 }
@@ -916,32 +1056,156 @@ function systemFor(kind) {
   return systemByKind.get(kind);
 }
 
+/** The request for one question, independent of how it is sent. */
+function buildRequestParams(item, target) {
+  return {
+    model: MODEL,
+    max_tokens: params.model.max_tokens,
+    thinking: { type: "adaptive" },
+    output_config: {
+      effort: EFFORT,
+      format: helpers.zodOutputFormat(QuestionSchema),
+    },
+    system: systemFor(item.kind),
+    messages: [{ role: "user", content: buildUserPrompt(item, target) }],
+  };
+}
+
+/**
+ * Run every question as one Batch API job.
+ *
+ * Returns index -> {ok:true, message} | {ok:false, error}, so the loop below
+ * keeps its existing per-question validation, rejection and write path exactly
+ * as it is. Only the acquisition of `message` changes; nothing downstream of it
+ * knows which transport produced it.
+ *
+ * The targets are computed here, up front, and that is safe: targetLetterFor
+ * keys off the question's index and `alreadyWritten`, which is fixed before the
+ * run starts. It does not depend on how many questions were accepted, so
+ * computing all of them ahead of time gives the same letters the sequential
+ * path would have produced.
+ *
+ * A per-request failure is one bad index, not a dead run — the loop reports it
+ * and moves on, the same as a failed live call.
+ */
+async function runBatchApi(items, existingBatchId) {
+  const idFor = (i) => `diuni-q${i}`;
+
+  let batch;
+  if (existingBatchId) {
+    batch = await anthropic.messages.batches.retrieve(existingBatchId);
+    console.log(`batch ${batch.id} is ${batch.processing_status}.`);
+  } else {
+    const requests = items.map((item, i) => ({
+      custom_id: idFor(i),
+      params: buildRequestParams(item, targetAt(i)),
+    }));
+
+    console.log(`submitting ${requests.length} questions as one batch job…`);
+    batch = await anthropic.messages.batches.create({ requests });
+
+    // Written BEFORE anything is awaited on the batch, and this ordering is the
+    // point of the file: from here on the work is billable and only the
+    // manifest can turn it back into drafts. A manifest written after a
+    // successful poll would be missing in exactly the case it exists for.
+    mkdirSync(batchesDir, { recursive: true });
+    writeFileSync(
+      manifestPathFor(batch.id),
+      JSON.stringify(
+        {
+          batch_id: batch.id,
+          submitted_at: new Date().toISOString(),
+          generator: GEN,
+          items: items.map((item, i) => ({
+            kind: item.kind,
+            target: targetAt(i),
+            // The whole source row, not a reference to it. Quote verification
+            // reads the source text, so a manifest holding only an id would
+            // need the database back — and the reason to resume is usually
+            // that something went wrong the first time.
+            source: item.source,
+          })),
+        },
+        null,
+        2
+      ) + "\n",
+      "utf8"
+    );
+
+    console.log(`batch ${batch.id} accepted — polling every 30s.`);
+    console.log(`if this is interrupted, collect it later with:`);
+    console.log(`  node scripts/diuni/generate-diuni-set.mjs --resume=${batch.id}`);
+  }
+
+  const startedAt = Date.now();
+  const mins = () => `${((Date.now() - startedAt) / 60000).toFixed(1)}m`;
+  let status = batch;
+  while (status.processing_status !== "ended") {
+    await new Promise((r) => setTimeout(r, 30_000));
+    status = await anthropic.messages.batches.retrieve(batch.id);
+    const c = status.request_counts ?? {};
+    process.stdout.write(
+      `\r  ${status.processing_status}: ${c.succeeded ?? 0} done, ` +
+        `${c.processing ?? 0} running, ${c.errored ?? 0} errored [${mins()}]   `
+    );
+  }
+  process.stdout.write("\n");
+
+  // Default everything to a failure so a custom_id that never comes back —
+  // which is what expiry looks like — reads as failed rather than as missing.
+  const out = new Map(
+    items.map((_, i) => [i, { ok: false, error: "no result returned for this question" }])
+  );
+  for await (const entry of await anthropic.messages.batches.results(batch.id)) {
+    const i = Number(String(entry.custom_id).replace("diuni-q", ""));
+    if (!out.has(i)) continue;
+    const result = entry.result;
+    out.set(
+      i,
+      result.type === "succeeded"
+        ? { ok: true, message: result.message }
+        : {
+            ok: false,
+            error: `batch request ${result.type}: ${
+              result.error?.error?.message ?? result.error?.type ?? result.type
+            }`,
+          }
+    );
+  }
+  return { results: out, seconds: ((Date.now() - startedAt) / 1000).toFixed(0) };
+}
+
+// When batching, every call is made and collected before the loop starts; the
+// loop then validates and writes exactly as it does for live calls.
+const batched = BATCH_API || RESUME ? await runBatchApi(items, RESUME) : null;
+
 let written = 0;
 for (const [i, item] of items.entries()) {
-  const target = targetLetterFor(i, alreadyWritten);
+  const target = targetAt(i);
   const key = sourceKeyOf(item);
   const label = `${i + 1}/${items.length} [${item.kind}] ${key}`;
-  process.stdout.write(`[${label}] generating${target ? ` (answer → ${target})` : ""}… `);
+  process.stdout.write(
+    `[${label}] ${batched ? "checking" : "generating"}${target ? ` (answer → ${target})` : ""}… `
+  );
   const started = Date.now();
 
   let message;
-  try {
-    const stream = anthropic.messages.stream({
-      model: MODEL,
-      max_tokens: params.model.max_tokens,
-      thinking: { type: "adaptive" },
-      output_config: {
-        effort: EFFORT,
-        format: helpers.zodOutputFormat(QuestionSchema),
-      },
-      system: systemFor(item.kind),
-      messages: [{ role: "user", content: buildUserPrompt(item, target) }],
-    });
-    message = await stream.finalMessage();
-  } catch (error) {
-    const detail = error?.error?.error?.message ?? error?.message ?? String(error);
-    console.log(`FAILED — ${detail}`);
-    continue;
+  if (batched) {
+    const outcome = batched.results.get(i);
+    if (!outcome.ok) {
+      console.log(`FAILED — ${outcome.error}`);
+      continue;
+    }
+    message = outcome.message;
+  } else {
+    try {
+      const stream = anthropic.messages.stream(buildRequestParams(item, target));
+      message = await stream.finalMessage();
+    } catch (error) {
+      const detail = error?.error?.error?.message ?? error?.message ?? String(error);
+      console.log(`FAILED — ${detail}`);
+      continue;
+    }
   }
 
   if (message.stop_reason === "refusal") {
@@ -974,9 +1238,14 @@ for (const [i, item] of items.entries()) {
   // to expose and no case number to leak.
   const leaks = item.kind === "verdict" ? checkAnonymity(q, item.source) : [];
 
-  const secs = ((Date.now() - started) / 1000).toFixed(0);
+  // In batch mode every question arrived at once, so `started` measures the
+  // validation and nothing else. Report the job's wall time and label it,
+  // rather than printing a per-question "0s" that is true of nothing.
+  const secs = batched
+    ? `${batched.seconds}s (whole batch)`
+    : `${((Date.now() - started) / 1000).toFixed(0)}s`;
   if (answerProblem || badQuotes.length || leaks.length) {
-    console.log(`REJECTED after ${secs}s`);
+    console.log(`REJECTED after ${secs}`);
     if (answerProblem) console.log(`  answer key : ${answerProblem}`);
     for (const b of badQuotes) console.log(`  quote not found verbatim: "${b.slice(0, 80)}…"`);
     for (const l of leaks) console.log(`  leaks judgment identifier: ${l}`);
@@ -1010,22 +1279,18 @@ for (const [i, item] of items.entries()) {
   const payload = {
     generated_from: {
       ...provenance,
-      model: MODEL,
-      effort: EFFORT,
-      prompt_version: params.generation.prompt_version,
+      model: GEN.model,
+      effort: GEN.effort,
+      prompt_version: GEN.prompt_version,
       answer_letter: q.correct_answer,
       answer_placement: target ? (remapped ? "remapped" : "as_asked") : "free",
-      exemplars: exemplars.map((e) => e.number),
+      exemplars: GEN.exemplars,
       // The settings this draft was written under. Recorded because the draft
       // NUMBER does not identify the configuration: a brand-new source gets
       // `-Q1` whatever the params were, so a `-Q1` from today and a `-Q1` from
       // the first batch look alike on disk and were generated very differently.
       // measure-spread.mjs reads these rather than guessing from the filename.
-      config: {
-        exemplars_count: exemplars.length,
-        exemplars_pick: params.exemplars.pick,
-        selection_order: params.selection.order,
-      },
+      config: GEN.config,
       usage: message.usage,
     },
     question: {
@@ -1057,7 +1322,7 @@ for (const [i, item] of items.entries()) {
   writeFileSync(outPath, JSON.stringify(payload, null, 2) + "\n", "utf8");
   written++;
   console.log(
-    `ok in ${secs}s — answer ${q.correct_answer}${remapped ? " (remapped)" : ""}, ` +
+    `ok in ${secs} — answer ${q.correct_answer}${remapped ? " (remapped)" : ""}, ` +
       `${q.grounding_quotes.length} quotes verified → ${outPath}`
   );
 }

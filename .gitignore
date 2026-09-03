@@ -44,6 +44,18 @@ supabase/.temp/
 # scripts/ingestion/tmp/ are local-only.
 scripts/ingestion/tmp/
 
+# diuni Batch API manifests — what one submitted job sent, so --resume can
+# collect it later. The generated drafts beside them ARE committed; these are
+# not: each embeds the full text of every judgment in the batch, which is
+# megabytes, already in verdict_list, and useless once the batch is collected.
+scripts/diuni/generated/.batches/
+
+# open-question Batch API run dirs — the per-stage request envelopes and the
+# state.json that --resume reads. Same reasoning: each envelope carries the full
+# prompt (source text and quote bank) for one call, they are large, and they are
+# worthless once the run is collected. The generated sets beside them ARE committed.
+scripts/ingestion/open_questions/generated/.batches/
+
 # python bytecode cache (from running scripts/ingestion/*.py)
 __pycache__/
 

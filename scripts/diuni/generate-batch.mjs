@@ -5,6 +5,7 @@
 //   node scripts/diuni/generate-batch.mjs --go            # actually generate
 //   node scripts/diuni/generate-batch.mjs --target=27 --go
 //   node scripts/diuni/generate-batch.mjs --target=27 --effort=xhigh --go
+//   node scripts/diuni/generate-batch.mjs --target=27 --batch-api --go   # half price
 //
 // SAFE BY DEFAULT: without --go this reports what it would generate and what it
 // would cost, and calls nothing. The generator bills real money per question;
@@ -39,6 +40,9 @@ const flag = (n) => {
   return hit ? hit.slice(n.length + 3) : null;
 };
 const GO = argv.includes("--go");
+// Passed straight through to the generator. Half price on input and output,
+// for a run that returns everything at once instead of question by question.
+const BATCH_API = argv.includes("--batch-api");
 const TARGET = Number(flag("target") ?? 27);
 const EFFORT = flag("effort");
 const MAX_ROUNDS = Number(flag("max-rounds") ?? 6);
@@ -98,17 +102,38 @@ function estimateCost(n) {
 
   const inTok = nV * a.verdict.input + nL * a.law.input;
   const outTok = nV * a.verdict.out + nL * a.law.out;
-  // Two cache writes (one per grounding kind), the rest reads.
-  const cw = 2 * EXEMPLAR_PREFIX_TOKENS;
-  const cr = Math.max(0, n - 2) * EXEMPLAR_PREFIX_TOKENS;
 
-  const dollars =
-    (inTok / 1e6) * RATES.input +
-    (outTok / 1e6) * RATES.output +
-    (cw / 1e6) * RATES.cacheWrite +
-    (cr / 1e6) * RATES.cacheRead;
+  // The Batch API is half price on every token type.
+  const r = BATCH_API
+    ? Object.fromEntries(Object.entries(RATES).map(([k, v]) => [k, v / 2]))
+    : RATES;
 
-  return { nV, nL, outTok, dollars };
+  // Cache accounting, and why batching makes it a range rather than a number.
+  //
+  // Sequential: the first question of each grounding kind writes the exemplar
+  // prefix and every later one reads it — two writes, n-2 reads.
+  //
+  // Batched: the requests are handed over together rather than queued behind
+  // one another, so a prefix can be written by several before any of them has
+  // finished writing it. The best case is still two writes; the worst is one
+  // per question. Both are priced, because the truth sits between them and
+  // depends on scheduling we do not control.
+  const priceWith = (writes) => {
+    const cw = writes * EXEMPLAR_PREFIX_TOKENS;
+    const cr = Math.max(0, n - writes) * EXEMPLAR_PREFIX_TOKENS;
+    return (
+      (inTok / 1e6) * r.input +
+      (outTok / 1e6) * r.output +
+      (cw / 1e6) * r.cacheWrite +
+      (cr / 1e6) * r.cacheRead
+    );
+  };
+
+  const dollars = priceWith(2);
+  // Only batching can degrade to all-writes; the sequential path cannot.
+  const dollarsHigh = BATCH_API ? priceWith(n) : dollars;
+
+  return { nV, nL, outTok, dollars, dollarsHigh };
 }
 
 // --------------------------------------------------------------- plan
@@ -124,9 +149,33 @@ console.log(`grounding mix        : ~${est.nV} verdict, ~${est.nL} law`);
 console.log(`selection            : ${params.selection.order} (spread across area + docket category)`);
 console.log(`exemplars            : ${params.exemplars.count}, pick=${params.exemplars.pick}`);
 console.log(`est. output tokens   : ${Math.round(est.outTok).toLocaleString()}`);
-console.log(`EST. COST            : $${est.dollars.toFixed(2)}  (+~10% for rejected rounds)`);
-console.log(`EST. TIME            : ~${Math.round((TARGET * 115) / 60)} min`);
+console.log(
+  `transport            : ${
+    BATCH_API
+      ? "Batch API — half price, returns all at once"
+      : "live streamed calls at list price (--batch-api halves it)"
+  }`
+);
+console.log(
+  `EST. COST            : ${
+    est.dollarsHigh > est.dollars
+      ? `$${est.dollars.toFixed(2)}–$${est.dollarsHigh.toFixed(2)}  (range = how much of the cached prefix is rewritten)`
+      : `$${est.dollars.toFixed(2)}`
+  }  (+~10% for rejected rounds)`
+);
+console.log(
+  `EST. TIME            : ~${Math.round((TARGET * 115) / 60)} min` +
+    (BATCH_API ? " of model work, delivered in one go at the end" : "")
+);
 console.log("");
+
+if (BATCH_API) {
+  console.log("If a round is interrupted while polling, the work is still running");
+  console.log("and still billed. Collect it rather than paying for it twice:");
+  console.log("  node scripts/diuni/generate-diuni-set.mjs --list-batches");
+  console.log("  node scripts/diuni/generate-diuni-set.mjs --resume=<batch_id>");
+  console.log("");
+}
 
 if (!GO) {
   console.log("DRY RUN — nothing generated, nothing billed.");
@@ -147,6 +196,7 @@ for (let round = 1; round <= MAX_ROUNDS; round++) {
     join(here, "generate-diuni-set.mjs"),
     `--count=${remaining}`,
     ...(EFFORT ? [`--effort=${EFFORT}`] : []),
+    ...(BATCH_API ? ["--batch-api"] : []),
   ];
   const res = spawnSync(process.execPath, args, {
     cwd: appRoot,

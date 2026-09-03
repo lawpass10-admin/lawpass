@@ -186,7 +186,19 @@ const ANGLE_SCHEMA = {
  * @param {string[]} [args.forbiddenTerms] names from the source that must not reappear
  * @param {string} [args.effort]          low | medium | high | xhigh | max
  */
-async function generateAngle({
+/**
+ * Build the request for one angle, without sending it.
+ *
+ * Split out of generateAngle so the same request can go down two transports:
+ * a live streamed call, or the Batch API, where every request in a run is built
+ * first and submitted together. Deliberately does NOT call getClient() — a
+ * batch run builds many requests and then needs exactly one client.
+ *
+ * Returns `{ request, context }`. The context carries what processAngleMessage
+ * needs to validate the reply and is not part of the API payload; a batched run
+ * holds it while the job is in flight.
+ */
+function buildAngleRequest({
   source,
   bank,
   angleLetter = "A",
@@ -194,7 +206,6 @@ async function generateAngle({
   forbiddenTerms = [],
   params: paramsOverride = {},
 }) {
-  const client = getClient();
   const params = mergeParams(paramsOverride);
   const systemPrompt = buildSystemPrompt(params.authoring);
 
@@ -250,18 +261,31 @@ async function generateAngle({
     sourceTextBlock.cache_control = { type: "ephemeral" };
   }
 
-  const stream = client.messages.stream({
-    model: params.model.id,
-    max_tokens: params.model.max_tokens,
-    system: [{ type: "text", text: systemPrompt }, sourceTextBlock],
-    output_config: {
-      effort: params.model.effort,
-      format: { type: "json_schema", schema: ANGLE_SCHEMA },
+  return {
+    request: {
+      model: params.model.id,
+      max_tokens: params.model.max_tokens,
+      system: [{ type: "text", text: systemPrompt }, sourceTextBlock],
+      output_config: {
+        effort: params.model.effort,
+        format: { type: "json_schema", schema: ANGLE_SCHEMA },
+      },
+      messages: [{ role: "user", content: userInstruction }],
     },
-    messages: [{ role: "user", content: userInstruction }],
-  });
+    context: { params, bank, forbiddenTerms, source, angleLetter },
+  };
+}
 
-  const message = await stream.finalMessage();
+/**
+ * Turn a finished message into the angle result, or throw why it cannot be.
+ *
+ * Both transports land here with the same object — the Batch API returns a
+ * message of exactly the shape `stream.finalMessage()` resolves to — so the
+ * refusal, truncation, placeholder-repair and validation rules are written once
+ * and cannot drift between a live run and a batched one.
+ */
+function processAngleMessage(message, context) {
+  const { params, bank, forbiddenTerms, source, angleLetter } = context;
 
   if (message.stop_reason === "refusal") {
     throw new Error(`[ai] request refused: ${JSON.stringify(message.stop_details)}`);
@@ -306,8 +330,25 @@ async function generateAngle({
   };
 }
 
+/**
+ * Write one angle: build the request, stream it, process the reply.
+ *
+ * Unchanged signature and unchanged return value — this is now the composition
+ * of the two halves above rather than a third copy of the logic, so the live
+ * path and the batched path cannot diverge.
+ */
+async function generateAngle(args) {
+  const client = getClient();
+  const { request, context } = buildAngleRequest(args);
+  const stream = client.messages.stream(request);
+  const message = await stream.finalMessage();
+  return processAngleMessage(message, context);
+}
+
 module.exports = {
   generateAngle,
+  buildAngleRequest,
+  processAngleMessage,
   mergeParams,
   buildSystemPrompt,
   DEFAULT_PARAMS,

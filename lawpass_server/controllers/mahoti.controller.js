@@ -11,6 +11,7 @@
 // is worth is decided on this side of the wire.
 
 const db = require("../db/mahoti");
+const { breakdownByTopic } = require("../lib/marking/topic-breakdown");
 const { adminClient } = require("../config/supabase");
 
 /**
@@ -44,6 +45,10 @@ function markSubmission(answerKey, given) {
       // That is a content bug, not a candidate mistake — it is recorded as
       // not-correct and left visible in the row rather than thrown away.
       is_correct: letter !== null && letter === entry.correct_letter,
+      // The subject this question belongs to, carried onto the marked entry
+      // so the stored answer_body can be re-grouped later without re-reading
+      // the paper — a sitting stays explainable after the fact.
+      topic: entry.topic ?? null,
     };
   });
 
@@ -51,9 +56,17 @@ function markSubmission(answerKey, given) {
   const answered = marked.filter((m) => m.letter !== null).length;
   const correct = marked.filter((m) => m.is_correct).length;
 
+  const byTopic = breakdownByTopic(marked);
+
   return {
     // The counts travel with the answers, in the same jsonb, so "30 of 40" can
     // be read off the row without walking forty entries to re-count it.
+    //
+    // The per-subject rollup is deliberately NOT stored beside them. Every
+    // entry in `given` already carries its own `topic`, so the breakdown is
+    // recomputable from the row at any time; storing it as well would be a
+    // second copy of derived data that a later change to the grouping would
+    // silently leave stale on every sitting already filed.
     answerBody: { given: marked, correct, answered, total },
     // answer_score is the headline percentage — correct out of the paper's
     // total, one decimal. Computed once and stored, so a report and a screen
@@ -62,6 +75,7 @@ function markSubmission(answerKey, given) {
     correct,
     answered,
     total,
+    byTopic,
   };
 }
 
@@ -112,6 +126,9 @@ async function submitAttempt(req, res) {
       correct: marking.correct,
       answered: marking.answered,
       total: marking.total,
+      // Correct-out-of-total per subject, weakest first. Rendered as the
+      // score table before the candidate opens the full solution.
+      by_topic: marking.byTopic,
       created_at: row.created_at,
     },
   });

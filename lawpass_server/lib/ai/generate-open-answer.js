@@ -473,7 +473,12 @@ function buildAnswerPrompt({ question, bank, rubricText, exemplars, params }) {
   ];
 }
 
-async function generateAnswer({
+/**
+ * Build the answer request without sending it. See buildAngleRequest in
+ * generate-open-question.js — same split, same reason: one request definition,
+ * two transports.
+ */
+function buildAnswerRequest({
   question,
   bank,
   rubricText,
@@ -481,36 +486,41 @@ async function generateAnswer({
   forbiddenTerms = [],
   params: paramsOverride = {},
 }) {
-  const client = getClient();
   const params = mergeAnswerParams(paramsOverride);
 
-  const stream = client.messages.stream({
-    model: params.model.id,
-    max_tokens: params.model.max_tokens,
-    system: buildAnswerPrompt({ question, bank, rubricText, exemplars, params }),
-    output_config: {
-      effort: params.model.effort,
-      format: { type: "json_schema", schema: ANSWER_SCHEMA },
-    },
-    messages: [
-      {
-        role: "user",
-        content:
-          "Write the model answer for this question, satisfying the rubric. " +
-          "Use only the attached sources, through their placeholders.\n\n" +
-          // Spelled out per question for the same reason as in the question
-          // generator: the rules illustrate the syntax with {{V1}}, and a bank
-          // suffixed per question invites the model to write the example's
-          // shape instead of the real id.
-          `The placeholder ids for this question are exactly: ` +
-          `${bank.map((q) => `{{${q.id}}}`).join(", ")}. Write them verbatim, ` +
-          `suffix included — {{V1}} in the rules is an illustration of the ` +
-          `SYNTAX, not an id you may use.`,
+  return {
+    request: {
+      model: params.model.id,
+      max_tokens: params.model.max_tokens,
+      system: buildAnswerPrompt({ question, bank, rubricText, exemplars, params }),
+      output_config: {
+        effort: params.model.effort,
+        format: { type: "json_schema", schema: ANSWER_SCHEMA },
       },
-    ],
-  });
+      messages: [
+        {
+          role: "user",
+          content:
+            "Write the model answer for this question, satisfying the rubric. " +
+            "Use only the attached sources, through their placeholders.\n\n" +
+            // Spelled out per question for the same reason as in the question
+            // generator: the rules illustrate the syntax with {{V1}}, and a bank
+            // suffixed per question invites the model to write the example's
+            // shape instead of the real id.
+            `The placeholder ids for this question are exactly: ` +
+            `${bank.map((q) => `{{${q.id}}}`).join(", ")}. Write them verbatim, ` +
+            `suffix included — {{V1}} in the rules is an illustration of the ` +
+            `SYNTAX, not an id you may use.`,
+        },
+      ],
+    },
+    context: { params, question, bank, exemplars, forbiddenTerms },
+  };
+}
 
-  const message = await stream.finalMessage();
+/** Validate a finished answer message. Shared by both transports. */
+function processAnswerMessage(message, context) {
+  const { params, question, bank, exemplars, forbiddenTerms } = context;
 
   if (message.stop_reason === "refusal") {
     throw new Error(`[ai] request refused: ${JSON.stringify(message.stop_details)}`);
@@ -569,8 +579,22 @@ async function generateAnswer({
   };
 }
 
+/**
+ * Write one model answer. Same signature and same return value as before —
+ * now the composition of the two halves above.
+ */
+async function generateAnswer(args) {
+  const client = getClient();
+  const { request, context } = buildAnswerRequest(args);
+  const stream = client.messages.stream(request);
+  const message = await stream.finalMessage();
+  return processAnswerMessage(message, context);
+}
+
 module.exports = {
   generateAnswer,
+  buildAnswerRequest,
+  processAnswerMessage,
   buildAnswerPrompt,
   findIncompleteAnswer,
   mergeAnswerParams,

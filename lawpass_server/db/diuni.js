@@ -21,12 +21,38 @@ const DIUNI_QUESTIONS = "diuni_questions";
 const DIUNI_ANSWERS = "diuni_answers";
 
 /**
- * The answer key for one paper: every question's number and its correct
- * letter, in the order the paper stores them.
+ * The subject a diuni question belongs to, for the per-topic breakdown.
+ *
+ * TWO KINDS OF QUESTION, TWO KINDS OF SUBJECT. A statute-grounded question is
+ * about a named law, and that name is already on the question's own `sources`.
+ * A judgment-grounded one is not about a law at all — its subject is the area
+ * of practice the judgment sits in, which lives on `verdict_list` and reaches
+ * here through `areaByVerdict`.
+ *
+ * Falls back to null rather than to a guess. An unclassified question is shown
+ * under one honest "ללא סיווג" heading by the caller; inventing a subject for
+ * it would put a wrong number in a table the candidate is using to decide what
+ * to revise.
+ */
+function topicOf(question, areaByVerdict) {
+  const source = (question.sources ?? [])[0];
+  if (!source) return null;
+  if (source.kind === "law") return source.law_name ?? null;
+  return areaByVerdict.get(source.verdict_id) ?? null;
+}
+
+/**
+ * The answer key for one paper: every question's number, its correct letter,
+ * and the subject it belongs to, in the order the paper stores them.
  *
  * Returns null when the paper does not exist or has no questions yet — a row
  * is written notebook-first, so `questions IS NULL` is a normal intermediate
  * state rather than an error.
+ *
+ * The subject is resolved HERE, at marking time, rather than being stored on
+ * the paper: it is a property of the source material, and reading it from the
+ * table that owns it means a judgment reclassified later is reflected in the
+ * next sitting without a backfill.
  */
 async function getAnswerKey(admin, questionId) {
   const { data, error } = await admin
@@ -40,9 +66,35 @@ async function getAnswerKey(admin, questionId) {
   const questions = data?.questions?.questions;
   if (!Array.isArray(questions) || questions.length === 0) return null;
 
+  // One join for the whole paper, not one per question. Only judgment-grounded
+  // questions carry a verdict id, so a paper built entirely from statutes makes
+  // no second query at all.
+  const verdictIds = [
+    ...new Set(
+      questions
+        .map((q) => (q.sources ?? [])[0])
+        .filter((s) => s && s.kind !== "law" && s.verdict_id)
+        .map((s) => s.verdict_id)
+    ),
+  ];
+
+  const areaByVerdict = new Map();
+  if (verdictIds.length > 0) {
+    const { data: verdicts, error: vError } = await admin
+      .from("verdict_list")
+      .select("verdict_id, judgment_area")
+      .in("verdict_id", verdictIds);
+
+    if (vError) throw vError;
+    for (const v of verdicts ?? []) {
+      if (v.judgment_area) areaByVerdict.set(v.verdict_id, v.judgment_area);
+    }
+  }
+
   return questions.map((q) => ({
     number: q.number,
     correct_letter: q.correct_answer ?? null,
+    topic: topicOf(q, areaByVerdict),
   }));
 }
 

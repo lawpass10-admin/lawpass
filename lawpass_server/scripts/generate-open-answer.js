@@ -33,7 +33,12 @@ const { startTimer, mmss } = require("../lib/progress");
 
 // Stamped at load, so even a run that dies reports how long it cost.
 const RUN_STARTED = Date.now();
-const { generateAnswer } = require("../lib/ai/generate-open-answer");
+const {
+  generateAnswer,
+  buildAnswerRequest,
+  processAnswerMessage,
+} = require("../lib/ai/generate-open-answer");
+const { runStage } = require("../lib/ai/batch-stage");
 
 const QUESTION_PARAMS_FILE = "llm-params.json";
 const ANSWER_PARAMS_FILE = "llm-params-answers.json";
@@ -176,15 +181,17 @@ async function main() {
   console.log(`\nwriting the answer — this can take a few minutes...\n`);
 
   const stopTimer = startTimer("writing");
-  const result = await generateAnswer({
-    question,
-    bank,
-    rubricText,
-    exemplars,
-    forbiddenTerms,
-    params,
+  // One live call, unless the Batch API flags are set. See lib/ai/batch-stage.js.
+  const staged = await runStage({
+    flags,
+    args: { question, bank, rubricText, exemplars, forbiddenTerms, params },
+    build: buildAnswerRequest,
+    process: processAnswerMessage,
+    generate: generateAnswer,
   });
   const seconds = stopTimer();
+  if (staged.emitted) return;
+  const result = staged.result;
 
   const u = result.usage || {};
   console.log(

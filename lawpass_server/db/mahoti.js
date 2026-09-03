@@ -43,6 +43,13 @@ async function getAnswerKey(admin, questionId) {
   return questions.map((q) => ({
     number: q.number,
     correct_letter: q.correct_answer ?? null,
+    // The law this question was built from, for the per-topic breakdown shown
+    // with the score. Every mahoti question is grounded in the legislation
+    // notebook, so unlike diuni there is no second kind of subject and no join
+    // — the law name is already on the question's own `sources`. Null where a
+    // question somehow carries none; the caller groups those under one honest
+    // "ללא סיווג" heading rather than guessing.
+    topic: (q.sources ?? [])[0]?.law_name ?? null,
   }));
 }
 

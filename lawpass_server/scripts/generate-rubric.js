@@ -42,7 +42,14 @@ if (envFile) dotenv.config({ path: envFile });
 const { startTimer, mmss } = require("../lib/progress");
 
 const RUN_STARTED = Date.now();
-const { generateRubric, SCALE, TOTAL_POINTS } = require("../lib/ai/generate-rubric");
+const {
+  generateRubric,
+  buildRubricRequest,
+  processRubricMessage,
+  SCALE,
+  TOTAL_POINTS,
+} = require("../lib/ai/generate-rubric");
+const { runStage } = require("../lib/ai/batch-stage");
 
 const QUESTION_PARAMS_FILE = "llm-params.json";
 const RUBRIC_PARAMS_FILE = "llm-params-rubric.json";
@@ -174,8 +181,21 @@ async function main() {
 
   const stopTimer = startTimer("writing");
   let result;
+  let emitted = false;
   try {
-    result = await generateRubric({ question, answer, exemplarRubricText, params });
+    // One live call, unless the Batch API flags are set. The crash-recording
+    // below covers this the same way it covered the direct call: a batched
+    // reply that cannot be processed is still a stage that failed, and it
+    // leaves the same trace on disk.
+    const staged = await runStage({
+      flags,
+      args: { question, answer, exemplarRubricText, params },
+      build: buildRubricRequest,
+      process: processRubricMessage,
+      generate: generateRubric,
+    });
+    emitted = Boolean(staged.emitted);
+    result = staged.result;
   } catch (err) {
     // A throw here is not a rejected rubric — it is the call itself failing:
     // an API error, output truncated at max_tokens, a refusal. Nothing was
@@ -212,6 +232,7 @@ async function main() {
     throw err;
   }
   const seconds = stopTimer();
+  if (emitted) return;
 
   const u = result.usage || {};
   console.log(

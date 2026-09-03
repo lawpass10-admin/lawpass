@@ -15,6 +15,7 @@
  */
 
 import { apiEnabled, apiGetJson, apiPostJson } from "@/lib/api/client";
+import type { TopicScore } from "@/lib/scoring/topic-score";
 
 export type DiuniLetter = "א" | "ב" | "ג" | "ד";
 
@@ -47,6 +48,12 @@ export type DiuniAttempt = {
   correct?: number;
   answered?: number;
   total?: number;
+  /**
+   * Correct out of total per subject, weakest first — the table shown with
+   * the score before the full solution is opened. Present on a freshly filed
+   * sitting and absent from the listing, which reads only the score column.
+   */
+  by_topic?: TopicScore[];
   created_at: string;
 };
 

@@ -49,6 +49,9 @@
 //   --max-pages=N     largest acceptable notebook, A4 pages   (default 90)
 //   --batch=N         questions per model call                (default 5)
 //   --concurrency=N   model calls in flight at once           (default 4)
+//   --batch-api       send each wave through the Batch API — half price on
+//                     input and output, no effect on the questions. Trades
+//                     live progress for cost: a wave returns all at once.
 //   --seed=N          makes the law sample reproducible       (default: random)
 //   --model=ID        Claude model id                         (default claude-opus-5)
 //   --effort=LEVEL    low | medium | high | xhigh | max       (default high)
@@ -88,6 +91,7 @@ const KNOWN_FLAGS = new Set([
   "min-pages",
   "max-pages",
   "batch",
+  "batch-api",
   "concurrency",
   "seed",
   "model",
@@ -144,6 +148,25 @@ if (MIN_PAGES > MAX_PAGES) {
 }
 const BATCH_SIZE = intArg(args.batch, 5, { max: 10, name: "batch" });
 const CONCURRENCY = intArg(args.concurrency, 4, { max: 10, name: "concurrency" });
+/**
+ * Send each wave through the Batch API instead of as live streamed calls.
+ *
+ * Half price on both input and output, for one trade: a batch is not
+ * interactive. The whole wave is submitted, then polled, and nothing comes back
+ * until every request in it has finished — so a wave takes as long as its
+ * slowest member with no partial output on the way. Anthropic's ceiling is 24h;
+ * in practice a mahoti wave lands in roughly the same time the streamed path
+ * takes, because that path is already gated on its slowest call at the
+ * `Promise.allSettled` barrier.
+ *
+ * Off by default. The streamed path prints progress and fails fast, which is
+ * what you want while iterating on a prompt; this is what you want when the
+ * prompt is settled and you are paying for 40 questions.
+ *
+ * NOT COMBINED WITH PROMPT CACHING, and that is not an oversight — see the note
+ * above `lawsForBatch`.
+ */
+const BATCH_API = args["batch-api"] === "true";
 const MAX_ATTEMPTS = intArg(args["max-attempts"], 4, { max: 20, name: "max-attempts" });
 const SEED = intArg(args.seed, Math.floor(Math.random() * 2_147_483_647), {
   min: 0,
@@ -532,7 +555,27 @@ const SYSTEM_PROMPT = `אתה כותב שאלות רב-ברירה לבחינת �
  *  Two reasons not to send all 25 laws every time: cost, and sameness — a
  *  model shown the whole corpus repeatedly gravitates to the same handful of
  *  headline sections. Rotating a window across batches is what spreads
- *  coverage over the notebook instead of over the model's preferences. */
+ *  coverage over the notebook instead of over the model's preferences.
+ *
+ *  WHY THERE IS NO PROMPT CACHING ON THIS SCRIPT. It looks like the obvious
+ *  saving and it is worth nothing here, for two independent reasons.
+ *
+ *  1. The window is different every batch. With 25 laws and a step of 4, the
+ *     eight batches of a 40-question run see [0-3], [4-7], [8-11], [12-15],
+ *     [16-19], [20-23], [24,0,1,2], [3-6] — no two alike. A cache needs a
+ *     repeated prefix and there isn't one, at any TTL. A longer TTL extends
+ *     reuse; it cannot create it.
+ *  2. What the batches DO share — the system prompt plus the prompt
+ *     scaffolding, ~1,230 characters — is under the 1,024-token minimum
+ *     cacheable prefix, so a `cache_control` breakpoint there is ignored
+ *     rather than merely unhelpful.
+ *
+ *  Caching would start paying only if consecutive batches were pinned to the
+ *  same window, and that is a content change, not a caching one: it trades the
+ *  topic spread this rotation exists to produce. If that trade is ever wanted,
+ *  it belongs in a deliberate change to the window schedule — with the spread
+ *  re-measured afterwards — not smuggled in as an optimisation. The Batch API
+ *  (--batch-api) gets the same 50% off with no effect on content at all. */
 function lawsForBatch(notebook, batchIndex, lawsPerBatch = 4) {
   const total = notebook.laws.length;
   const start = (batchIndex * lawsPerBatch) % total;
@@ -632,37 +675,37 @@ function isFatalStatus(status) {
   return status === 400 || status === 401 || status === 403 || status === 404;
 }
 
-async function requestBatch(notebook, batchIndex, wanted, covered) {
-  let message;
-  try {
-    // Streamed, not `messages.parse`. A non-streaming call of this size ran
-    // past the HTTP timeout on the first real run; streaming holds the
-    // connection open for as long as the model needs. `output_config.format`
-    // still constrains the shape server-side — the difference is transport.
-    const stream = anthropic.messages.stream({
-      model: MODEL,
-      max_tokens: 16000,
-      thinking: { type: "adaptive" },
-      output_config: {
-        effort: EFFORT,
-        format: zodOutputFormat(BatchSchema),
-      },
-      system: SYSTEM_PROMPT,
-      messages: [
-        { role: "user", content: buildUserPrompt(notebook, batchIndex, wanted, covered) },
-      ],
-    });
-    message = await stream.finalMessage();
-  } catch (error) {
-    if (isFatalStatus(error?.status)) {
-      // Strip the JSON envelope the API returns so the terminal shows the
-      // sentence a human needs, not a wall of escaped braces.
-      const detail = error?.error?.error?.message ?? error?.message ?? String(error);
-      throw new FatalApiError(detail);
-    }
-    throw error;
-  }
+/**
+ * The request one batch makes, independent of how it is sent.
+ *
+ * Shared by the streamed path and the Batch API path so the two cannot drift:
+ * a model or effort change that reached only one of them would show up as an
+ * unexplained quality difference between two runs of the same script.
+ */
+function buildRequestParams(notebook, batchIndex, wanted, covered) {
+  return {
+    model: MODEL,
+    max_tokens: 16000,
+    thinking: { type: "adaptive" },
+    output_config: {
+      effort: EFFORT,
+      format: zodOutputFormat(BatchSchema),
+    },
+    system: SYSTEM_PROMPT,
+    messages: [
+      { role: "user", content: buildUserPrompt(notebook, batchIndex, wanted, covered) },
+    ],
+  };
+}
 
+/**
+ * Turn a finished message into items, or throw with the reason it cannot be.
+ *
+ * Both transports reach this with the same object: a Batch API result carries
+ * a `message` of exactly the shape `stream.finalMessage()` resolves to, so the
+ * refusal / truncation / schema checks are written once.
+ */
+function parseBatchMessage(message) {
   if (message.stop_reason === "refusal") {
     throw new Error(
       `the model declined this batch (${message.stop_details?.category ?? "unknown"})`
@@ -683,6 +726,123 @@ async function requestBatch(notebook, batchIndex, wanted, covered) {
     throw new Error(`response did not match the schema: ${parsed.error.issues[0]?.message}`);
   }
   return parsed.data.items;
+}
+
+async function requestBatch(notebook, batchIndex, wanted, covered) {
+  let message;
+  try {
+    // Streamed, not `messages.parse`. A non-streaming call of this size ran
+    // past the HTTP timeout on the first real run; streaming holds the
+    // connection open for as long as the model needs. `output_config.format`
+    // still constrains the shape server-side — the difference is transport.
+    const stream = anthropic.messages.stream(
+      buildRequestParams(notebook, batchIndex, wanted, covered)
+    );
+    message = await stream.finalMessage();
+  } catch (error) {
+    if (isFatalStatus(error?.status)) {
+      // Strip the JSON envelope the API returns so the terminal shows the
+      // sentence a human needs, not a wall of escaped braces.
+      const detail = error?.error?.error?.message ?? error?.message ?? String(error);
+      throw new FatalApiError(detail);
+    }
+    throw error;
+  }
+
+  return parseBatchMessage(message);
+}
+
+/**
+ * Send a whole wave through the Batch API. Half price, one round trip.
+ *
+ * RETURNS THE SHAPE `Promise.allSettled` RETURNS — `{status, value}` /
+ * `{status, reason}`, in wave order — because the folding loop below already
+ * handles per-batch success and failure correctly, and a second result shape
+ * would mean a second copy of that logic. The transport changes; nothing
+ * downstream of it does.
+ *
+ * A per-request failure inside the batch is one rejected slot, not a dead run:
+ * the Batch API reports `errored`, `canceled` and `expired` per `custom_id`,
+ * so a wave of four that loses one still folds in the other three. Only a
+ * failure to submit or to poll takes the wave down, and an auth or billing
+ * refusal at submit time is raised as FatalApiError so the run stops instead
+ * of resubmitting the same rejected wave until `maxBatches` runs out.
+ */
+async function requestWaveViaBatchApi(notebook, wave, wanted, covered) {
+  // custom_id has to survive the round trip as the only link back to which
+  // batch a result belongs to — results come back in completion order, not
+  // submission order.
+  const idFor = (batchIndex) => `mahoti-b${batchIndex}`;
+
+  let batch;
+  try {
+    batch = await anthropic.messages.batches.create({
+      requests: wave.map((batchIndex) => ({
+        custom_id: idFor(batchIndex),
+        params: buildRequestParams(notebook, batchIndex, wanted, covered),
+      })),
+    });
+  } catch (error) {
+    if (isFatalStatus(error?.status)) {
+      const detail = error?.error?.error?.message ?? error?.message ?? String(error);
+      throw new FatalApiError(detail);
+    }
+    throw error;
+  }
+
+  // Poll rather than stream. 20s is chosen against the work, not the API: a
+  // mahoti batch is minutes long, so a tighter interval buys no earlier finish
+  // and only spends rate limit on questions whose answer has not changed.
+  const POLL_MS = 20_000;
+  // This function's own clock. The run-level `elapsed()` is a local of the
+  // generate step and is not in scope here.
+  const submittedAt = Date.now();
+  const waiting = () => `${((Date.now() - submittedAt) / 60000).toFixed(1)}m`;
+  let status = batch;
+  while (status.processing_status !== "ended") {
+    await new Promise((resolve) => setTimeout(resolve, POLL_MS));
+    status = await anthropic.messages.batches.retrieve(batch.id);
+    const c = status.request_counts ?? {};
+    process.stdout.write(
+      `\r    batch job ${batch.id}: ${status.processing_status} ` +
+        `(${c.succeeded ?? 0} done, ${c.processing ?? 0} running, ${c.errored ?? 0} errored) [${waiting()}]   `
+    );
+  }
+  process.stdout.write("\n");
+
+  // Default every slot to a rejection. A custom_id that never comes back —
+  // which is what expiry looks like — then reads as a failed batch rather than
+  // as a silently missing one.
+  const bySlot = new Map(
+    wave.map((batchIndex) => [
+      idFor(batchIndex),
+      { status: "rejected", reason: new Error("no result returned for this batch") },
+    ])
+  );
+
+  for await (const entry of await anthropic.messages.batches.results(batch.id)) {
+    if (!bySlot.has(entry.custom_id)) continue;
+    const result = entry.result;
+    if (result.type !== "succeeded") {
+      const detail =
+        result.error?.error?.message ?? result.error?.type ?? result.type;
+      bySlot.set(entry.custom_id, {
+        status: "rejected",
+        reason: new Error(`batch request ${result.type}: ${detail}`),
+      });
+      continue;
+    }
+    try {
+      bySlot.set(entry.custom_id, {
+        status: "fulfilled",
+        value: parseBatchMessage(result.message),
+      });
+    } catch (error) {
+      bySlot.set(entry.custom_id, { status: "rejected", reason: error });
+    }
+  }
+
+  return wave.map((batchIndex) => bySlot.get(idFor(batchIndex)));
 }
 
 // ---------------------------------------------------------------------------
@@ -909,12 +1069,20 @@ const money = (n) => `$${n.toFixed(2)}`;
  * returned, so it cannot be measured from a stored row — hence a range.
  */
 async function estimateCost(notebook) {
-  const price = PRICES[MODEL];
-  if (!price) {
+  const listed = PRICES[MODEL];
+  if (!listed) {
     throw new Error(
       `no published price on file for ${MODEL}. Known: ${Object.keys(PRICES).join(", ")}`
     );
   }
+
+  // The Batch API is half price on both input and output. Applied to the rate
+  // rather than to the total so every line below is the price this run will
+  // actually pay — an estimate printed at list price for a run submitted at
+  // half is a wrong number, not a conservative one.
+  const price = BATCH_API
+    ? { ...listed, input: listed.input / 2, output: listed.output / 2 }
+    : listed;
 
   await loadAnthropic();
 
@@ -976,6 +1144,11 @@ async function estimateCost(notebook) {
   const line = (label, value) => console.log(`  ${label.padEnd(34)} ${value}`);
 
   console.log(`\nCost estimate — ${QUESTION_COUNT} questions, ${MODEL}, effort ${EFFORT}\n`);
+  console.log(
+    BATCH_API
+      ? `TRANSPORT  Batch API — rates halved to $${price.input}/$${price.output} per M\n`
+      : `TRANSPORT  live streamed calls at list price. --batch-api halves both rates.\n`
+  );
   console.log("INPUT (measured with the API token counter)");
   line("tokens per batch call", inputPerBatch.toLocaleString());
   line(`batches (${QUESTION_COUNT} / --batch=${BATCH_SIZE})`, String(batches));
@@ -1132,9 +1305,22 @@ async function main() {
     );
 
     const waveStart = Date.now();
-    const settled = await Promise.allSettled(
-      wave.map((i) => requestBatch(notebook, i, BATCH_SIZE, hints))
-    );
+    // Both branches settle per batch rather than throwing for the wave, so one
+    // failed call costs its own questions and not its neighbours'.
+    //
+    // The `.catch` is what keeps the two equivalent at the wave level: a
+    // failure to submit or to poll is one throw for the whole wave, where the
+    // streamed path would have produced N rejections. Mapping it back onto
+    // per-slot rejections means a fatal error still reaches the `fatal` check
+    // below and the run exits having saved what it already has, instead of
+    // taking the accepted questions down with it.
+    const settled = BATCH_API
+      ? await requestWaveViaBatchApi(notebook, wave, BATCH_SIZE, hints).catch(
+          (error) => wave.map(() => ({ status: "rejected", reason: error }))
+        )
+      : await Promise.allSettled(
+          wave.map((i) => requestBatch(notebook, i, BATCH_SIZE, hints))
+        );
     const took = ((Date.now() - waveStart) / 1000).toFixed(0);
 
     console.log(`done in ${took}s`);

@@ -37,9 +37,12 @@ const { startTimer, mmss } = require("../lib/progress");
 const RUN_STARTED = Date.now();
 const {
   generateAngle,
+  buildAngleRequest,
+  processAngleMessage,
   mergeParams,
   DEFAULT_PARAMS,
 } = require("../lib/ai/generate-open-question");
+const { runStage } = require("../lib/ai/batch-stage");
 
 const DEFAULT_PARAMS_FILE = "llm-params.json";
 
@@ -220,15 +223,18 @@ async function main() {
   console.log(`\ngenerating with ${effective.model.id} — this can take a few minutes...\n`);
 
   const stopTimer = startTimer("generating");
-  const result = await generateAngle({
-    source,
-    bank,
-    angleLetter,
-    forbiddenTerms,
-    existingAngles,
-    params,
+  // One live call, unless --emit-request / --consume-response put this stage on
+  // the Batch API. See lib/ai/batch-stage.js.
+  const staged = await runStage({
+    flags,
+    args: { source, bank, angleLetter, forbiddenTerms, existingAngles, params },
+    build: buildAngleRequest,
+    process: processAngleMessage,
+    generate: generateAngle,
   });
   const seconds = stopTimer();
+  if (staged.emitted) return;
+  const result = staged.result;
 
   const u = result.usage || {};
   console.log(

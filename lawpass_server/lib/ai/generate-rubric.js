@@ -677,16 +677,20 @@ async function rebalanceContentPoints(client, { items, params, target }) {
   };
 }
 
-async function generateRubric({
+/**
+ * Build the rubric request without sending it. Same split as the question and
+ * answer generators.
+ */
+function buildRubricRequest({
   question,
   answer,
   exemplarRubricText,
   params: paramsOverride = {},
 }) {
-  const client = getClient();
   const params = mergeRubricParams(paramsOverride);
 
-  const stream = client.messages.stream({
+  return {
+    request: {
     model: params.model.id,
     max_tokens: params.model.max_tokens,
     system: buildRubricPrompt({ question, answer, exemplarRubricText, params }),
@@ -710,9 +714,24 @@ async function generateRubric({
           "belongs to the caption or header block, which has no heading.",
       },
     ],
-  });
+    },
+    context: { params, question, answer },
+  };
+}
 
-  const message = await stream.finalMessage();
+/**
+ * Validate a finished rubric message.
+ *
+ * ASYNC, AND IT MAY CALL THE MODEL. The one repair this stage makes — the
+ * arithmetic rebalance below — depends on the rubric that just came back, so it
+ * cannot be part of the same batch. It stays a live call in both transports:
+ * it is conditional, small, and rare, and paying list price for the occasional
+ * fix is better than either skipping the repair or holding a whole second batch
+ * open for it.
+ */
+async function processRubricMessage(message, context) {
+  const { params, answer } = context;
+  const client = getClient();
 
   if (message.stop_reason === "refusal") {
     throw new Error(`[ai] request refused: ${JSON.stringify(message.stop_details)}`);
@@ -790,8 +809,22 @@ async function generateRubric({
   };
 }
 
+/**
+ * Write one rubric. Same signature and return value as before — now the
+ * composition of the two halves above.
+ */
+async function generateRubric(args) {
+  const client = getClient();
+  const { request, context } = buildRubricRequest(args);
+  const stream = client.messages.stream(request);
+  const message = await stream.finalMessage();
+  return processRubricMessage(message, context);
+}
+
 module.exports = {
   generateRubric,
+  buildRubricRequest,
+  processRubricMessage,
   validateRubric,
   dedupeBands,
   buildRubricPrompt,

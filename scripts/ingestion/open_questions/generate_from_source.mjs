@@ -47,6 +47,11 @@ const generatedDir = join(here, 'generated');
 const argv = process.argv.slice(2);
 const flag = (name) => argv.find((a) => a.startsWith(`--${name}=`))?.split('=').slice(1).join('=');
 const dryRun = argv.includes('--dry-run');
+// Adapt the bundle and stop. Unlike --dry-run this WRITES sources/<id>.source.json
+// and then runs neither generator — which is what a batched run needs, because it
+// drives the question and answer stages itself, one batch at a time, rather than
+// letting this script run them back to back for a single set.
+const adaptOnly = argv.includes('--adapt-only');
 const angle = flag('angle') || 'A';
 
 // Flags the generators understand, forwarded verbatim.
@@ -147,6 +152,11 @@ function run(label, script, args) {
     }
     process.exit(res.status ?? 1);
   }
+}
+
+if (adaptOnly) {
+  console.log(`adapt only — ${relative(appRoot, sourcePath)} written, no model call made.`);
+  process.exit(0);
 }
 
 if (dryRun) {

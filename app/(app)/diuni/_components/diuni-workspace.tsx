@@ -19,6 +19,7 @@ import {
   DIUNI_TOTAL_SECONDS,
   ExamTimerBar,
 } from "@/app/(app)/mahoti/_components/exam-timer-bar";
+import { ScoreSummaryModal } from "@/components/app/score-summary-modal";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -69,6 +70,10 @@ export function DiuniWorkspace({ set }: { set: DiuniSet }) {
   const [attempt, setAttempt] = useState<DiuniAttempt | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
+  // The result modal. Opened once when the sitting is filed, and re-openable
+  // afterwards from the bar below — closing it must not put the score out of
+  // reach, since the paper stays on screen.
+  const [scoreOpen, setScoreOpen] = useState(false);
 
   const total = set.questions.length;
   const question = set.questions[position];
@@ -98,13 +103,17 @@ export function DiuniWorkspace({ set }: { set: DiuniSet }) {
   }
 
   /**
-   * File the sitting, then open its review.
+   * File the sitting, then show the result.
    *
    * The marking is the server's: the paper arrives without `correct_answer`, so
-   * this sends the letters and is told what they were worth. The tab is opened
-   * BEFORE the await, empty, and pointed at the review afterwards — a tab opened
-   * after an await is no longer attributable to the click and popup blockers eat
-   * it.
+   * this sends the letters and is told what they were worth.
+   *
+   * NO TAB IS OPENED HERE ANY MORE. This used to open one before the await —
+   * empty, then pointed at the review — because a tab opened after an await is
+   * no longer attributable to the click and popup blockers eat it. The score
+   * modal replaced that: the candidate sees what they scored and per which
+   * subject, and opens the solution from a real link inside it, which is a
+   * fresh user gesture and needs no such workaround.
    *
    * Answers are sent by question NUMBER, not by position: `answers` is keyed by
    * where the question sits on screen, and the two agree only for as long as
@@ -112,8 +121,6 @@ export function DiuniWorkspace({ set }: { set: DiuniSet }) {
    */
   async function handleSubmit(): Promise<void> {
     if (submitting || attempt) return;
-    const tab = window.open("", "_blank");
-    if (tab) tab.opener = null;
     setSubmitting(true);
 
     const result = await submitDiuniAttempt(
@@ -126,17 +133,12 @@ export function DiuniWorkspace({ set }: { set: DiuniSet }) {
     setSubmitting(false);
 
     if (!result.ok) {
-      tab?.close();
       toast.error(result.error);
       return;
     }
 
     setAttempt(result.data);
-    // Built from the response rather than from state: setAttempt has not been
-    // applied yet at this point in the same tick.
-    const url = reviewUrlFor(result.data.answer_id);
-    if (tab) tab.location.href = url;
-    else window.open(url, "_blank", "noopener");
+    setScoreOpen(true);
   }
 
   return (
@@ -269,20 +271,12 @@ export function DiuniWorkspace({ set }: { set: DiuniSet }) {
                       : `ענית על ${answeredCount} מתוך ${total} שאלות. אפשר לשלוח לבדיקה עכשיו — ${unanswered} שאלות שלא נענו ייחשבו כשגויות.`}
                 </p>
                 {attempt ? (
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    nativeButton={false}
-                    render={
-                      <a
-                        href={reviewUrlFor(attempt.answer_id)}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                      />
-                    }
-                  >
+                  // Re-opens the result rather than the solution. The score and
+                  // its per-subject table are what a candidate comes back to;
+                  // the solution is one click further, from inside it.
+                  <Button size="sm" variant="outline" onClick={() => setScoreOpen(true)}>
                     <ClipboardCheck className="size-4" aria-hidden />
-                    <span className="ms-1.5">פתח שוב את הבדיקה</span>
+                    <span className="ms-1.5">הצג שוב את התוצאות</span>
                   </Button>
                 ) : (
                   <Button
@@ -307,6 +301,20 @@ export function DiuniWorkspace({ set }: { set: DiuniSet }) {
           </div>
         </div>
       </section>
+
+      {attempt ? (
+        <ScoreSummaryModal
+          open={scoreOpen}
+          onOpenChange={setScoreOpen}
+          title="תוצאות המבחן — דין דיוני"
+          correct={attempt.correct ?? 0}
+          total={attempt.total ?? total}
+          answered={attempt.answered}
+          attempts={attempt.attempts}
+          byTopic={attempt.by_topic}
+          reviewUrl={reviewUrlFor(attempt.answer_id)}
+        />
+      ) : null}
 
       <Dialog open={confirmOpen} onOpenChange={setConfirmOpen}>
         <DialogContent className="max-w-md">
