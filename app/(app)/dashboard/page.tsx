@@ -2,20 +2,11 @@ import { redirect } from "next/navigation";
 import { Suspense } from "react";
 
 import { HeaderStripAsync } from "@/app/(app)/dashboard/_components/header-strip-async";
-import { HeroRowAsync } from "@/app/(app)/dashboard/_components/hero-row-async";
-import { KpiRowAsync } from "@/app/(app)/dashboard/_components/kpi-row-async";
-import { MasteryCardAsync } from "@/app/(app)/dashboard/_components/mastery-card-async";
 import { HeaderStripSkeleton } from "@/app/(app)/dashboard/_components/skeletons/header-strip-skeleton";
-import { HeroRowSkeleton } from "@/app/(app)/dashboard/_components/skeletons/hero-row-skeleton";
-import { KpiRowSkeleton } from "@/app/(app)/dashboard/_components/skeletons/kpi-row-skeleton";
-import { MasteryCardSkeleton } from "@/app/(app)/dashboard/_components/skeletons/mastery-card-skeleton";
-import { TrendCardSkeleton } from "@/app/(app)/dashboard/_components/skeletons/trend-card-skeleton";
-import { TrendCardAsync } from "@/app/(app)/dashboard/_components/trend-card-async";
-import {
-  SUBSCRIPTION_PLAN_TOTAL_DAYS,
-  computePlanDay,
-  daysRemainingUntilISO,
-} from "@/app/(app)/dashboard/_lib/hero-helpers";
+import { SubjectStatsRowSkeleton } from "@/app/(app)/dashboard/_components/skeletons/subject-stats-row-skeleton";
+import { SubjectTabsSkeleton } from "@/app/(app)/dashboard/_components/skeletons/subject-tabs-skeleton";
+import { SubjectStatsRowAsync } from "@/app/(app)/dashboard/_components/subject-stats-row-async";
+import { SubjectTabsAsync } from "@/app/(app)/dashboard/_components/subject-tabs-async";
 import { requireActiveSubscription } from "@/lib/auth/subscription-gate";
 import { createClient } from "@/lib/supabase/server";
 
@@ -48,7 +39,7 @@ function daysUntil(future: Date, now: Date = new Date()): number {
 }
 
 export default async function DashboardPage() {
-  const { user, subscription } = await requireActiveSubscription();
+  const { user } = await requireActiveSubscription();
 
   const supabase = await createClient();
   const { data: profile } = await supabase
@@ -63,31 +54,11 @@ export default async function DashboardPage() {
     : null;
   const examDays = examDate ? daysUntil(examDate) : null;
 
-  // Hero ring fill = % of *subscription* window elapsed, not exam-date
-  // distance. This produces a stable 0→100% progression that maxes out
-  // when the plan expires (real urgency), and avoids the broken math
-  // when the exam is further out than the subscription (would produce
-  // negative ratios). `currentPlanDay` is still anchored to
-  // `profile.created_at` because the Journey card represents the
-  // user's personal study journey, not their billing window.
-  //
-  // `subscription` is null while SUBSCRIPTION_GATE_ENABLED is off and the user
-  // has not bought a plan — the gate that used to guarantee one here no longer
-  // redirects. The ring then shows a full 90-day window with all of it left,
-  // which is the honest reading of "no plan is counting down" and keeps the
-  // hero from rendering a NaN arc.
-  const subscriptionTotalDays = subscription
-    ? (SUBSCRIPTION_PLAN_TOTAL_DAYS[subscription.plan_type] ?? 90)
-    : 90;
-  const subscriptionDaysRemaining = subscription
-    ? daysRemainingUntilISO(subscription.ends_at)
-    : subscriptionTotalDays;
-  // `currentPlanDay` is still consumed by `<HeroRowAsync>` (rendered
-  // as "יום N מתוך 100" inside the hero ring). Slice 29 only stops
-  // using it for the bottom-slot JourneyCard — the hero binding
-  // stays. `journey-card.tsx` + `hero-helpers.ts` stay on disk
-  // untouched in case we want to bring the timeline back later.
-  const currentPlanDay = computePlanDay(profile.created_at);
+  // The subscription-window maths that used to live here fed the hero ring's
+  // fill and its "יום N מתוך 100" label. Both went with the hero row. The
+  // countdown itself has not been deleted — the sidebar still shows the plan's
+  // days remaining — and `_lib/hero-helpers.ts` stays on disk, so the ring can
+  // be brought back without rebuilding it.
 
   return (
     <div className="space-y-6">
@@ -101,39 +72,28 @@ export default async function DashboardPage() {
         />
       </Suspense>
 
-      {/* 2. Hero row (Phase 11) — streams */}
-      <Suspense fallback={<HeroRowSkeleton />}>
-        <HeroRowAsync
-          userId={user.id}
-          daysToExam={examDays}
-          subscriptionTotalDays={subscriptionTotalDays}
-          subscriptionDaysRemaining={subscriptionDaysRemaining}
-          currentPlanDay={currentPlanDay}
-        />
+      {/* 2. The three subject squares.
+          Replaced the hero banner and the four-KPI row that used to sit here.
+          Those answered "how is the plan going"; these answer "how much have I
+          done in each subject, and how well" — which is what the page is for
+          now that it is סטטיסטיקה אישית ותרגול מותאם.
+
+          Streams like every other card here: server-rendered from
+          lawpass_server's /api/dashboard/subject-stats. */}
+      <Suspense fallback={<SubjectStatsRowSkeleton />}>
+        <SubjectStatsRowAsync />
       </Suspense>
 
-      {/* 3. KPI row — streams */}
-      <Suspense fallback={<KpiRowSkeleton />}>
-        <KpiRowAsync userId={user.id} />
+      {/* 3. Subject tabs and their two charts, full width.
+          Replaced the two-column mastery + trend grid. The right column
+          (מגמת הצלחה → streak → מדד פעילות) is gone: those tracked activity
+          over time, where this page is now about performance by subject and by
+          law. `trend-card*.tsx`, `streak-card.tsx` and `activity-box*.tsx` stay
+          on disk, unreferenced, so the timeline can come back without being
+          rebuilt. */}
+      <Suspense fallback={<SubjectTabsSkeleton />}>
+        <SubjectTabsAsync />
       </Suspense>
-
-      {/* 4. Mastery + Trend — 2-column @ md+, mastery wider (1.6fr / 1fr).
-          Slice 30 — the right column now stacks THREE cards (trend
-          chart → streak → activity). `TrendCardAsync` owns the whole
-          right-column stack so the cards share one Suspense boundary
-          and stream together. `MasteryCardSkeleton` to its start does
-          not reflow because both columns' skeletons reserve the full
-          column height. */}
-      <div
-        className="grid grid-cols-1 gap-[18px] md:[grid-template-columns:1.6fr_1fr]"
-      >
-        <Suspense fallback={<MasteryCardSkeleton />}>
-          <MasteryCardAsync userId={user.id} />
-        </Suspense>
-        <Suspense fallback={<TrendCardSkeleton />}>
-          <TrendCardAsync userId={user.id} />
-        </Suspense>
-      </div>
     </div>
   );
 }

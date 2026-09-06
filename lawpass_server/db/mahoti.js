@@ -17,6 +17,8 @@
 // client, and the ownership that RLS would otherwise enforce is enforced by the
 // controller passing req.user.id and nothing else.
 
+const { areaForLaw, bucketForArea } = require("./legal-areas");
+
 const MAHOTI_QUESTIONS = "mahoti_questions";
 const MAHOTI_ANSWERS = "mahoti_answers";
 
@@ -50,6 +52,14 @@ async function getAnswerKey(admin, questionId) {
     // question somehow carries none; the caller groups those under one honest
     // "ללא סיווג" heading rather than guessing.
     topic: (q.sources ?? [])[0]?.law_name ?? null,
+    // The AREA that law belongs to. Two fields rather than one because they
+    // answer different questions: one sitting's results table wants the specific
+    // law ("revise חוק המשכון"), while an aggregate over every sitting needs
+    // something coarse enough to accumulate a meaningful average. See
+    // db/legal-areas.js.
+    // Reported at BUCKET level, the same grouping /diuni uses, so the two tabs
+    // of the dashboard are comparable. See AREA_GROUPS_SPEC in db/legal-areas.js.
+    area: bucketForArea(areaForLaw((q.sources ?? [])[0]?.law_id)),
   }));
 }
 

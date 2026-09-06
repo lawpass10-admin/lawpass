@@ -38,6 +38,7 @@ export default async function MahotiPage({
     // prev/next pair and the submit bar simultaneously on screen.
     <div className="mx-auto flex h-[calc(100dvh-3rem)] w-full max-w-[1480px] flex-col gap-2 overflow-hidden">
       <PageHead
+        title={set?.title ?? "דיון מהותי"}
         questionCount={set?.questions.length ?? 0}
         lawCount={set?.notebook.notebook.law_count ?? 0}
       />
@@ -64,9 +65,13 @@ export default async function MahotiPage({
  * and not worth a row of height on every visit.
  */
 function PageHead({
+  title,
   questionCount,
   lawCount,
 }: {
+  /** The paper's own name. A built exam carries "… מותאם אישית"; an authored
+   *  one falls back to the subject. */
+  title: string;
   questionCount: number;
   lawCount: number;
 }) {
@@ -92,7 +97,7 @@ function PageHead({
       <span aria-hidden className="text-[11px] text-muted-foreground">
         ›
       </span>
-      <h1 className="text-[13px] font-bold">דיון מהותי</h1>
+      <h1 className="text-[13px] font-bold">{title}</h1>
       <span className="text-[11px] text-muted-foreground">
         {questionCount > 0 ? `${questionCount} שאלות · ${lawCount} חוקים` : ""}
       </span>

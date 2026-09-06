@@ -17,6 +17,8 @@
 // client, and the ownership that RLS would otherwise enforce is enforced by the
 // controller passing req.user.id and nothing else.
 
+const { areaForLaw, canonicalArea, bucketForArea } = require("./legal-areas");
+
 const DIUNI_QUESTIONS = "diuni_questions";
 const DIUNI_ANSWERS = "diuni_answers";
 
@@ -39,6 +41,28 @@ function topicOf(question, areaByVerdict) {
   if (!source) return null;
   if (source.kind === "law") return source.law_name ?? null;
   return areaByVerdict.get(source.verdict_id) ?? null;
+}
+
+/**
+ * The AREA of law a question belongs to, in one vocabulary for both kinds.
+ *
+ * This is what makes an aggregate across every sitting readable. `topicOf`
+ * above answers with a law name for a statute and an area for a judgment, which
+ * is right for one paper's results table and wrong over a history: the same
+ * subject then appears twice under two names (חוק המקרקעין beside דיני מקרקעין)
+ * and each half is too small for its average to mean anything.
+ */
+function areaOf(question, areaByVerdict) {
+  const source = (question.sources ?? [])[0];
+  if (!source) return null;
+  const area =
+    source.kind === "law"
+      ? areaForLaw(source.law_id)
+      : canonicalArea(areaByVerdict.get(source.verdict_id));
+  // Reported at BUCKET level. The generator spreads deliberately across the
+  // fine-grained areas for question variety; the charts need something coarse
+  // enough to accumulate. See AREA_GROUPS_SPEC in db/legal-areas.js.
+  return bucketForArea(area);
 }
 
 /**
@@ -95,6 +119,7 @@ async function getAnswerKey(admin, questionId) {
     number: q.number,
     correct_letter: q.correct_answer ?? null,
     topic: topicOf(q, areaByVerdict),
+    area: areaOf(q, areaByVerdict),
   }));
 }
 

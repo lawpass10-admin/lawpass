@@ -1,0 +1,99 @@
+/* Marking animation for the "your answer is being graded" screen.
+ *
+ * A CSS module rather than Tailwind because these are keyframes on SVG
+ * geometry — stroke-dashoffset, a nib travelling a path — which utility classes
+ * do not express.
+ *
+ * EVERY ANIMATION IS OFF UNDER prefers-reduced-motion, matching the rest of the
+ * app (see the reduced-motion blocks in globals.css). The illustration still
+ * reads correctly standing still: the ticks are drawn, the pen simply rests. */
+
+.sheet {
+  transform-origin: 60px 58px;
+}
+
+/* The two ticks draw themselves in sequence, then the whole cycle repeats —
+   the loop is what tells the candidate the page is still working. */
+.tick {
+  stroke-dasharray: 26;
+  stroke-dashoffset: 26;
+}
+
+.tick1 {
+  animation: draw 3.2s ease-in-out infinite;
+}
+
+.tick2 {
+  animation: draw 3.2s ease-in-out infinite;
+  animation-delay: 0.55s;
+}
+
+/* The nib tracks the ticks: a short travel, a lift, a reset. */
+.pen {
+  animation: mark 3.2s ease-in-out infinite;
+}
+
+/* A slow breath under everything, so the card never looks frozen even in the
+   pause between ticks. */
+.halo {
+  transform-origin: 60px 60px;
+  animation: breathe 3.2s ease-in-out infinite;
+}
+
+@keyframes draw {
+  0%,
+  8% {
+    stroke-dashoffset: 26;
+  }
+  38%,
+  78% {
+    stroke-dashoffset: 0;
+  }
+  92%,
+  100% {
+    stroke-dashoffset: 26;
+  }
+}
+
+@keyframes mark {
+  0% {
+    transform: translate(0, 0) rotate(0deg);
+  }
+  30% {
+    transform: translate(-9px, 11px) rotate(-6deg);
+  }
+  55% {
+    transform: translate(-16px, 22px) rotate(-3deg);
+  }
+  70% {
+    transform: translate(-16px, 14px) rotate(-10deg);
+  }
+  100% {
+    transform: translate(0, 0) rotate(0deg);
+  }
+}
+
+@keyframes breathe {
+  0%,
+  100% {
+    transform: scale(1);
+    opacity: 0.5;
+  }
+  50% {
+    transform: scale(1.06);
+    opacity: 0.85;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tick1,
+  .tick2,
+  .pen,
+  .halo {
+    animation: none;
+  }
+  /* Standing still, the ticks must be visible rather than undrawn. */
+  .tick {
+    stroke-dashoffset: 0;
+  }
+}

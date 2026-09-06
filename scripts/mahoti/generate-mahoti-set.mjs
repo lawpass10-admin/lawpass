@@ -512,6 +512,48 @@ const SourceSchema = z.object({
   source_quote: z.string(),
 });
 
+/**
+ * How many Q&A cards חשיבה 360° carries. Four, matching /diuni.
+ *
+ * The two subjects feed the same `<Learning360Panel>`, and a candidate moving
+ * between them was getting a stack of four cards on one screen and a paragraph
+ * of prose on the other. Same panel, same section heading, two different
+ * things — which reads as one of them being broken.
+ */
+const VARIATIONS_360 = 4;
+
+/**
+ * One 360° card.
+ *
+ * MODELLED AS STRUCTURED OBJECTS AND SERIALISED AFTERWARDS, exactly as the
+ * diuni generator does it. The panel parses
+ * `**וריאציה N — title:** question ← answer`, and asking a model to emit that
+ * punctuation reliably is a worse bet than asking for three fields and building
+ * the string ourselves.
+ */
+const Variation = z.object({
+  title: z.string().min(2).max(60),
+  question: z.string().min(8),
+  answer: z.string().min(4),
+});
+
+/**
+ * Build the exact string `<Learning360Panel>` parses into cards.
+ *
+ * ACCEPTS AN ALREADY-SERIALISED STRING and passes it through, because the
+ * resume path (`itemsFromRow`) reads a stored row back and that column holds
+ * the string, not the structured form. A run resumed onto a row written before
+ * this change would otherwise call `.map` on a string and die halfway through a
+ * paper that had already been paid for.
+ */
+function serialise360(variations) {
+  if (typeof variations === "string") return variations;
+  if (!Array.isArray(variations)) return "";
+  return variations
+    .map((v, i) => `**וריאציה ${i + 1} — ${v.title}:** ${v.question} ← ${v.answer}`)
+    .join("\n");
+}
+
 const ItemSchema = z.object({
   fact_pattern: z.string(),
   stem: z.string(),
@@ -524,7 +566,7 @@ const ItemSchema = z.object({
     legal_topic_analysis: z.string(),
     explanation: z.string(),
     common_pitfall: z.string(),
-    quick_thinking_360: z.string(),
+    quick_thinking_360: z.array(Variation).length(VARIATIONS_360),
     summary_for_memory: z.string(),
     concepts_and_skills: z.array(z.string()).min(1),
     distractor_analysis: z.object({
@@ -547,6 +589,8 @@ const SYSTEM_PROMPT = `אתה כותב שאלות רב-ברירה לבחינת �
 4. מסכת עובדות קצרה וקונקרטית: שמות, תאריכים וסכומים. שאלה שהיא ציטוט חוק בתחפושת אינה שאלת בחינה.
 5. השאלה נכתבת בעברית משפטית תקנית, בגוף שלישי, ללא פנייה לנבחן.
 6. אין לחזור על נושא, על סעיף או על מבנה שאלה שכבר נוצרו ברשימה שתימסר לך.
+
+7. חשיבה 360° — ${VARIATIONS_360} וריאציות בדיוק ב-quick_thinking_360. כל אחת שאלה קצרה ותשובה קצרה, שבודקות את אותו כלל מזווית אחרת: שינוי בתנאי מתנאי הסעיף, החלפה בזהות הצד, מה היה הדין אילו התנאי לא היה מתקיים, או גבול התחולה של הסעיף. אל תחזור על ניסוח השאלה המקורית ואל תכתוב פסקת פרוזה במקום הוריאציות.
 
 לכל שאלה כתוב גם את תוכן הבדיקה בעברית: ניתוח הנושא המשפטי, הסבר משפטי מלא, ניתוח לכל אחד מארבעת המסיחים (כולל התשובה הנכונה — מדוע היא נכונה), מלכודת נפוצה, חשיבה 360°, מבט מסכם, ורשימת מושגים ומיומנויות.`;
 
@@ -910,7 +954,10 @@ function toPayloads(items, stats) {
     legal_topic_analysis: item.review.legal_topic_analysis,
     explanation: item.review.explanation,
     common_pitfall: item.review.common_pitfall,
-    quick_thinking_360: item.review.quick_thinking_360,
+    // Both forms, as /diuni stores them: the structured one a human reviews,
+    // and the exact string `<Learning360Panel>` parses into cards.
+    quick_thinking_360_items: item.review.quick_thinking_360,
+    quick_thinking_360: serialise360(item.review.quick_thinking_360),
     summary_for_memory: item.review.summary_for_memory,
     concepts_and_skills: item.review.concepts_and_skills,
     distractor_analysis: item.review.distractor_analysis,
@@ -991,7 +1038,10 @@ function itemsFromRow(row) {
         legal_topic_analysis: review.legal_topic_analysis ?? "",
         explanation: review.explanation ?? "",
         common_pitfall: review.common_pitfall ?? "",
-        quick_thinking_360: review.quick_thinking_360 ?? "",
+        // Prefer the structured form when the row carries it; older rows have
+        // only the serialised string, which serialise360 passes through.
+        quick_thinking_360:
+          review.quick_thinking_360_items ?? review.quick_thinking_360 ?? "",
         summary_for_memory: review.summary_for_memory ?? "",
         concepts_and_skills: review.concepts_and_skills ?? [],
         distractor_analysis: review.distractor_analysis ?? {},

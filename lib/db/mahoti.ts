@@ -174,7 +174,13 @@ export async function getMahotiSet(
 
   const { data, error } = questionId
     ? await base.eq("question_id", questionId).maybeSingle<Row>()
-    : await base
+    : // Authored papers only. Custom exams ("שאלון מותאם אישית") live in this
+      // same table — they have to, because mahoti_answers has a foreign key
+      // onto it — and this branch answers with the NEWEST row. Without the
+      // filter, the first exam any candidate built for themselves would
+      // silently become the default paper served to everyone else.
+      await base
+        .is("built_for", null)
         .order("created_at", { ascending: false })
         .limit(1)
         .maybeSingle<Row>();
@@ -215,9 +221,13 @@ export async function getNextMahotiSetId(
 ): Promise<string | null> {
   const supabase = createAdminClient();
 
+  // Authored papers only — see the same filter in lib/db/diuni.ts. Custom exams
+  // belong to one candidate each, so listing them here would walk one person's
+  // private paper into everyone else's "next exam".
   const { data, error } = await supabase
     .from(TABLE)
     .select("question_id")
+    .is("built_for", null)
     .not("questions", "is", null)
     .order("created_at", { ascending: false });
 

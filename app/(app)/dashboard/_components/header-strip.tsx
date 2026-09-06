@@ -1,7 +1,3 @@
-import { ClipboardList, Play } from "lucide-react";
-import Link from "next/link";
-
-import { buttonVariants } from "@/components/ui/button";
 import { getHebrewGreeting } from "@/lib/greetings";
 import { cn } from "@/lib/utils";
 
@@ -9,12 +5,17 @@ import type { StatusContext, StatusPillState } from "@/lib/dashboard/types";
 
 type Props = {
   fullName: string;
-  /** `null` when `profile.exam_date_planned` is unset. */
+  /**
+   * No longer rendered. The "הוסף תאריך בחינה" link this drove was removed
+   * when the dashboard became a statistics page. Kept on the interface — like
+   * `status` below — so `HeaderStripAsync`'s signature and its upstream fetch
+   * are unchanged and the countdown can be re-enabled without re-threading
+   * data. `null` when `profile.exam_date_planned` is unset.
+   */
   examDate: Date | null;
   /**
-   * Days remaining until `examDate`. Caller computes (matches existing
-   * `daysUntil` semantics in `dashboard/page.tsx`). `null` mirrors a
-   * null `examDate`.
+   * Days remaining until `examDate`, computed by the caller. Also no longer
+   * rendered; see `examDate`.
    */
   daysToExam: number | null;
   /**
@@ -79,14 +80,9 @@ function formatDateHeLong(d: Date): string {
 // below was removed. We keep the import-shaped helper deleted; the
 // no-exam-date fallback link does not need a formatted month/year.
 
-export function HeaderStrip({ fullName, examDate, daysToExam }: Props) {
+export function HeaderStrip({ fullName }: Props) {
   const greeting = getHebrewGreeting();
   const dateLine = formatDateHeLong(new Date());
-  // Slice 30 — when an exam date IS set, render no subtitle (the
-  // countdown survives only inside the hero ring). When none is set,
-  // we still surface the "add exam date" CTA so the no-date case
-  // isn't dead in the dashboard.
-  const showAddExamDateLink = examDate === null || daysToExam === null;
 
   return (
     <div
@@ -116,62 +112,16 @@ export function HeaderStrip({ fullName, examDate, daysToExam }: Props) {
           <span className="hidden md:inline">, {fullName}.</span>
           <span className="md:hidden">,</span>
         </h1>
-        {showAddExamDateLink ? (
-          <p
-            style={{
-              color: "var(--ink-3)",
-              fontSize: 16,
-              marginTop: 6,
-              maxWidth: 540,
-              lineHeight: 1.5,
-            }}
-          >
-            <Link
-              href="/account"
-              className="text-primary underline underline-offset-2 hover:no-underline rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
-            >
-              הוסף תאריך בחינה
-            </Link>
-          </p>
-        ) : null}
       </div>
-      {/* Phase 16: split the two CTAs by destination —
-         (1) outline "תרגול חופשי" → /practice (free-choice setup form),
-         (2) gold-gradient "התחל סימולציה" → /exam (timed full-exam sim).
-         Both surfaces stay reachable from the sidebar; promoting the
-         exam path here gives the dashboard a clear "go practice the
-         real thing" affordance opposite the lower-pressure browse CTA. */}
-      {/* Slice 36 — mobile alignment fix. On mobile the cluster is a
-          full-width flex row (column-flex parent → cross-axis stretch),
-          so `justify-between` pushes the two buttons to opposite ends:
-          "תרגול חופשי" (DOM 1) → visual right edge; "התחל סימולציה"
-          (DOM 2) → visual left edge → aligned with the blue hero
-          container's left edge below. On desktop the parent flex flips
-          to row + items-end, the cluster becomes content-sized, so
-          `justify-between` has no visible effect (the two buttons sit
-          gap-3 apart, matching the CTA-pair spacing used across the app). */}
-      <div className="flex shrink-0 gap-3 justify-between">
-        <Link
-          href="/practice"
-          className={cn(
-            buttonVariants({ variant: "outline" }),
-            "h-11 gap-2 rounded-full px-5 text-sm font-semibold font-heebo"
-          )}
-        >
-          <ClipboardList className="size-4" aria-hidden />
-          <span>תרגול חופשי</span>
-        </Link>
-        <Link
-          href="/exam"
-          className={cn(
-            "btn-gold inline-flex h-11 items-center gap-2 rounded-full px-6 text-[15px] font-semibold font-heebo",
-            "focus-visible:outline-none"
-          )}
-        >
-          <Play className="size-4 fill-current" aria-hidden />
-          <span>התחל סימולציה</span>
-        </Link>
-      </div>
+      {/* The CTA cluster that sat here — "תרגול חופשי" → /practice and
+          "התחל סימולציה" → /exam — was removed along with the
+          "הוסף תאריך בחינה" link above it. Both destinations are still one
+          click away in the sidebar, and this page is now a statistics page:
+          its job is to show what has been practised and how well, not to
+          push the candidate somewhere before they have read it. The three
+          subject cards below are themselves links into each surface, so the
+          route out is still on the page — attached to the number that would
+          make you want to take it. */}
     </div>
   );
 }

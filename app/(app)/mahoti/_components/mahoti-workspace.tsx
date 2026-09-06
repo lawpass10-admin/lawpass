@@ -1,6 +1,8 @@
 "use client";
 
 import { ChevronLeft, ChevronRight, ClipboardCheck, Loader2 } from "lucide-react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
@@ -10,7 +12,6 @@ import {
   ExamProgressStrip,
   type ExamProgressCellStatus,
 } from "@/app/(app)/exam/play/_components/exam-progress-strip";
-import { ScoreSummaryModal } from "@/components/app/score-summary-modal";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -142,6 +143,7 @@ function useFitToBox(ref: React.RefObject<HTMLDivElement | null>, key: unknown) 
  * lib/db/mahoti.ts).
  */
 export function MahotiWorkspace({ set }: { set: MahotiSet }) {
+  const router = useRouter();
   const [position, setPosition] = useState(0);
   // Position -> chosen letter. Local only; nothing is persisted.
   const [answers, setAnswers] = useState<Record<number, MahotiLetter>>({});
@@ -159,10 +161,6 @@ export function MahotiWorkspace({ set }: { set: MahotiSet }) {
   // Open while an early submit — one with questions still unanswered — waits
   // for the candidate to confirm it.
   const [confirmOpen, setConfirmOpen] = useState(false);
-  // The result modal. Opened once when the sitting is filed, and re-openable
-  // afterwards from the bar below — closing it must not put the score out of
-  // reach, since the paper stays on screen.
-  const [scoreOpen, setScoreOpen] = useState(false);
   const fitRef = useRef<HTMLDivElement | null>(null);
 
   const total = set.questions.length;
@@ -198,8 +196,8 @@ export function MahotiWorkspace({ set }: { set: MahotiSet }) {
   // from a URL, and matches answers to questions by number rather than by
   // position. There is no link to it before the submit has been through the
   // server, because until then there is no sitting to point at.
-  function reviewUrlFor(answerId: string): string {
-    return `/mahoti/review?attempt=${encodeURIComponent(answerId)}`;
+  function resultsUrlFor(answerId: string): string {
+    return `/mahoti/results?attempt=${encodeURIComponent(answerId)}`;
   }
 
   function go(to: number): void {
@@ -238,15 +236,16 @@ export function MahotiWorkspace({ set }: { set: MahotiSet }) {
         letter: answers[i] ?? null,
       }))
     );
-    setSubmitting(false);
-
     if (!result.ok) {
+      setSubmitting(false);
       toast.error(result.error);
       return;
     }
 
+    // `submitting` is deliberately left true: the navigation is in flight and
+    // re-enabling the button would offer a second filing of the same sitting.
     setAttempt(result.data);
-    setScoreOpen(true);
+    router.push(resultsUrlFor(result.data.answer_id));
   }
 
   // Re-fit whenever the question changes: the next fact pattern is a
@@ -427,7 +426,12 @@ export function MahotiWorkspace({ set }: { set: MahotiSet }) {
                   // Re-opens the result rather than the solution. The score and
                   // its per-law table are what a candidate comes back to; the
                   // solution is one click further, from inside it.
-                  <Button size="sm" variant="outline" onClick={() => setScoreOpen(true)}>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    nativeButton={false}
+                    render={<Link href={resultsUrlFor(attempt.answer_id)} />}
+                  >
                     <ClipboardCheck className="size-4" aria-hidden />
                     <span className="ms-1.5">הצג שוב את התוצאות</span>
                   </Button>
@@ -462,19 +466,6 @@ export function MahotiWorkspace({ set }: { set: MahotiSet }) {
       {/* The early-submit confirmation. Rendered here rather than beside the
           button so it is not inside the fit-to-box column, whose type-shrinking
           measures its own scrollHeight. */}
-      {attempt ? (
-        <ScoreSummaryModal
-          open={scoreOpen}
-          onOpenChange={setScoreOpen}
-          title="תוצאות המבחן — דיון מהותי"
-          correct={attempt.correct ?? 0}
-          total={attempt.total ?? total}
-          answered={attempt.answered}
-          attempts={attempt.attempts}
-          byTopic={attempt.by_topic}
-          reviewUrl={reviewUrlFor(attempt.answer_id)}
-        />
-      ) : null}
 
       <Dialog open={confirmOpen} onOpenChange={setConfirmOpen}>
         <DialogContent className="max-w-md">

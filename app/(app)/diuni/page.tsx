@@ -49,7 +49,10 @@ export default async function DiuniPage({
     // can see at a glance. The question text does NOT use the extra width; it is
     // capped to a readable measure inside the workspace.
     <div className="mx-auto flex h-[calc(100dvh-3rem)] w-full max-w-[1480px] flex-col gap-2 overflow-hidden">
-      <PageHead questionCount={set?.questions.length ?? 0} />
+      <PageHead
+        title={set?.title ?? "דין דיוני"}
+        questionCount={set?.questions.length ?? 0}
+      />
       {/* Keyed by the paper: moving to another `?set=` stays on this route, so
           without a key React would keep the workspace mounted and the previous
           paper's answers, position and clock would carry into the new one. */}
@@ -69,7 +72,15 @@ export default async function DiuniPage({
  * for the same reason: every pixel the chrome gives up goes to the question and
  * its four answers.
  */
-function PageHead({ questionCount }: { questionCount: number }) {
+function PageHead({
+  title,
+  questionCount,
+}: {
+  /** The paper's own name. A built exam carries "… מותאם אישית"; an authored
+   *  one falls back to the subject. */
+  title: string;
+  questionCount: number;
+}) {
   return (
     <header className="flex shrink-0 items-baseline gap-2 font-heebo leading-none">
       <Link
@@ -81,7 +92,7 @@ function PageHead({ questionCount }: { questionCount: number }) {
       <span aria-hidden className="text-[11px] text-muted-foreground">
         ›
       </span>
-      <h1 className="text-[13px] font-bold">דין דיוני</h1>
+      <h1 className="text-[13px] font-bold">{title}</h1>
       <span className="text-[11px] text-muted-foreground">
         {questionCount > 0 ? `${questionCount} שאלות · 100 דקות` : ""}
       </span>

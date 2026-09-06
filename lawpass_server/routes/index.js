@@ -16,6 +16,7 @@ const earlyAccessRoutes = require("./early-access.routes");
 const openQuestionsRoutes = require("./open-questions.routes");
 const mahotiRoutes = require("./mahoti.routes");
 const diuniRoutes = require("./diuni.routes");
+const customExamRoutes = require("./custom-exam.routes");
 
 const router = Router();
 
@@ -40,5 +41,8 @@ router.use("/open-questions", openQuestionsRoutes);
 router.use("/mahoti", mahotiRoutes);
 // דין דיוני — same arrangement, questions grounded in verdict_list.
 router.use("/diuni", diuniRoutes);
+
+// שאלון מותאם אישית — building an exam from questions that already exist.
+router.use("/custom-exam", customExamRoutes);
 
 module.exports = router;

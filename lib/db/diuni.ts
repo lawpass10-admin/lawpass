@@ -145,7 +145,10 @@ export async function getDiuniSet(
 
   const { data, error } = questionId
     ? await base.eq("question_id", questionId).maybeSingle<Row>()
-    : await base
+    : // Authored papers only — see the same filter in lib/db/mahoti.ts. Custom
+      // exams share this table, and this branch answers with the newest row.
+      await base
+        .is("built_for", null)
         .order("created_at", { ascending: false })
         .limit(1)
         .maybeSingle<Row>();
@@ -173,9 +176,13 @@ export async function getNextDiuniSetId(
 ): Promise<string | null> {
   const supabase = createAdminClient();
 
+  // Authored papers only. "למבחן הבא" walks this list, and custom exams belong
+  // to one candidate each — including another candidate's exam here would hand
+  // one person's private paper to everyone who finished a review.
   const { data, error } = await supabase
     .from(TABLE)
     .select("question_id")
+    .is("built_for", null)
     .not("questions", "is", null)
     .order("created_at", { ascending: false });
 

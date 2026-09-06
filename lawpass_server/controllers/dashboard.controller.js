@@ -9,6 +9,8 @@
 // getStatusContext(userId, mastery)).
 
 const db = require("../db/dashboard");
+const subjectStatsDb = require("../db/subject-stats");
+const { adminClient } = require("../config/supabase");
 
 async function kpi(req, res) {
   const data = await db.getKpiData(req.supabase, req.user.id);
@@ -36,4 +38,24 @@ async function hero(req, res) {
   return res.json({ ok: true, hero: data });
 }
 
-module.exports = { kpi, mastery, status, trend, hero };
+/**
+ * The three subject squares at the top of the personal dashboard.
+ *
+ * Read with req.supabase — the caller's own RLS-scoped client — so the rows
+ * are restricted to their owner by the database rather than by this handler.
+ */
+async function subjectStats(req, res) {
+  const subjects = await subjectStatsDb.getSubjectStats(req.supabase, req.user.id);
+  return res.json({ ok: true, subjects });
+}
+
+/**
+ * Per-law aggregates behind the two charts under each dashboard tab.
+ * Same RLS-scoped client as the cards above it.
+ */
+async function topicStats(req, res) {
+  const topics = await subjectStatsDb.getTopicStats(req.supabase, adminClient(), req.user.id);
+  return res.json({ ok: true, topics });
+}
+
+module.exports = { kpi, mastery, status, trend, hero, subjectStats, topicStats };

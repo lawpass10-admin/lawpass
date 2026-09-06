@@ -409,6 +409,25 @@ async function fetchVerdicts(client, limit) {
  * continues the spread instead of restarting and re-drawing the same
  * categories.
  */
+/**
+ * ONE THING THAT WAS TRIED HERE AND MADE IT WORSE, recorded so it is not tried
+ * again. Balancing on the dashboard's coarse reporting buckets instead of
+ * `judgment_area_id` looked like the fix for a chart full of single-question
+ * topics. Measured against the real pool it went the wrong way — 24 judgments
+ * came out as 12 buckets with 5 singletons, against 10 buckets with 3 for the
+ * version below.
+ *
+ * The reason is this function's own rule: it always takes the LEAST-USED key, so
+ * it maximises how many distinct keys a paper touches. A coarser key does not
+ * concentrate anything; it just spreads across all 14 buckets instead of 72
+ * areas. A spread cannot produce concentration, whatever it is keyed on.
+ *
+ * What did work in simulation was stratifying — choosing K buckets up front and
+ * drawing n/K from each, keeping the docket-category spread inside each bucket.
+ * At K=8 that gave 3 questions per bucket, no singletons, and still 24 distinct
+ * docket categories. It is a rewrite of this function rather than a change of
+ * key, and it is not implemented.
+ */
 function spreadByArea(pool, n, seed) {
   const picked = [];
   const seenArea = new Map(seed?.areas ?? []);

@@ -23,6 +23,8 @@ import { cache } from "react";
 
 import * as dashboardDb from "@/lib/db/dashboard";
 import type { MasteryRow } from "@/lib/dashboard/types";
+import type { SubjectStat } from "@/lib/dashboard/subject-stat";
+import type { TopicStatsBySubject } from "@/lib/dashboard/topic-stat";
 import { apiEnabledServer, apiGetJsonServer } from "@/lib/api/server";
 import { createClient } from "@/lib/supabase/server";
 
@@ -58,6 +60,38 @@ async function apiOr<T>(
   // }
   // return fallback();
 }
+
+/**
+ * The three subject squares: questions answered, average, lowest and highest
+ * for דין מהותי, דין דיוני and מטלת כתיבה.
+ *
+ * API-ONLY, and unlike its neighbours the fallback is not merely disabled —
+ * there is nothing to fall back TO. The aggregation lives in
+ * lawpass_server/db/subject-stats.js because it spans three unrelated answer
+ * tables, and it has no in-app twin; a second copy in `lib/db` would be the
+ * one place these numbers could start disagreeing with themselves. The
+ * fallback below therefore says so rather than pretending.
+ */
+export const getSubjectStats = cache(async () => {
+  return apiOr<SubjectStat[]>("/api/dashboard/subject-stats", "subjects", async () => {
+    throw new Error(
+      "subject stats are served only by lawpass_server — there is no in-app fallback"
+    );
+  });
+});
+
+/**
+ * Per-law distribution and average score for each subject — the two charts
+ * under each dashboard tab. API-only for the same reason as `getSubjectStats`:
+ * the aggregation spans three unrelated answer tables and has no in-app twin.
+ */
+export const getTopicStats = cache(async () => {
+  return apiOr<TopicStatsBySubject>("/api/dashboard/topic-stats", "topics", async () => {
+    throw new Error(
+      "topic stats are served only by lawpass_server — there is no in-app fallback"
+    );
+  });
+});
 
 export const getKpiData = cache(async (userId: string) => {
   return apiOr("/api/dashboard/kpi", "kpi", async () => {

@@ -18,5 +18,22 @@ router.get("/mastery", authenticate, requireSubscription, asyncHandler(c.mastery
 router.get("/status", authenticate, requireSubscription, asyncHandler(c.status));
 router.get("/trend", authenticate, requireSubscription, asyncHandler(c.trend));
 router.get("/hero", authenticate, requireSubscription, asyncHandler(c.hero));
+// The three subject squares: questions answered, average, lowest and highest
+// score for דין מהותי, דין דיוני and מטלת כתיבה.
+router.get(
+  "/subject-stats",
+  authenticate,
+  requireSubscription,
+  asyncHandler(c.subjectStats)
+);
+
+// Per-law distribution and average score, per subject — the pie and bar under
+// each tab of the personal dashboard.
+router.get(
+  "/topic-stats",
+  authenticate,
+  requireSubscription,
+  asyncHandler(c.topicStats)
+);
 
 module.exports = router;

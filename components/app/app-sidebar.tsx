@@ -64,7 +64,7 @@ const PLAN_TOTAL_DAYS: Record<string, number> = {
 // dashboard/practice/exam map to Gauge/Scale/Timer (legal-leaning,
 // thin stroke). Bookmarks + mistakes stay on Bookmark + XCircle.
 const NAV_LEARNING = [
-  { href: "/dashboard", label: "דשבורד", Icon: Gauge },
+  { href: "/dashboard", label: "סטטיסטיקה אישית ותרגול מותאם", Icon: Gauge },
   { href: "/practice", label: "תרגול", Icon: Scale },
   { href: "/exam", label: "סימולציות בחינה", Icon: Timer },
   { href: "/writing-task", label: "מטלת כתיבה", Icon: FileText },

@@ -6,6 +6,8 @@ import {
   ClipboardCheck,
   Loader2,
 } from "lucide-react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { toast } from "sonner";
 
@@ -19,7 +21,6 @@ import {
   DIUNI_TOTAL_SECONDS,
   ExamTimerBar,
 } from "@/app/(app)/mahoti/_components/exam-timer-bar";
-import { ScoreSummaryModal } from "@/components/app/score-summary-modal";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -58,6 +59,7 @@ const SUBMIT_UNLOCK_FRACTION = 0.75;
  * the marking happens on the server when the sitting is filed.
  */
 export function DiuniWorkspace({ set }: { set: DiuniSet }) {
+  const router = useRouter();
   const [position, setPosition] = useState(0);
   // Position -> chosen letter.
   const [answers, setAnswers] = useState<Record<number, DiuniLetter>>({});
@@ -70,10 +72,6 @@ export function DiuniWorkspace({ set }: { set: DiuniSet }) {
   const [attempt, setAttempt] = useState<DiuniAttempt | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
-  // The result modal. Opened once when the sitting is filed, and re-openable
-  // afterwards from the bar below — closing it must not put the score out of
-  // reach, since the paper stays on screen.
-  const [scoreOpen, setScoreOpen] = useState(false);
 
   const total = set.questions.length;
   const question = set.questions[position];
@@ -93,8 +91,8 @@ export function DiuniWorkspace({ set }: { set: DiuniSet }) {
   const unlockAt = Math.max(1, Math.ceil(total * SUBMIT_UNLOCK_FRACTION));
   const canSubmit = total > 0 && answeredCount >= Math.min(unlockAt, total);
 
-  function reviewUrlFor(answerId: string): string {
-    return `/diuni/review?attempt=${encodeURIComponent(answerId)}`;
+  function resultsUrlFor(answerId: string): string {
+    return `/diuni/results?attempt=${encodeURIComponent(answerId)}`;
   }
 
   function go(to: number): void {
@@ -103,17 +101,16 @@ export function DiuniWorkspace({ set }: { set: DiuniSet }) {
   }
 
   /**
-   * File the sitting, then show the result.
+   * File the sitting, then go to its results page.
    *
    * The marking is the server's: the paper arrives without `correct_answer`, so
    * this sends the letters and is told what they were worth.
    *
-   * NO TAB IS OPENED HERE ANY MORE. This used to open one before the await —
-   * empty, then pointed at the review — because a tab opened after an await is
-   * no longer attributable to the click and popup blockers eat it. The score
-   * modal replaced that: the candidate sees what they scored and per which
-   * subject, and opens the solution from a real link inside it, which is a
-   * fresh user gesture and needs no such workaround.
+   * NAVIGATES RATHER THAN OPENING A DIALOG OR A TAB. The score used to be a
+   * modal over the paper, which could not hold a table of up to 25 subjects,
+   * and before that a tab opened ahead of the await to dodge popup blockers.
+   * Both are gone: /diuni/results reads the stored sitting, so it is a normal
+   * page the candidate can link to, reload and come back to.
    *
    * Answers are sent by question NUMBER, not by position: `answers` is keyed by
    * where the question sits on screen, and the two agree only for as long as
@@ -130,15 +127,17 @@ export function DiuniWorkspace({ set }: { set: DiuniSet }) {
         letter: answers[i] ?? null,
       })),
     );
-    setSubmitting(false);
 
     if (!result.ok) {
+      setSubmitting(false);
       toast.error(result.error);
       return;
     }
 
+    // `submitting` is deliberately left true: the navigation is in flight and
+    // re-enabling the button would offer a second filing of the same sitting.
     setAttempt(result.data);
-    setScoreOpen(true);
+    router.push(resultsUrlFor(result.data.answer_id));
   }
 
   return (
@@ -274,7 +273,12 @@ export function DiuniWorkspace({ set }: { set: DiuniSet }) {
                   // Re-opens the result rather than the solution. The score and
                   // its per-subject table are what a candidate comes back to;
                   // the solution is one click further, from inside it.
-                  <Button size="sm" variant="outline" onClick={() => setScoreOpen(true)}>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    nativeButton={false}
+                    render={<Link href={resultsUrlFor(attempt.answer_id)} />}
+                  >
                     <ClipboardCheck className="size-4" aria-hidden />
                     <span className="ms-1.5">הצג שוב את התוצאות</span>
                   </Button>
@@ -302,19 +306,6 @@ export function DiuniWorkspace({ set }: { set: DiuniSet }) {
         </div>
       </section>
 
-      {attempt ? (
-        <ScoreSummaryModal
-          open={scoreOpen}
-          onOpenChange={setScoreOpen}
-          title="תוצאות המבחן — דין דיוני"
-          correct={attempt.correct ?? 0}
-          total={attempt.total ?? total}
-          answered={attempt.answered}
-          attempts={attempt.attempts}
-          byTopic={attempt.by_topic}
-          reviewUrl={reviewUrlFor(attempt.answer_id)}
-        />
-      ) : null}
 
       <Dialog open={confirmOpen} onOpenChange={setConfirmOpen}>
         <DialogContent className="max-w-md">

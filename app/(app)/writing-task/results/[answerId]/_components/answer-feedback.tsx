@@ -13,6 +13,7 @@ import {
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 
+import { GradingIllustration } from "@/app/(app)/writing-task/results/[answerId]/_components/grading-illustration";
 import { NoCopyText } from "@/app/(app)/_components/no-copy-text";
 import { NavigationGuard } from "@/components/app/navigation-guard";
 import { Button } from "@/components/ui/button";
@@ -241,16 +242,10 @@ function Waiting({
   return (
     <Card>
       <CardContent className="flex flex-col items-center gap-4 px-6 py-16 text-center">
-        <div
-          className="flex size-16 items-center justify-center rounded-full"
-          style={{ background: "var(--color-paper-2, rgba(0,0,0,0.04))" }}
-        >
-          <Loader2
-            className="size-8 animate-spin"
-            style={{ color: "var(--color-gold-deep)" }}
-            aria-hidden
-          />
-        </div>
+        {/* The marker at work, rather than a spinner. This screen asks the
+            candidate to wait several minutes; a rotating circle for that long
+            reads as a page that has hung. */}
+        <GradingIllustration className="size-28" />
         <div className="space-y-1.5">
           <h1
             role="status"
