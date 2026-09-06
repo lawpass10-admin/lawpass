@@ -24,6 +24,16 @@
 .DS_Store
 *.pem
 
+# lockfiles from other package managers
+# This project is npm-only: package-lock.json is the single source of truth, and
+# Vercel picks its package manager from whichever lockfile is committed. One
+# stray pnpm-lock.yaml is enough to switch the host and break the build, so they
+# are ignored here as a backstop to the preinstall guard in scripts/only-npm.mjs.
+pnpm-lock.yaml
+pnpm-workspace.yaml
+yarn.lock
+bun.lockb
+
 # debug
 npm-debug.log*
 yarn-debug.log*

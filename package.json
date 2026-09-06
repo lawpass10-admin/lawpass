@@ -2,7 +2,9 @@
   "name": "lawpass-project",
   "version": "0.1.0",
   "private": true,
+  "packageManager": "npm@10.9.2",
   "scripts": {
+    "preinstall": "node scripts/only-npm.mjs",
     "dev": "next dev",
     "dev:webpack": "next dev --webpack",
     "typecheck": "tsc --noEmit",
@@ -60,10 +62,5 @@
     "tailwindcss": "^4",
     "typescript": "^5",
     "vitest": "^4.1.6"
-  },
-  "pnpm": {
-    "overrides": {
-      "zod": "4.4.3"
-    }
   }
 }

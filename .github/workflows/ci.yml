@@ -11,17 +11,16 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-        with:
-          version: 9
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: 'pnpm'
-      - run: pnpm install --frozen-lockfile
-      - run: pnpm tsc --noEmit
-      - run: pnpm lint
-      - run: pnpm test
+          cache: 'npm'
+      # npm, matching package-lock.json — the only lockfile in the repo, and the
+      # one both Vercel and Render build from. See CLAUDE.md.
+      - run: npm ci --include=dev
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm test
       - env:
           DATABASE_URL: ${{ secrets.DATABASE_URL_PRODUCTION_POOLER }}
           NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
@@ -29,4 +28,4 @@ jobs:
           SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
           NEXT_PUBLIC_SITE_URL: ${{ secrets.NEXT_PUBLIC_SITE_URL }}
           RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
-        run: pnpm build
+        run: npm run build
