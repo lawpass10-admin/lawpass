@@ -6,6 +6,17 @@
  * the endpoint sends real email to real people, so an open URL would be a
  * button anyone on the internet could press.
  *
+ * ── The schedule is DAILY, and must stay that way on the Hobby plan ────────
+ * vercel.json runs this at 06:00 UTC (09:00 Israel). It was hourly for one
+ * commit, which the Hobby plan does not allow — and the failure mode is
+ * peculiar: the deployment is never created, so there is no failed build in
+ * the dashboard, just an old version that will not update. If you ever see
+ * Vercel silently stop deploying, check the cron frequency here first.
+ *
+ * A daily run does not change the 24-hour rule. It changes latency: someone
+ * who goes quiet at noon is picked up the following morning rather than at
+ * the top of the next hour. Going hourly needs a Pro plan.
+ *
  * ── Why the batch is small ─────────────────────────────────────────────────
  * A serverless function has a wall-clock limit, and Resend rate-limits
  * requests per second. Sending "everyone who qualifies" in one invocation
