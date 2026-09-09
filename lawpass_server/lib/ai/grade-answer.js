@@ -68,7 +68,15 @@ const DEFAULT_GRADE_PARAMS = {
   // here that can change the mark a student receives. Raise it back to `high`
   // (or pass `effort` through `params`) for any question where the marking is
   // observed to get worse.
-  model: { id: "claude-opus-5", max_tokens: 16000, effort: "medium" },
+  //
+  // max_tokens raised 16,000 -> 24,000 on 2026-09-09. Hitting the cap throws
+  // ("output truncated at max_tokens") and everything already spent on that run
+  // is lost, so the ceiling wants real headroom above the worst case rather
+  // than a snug fit. Measured output across 16 stored runs averaged 6,607
+  // tokens, but the tail is long — one run reached 11,069, within 5k of the old
+  // cap. This costs nothing on a normal run: max_tokens is a ceiling, not a
+  // reservation, and is billed only on tokens actually produced.
+  model: { id: "claude-opus-5", max_tokens: 24000, effort: "medium" },
   generation: {
     prompt_version: PROMPT_VERSION,
     prompt_cache: true,

@@ -68,23 +68,86 @@ async function getGradingContext(admin, answerId) {
 }
 
 /**
- * Move one submission from `pending` to `grading`, and report whether we got it.
+ * How long a claim is honoured before another worker may take it over.
+ *
+ * Must comfortably exceed a real marking run or a healthy grading gets stolen
+ * and marked twice. Measured runs are 88-218 seconds, so 15 minutes is roughly
+ * four times the worst observed case — long enough that only a dead worker
+ * trips it, short enough that a student is not left waiting a shift.
+ */
+const CLAIM_LEASE_MINUTES = 15;
+
+const leaseCutoff = (minutes) =>
+  new Date(Date.now() - minutes * 60 * 1000).toISOString();
+
+/**
+ * Move one submission to `grading`, and report whether we got it.
  *
  * The status is part of the WHERE clause, not just the SET: two workers racing
  * for the same row both issue this update, and only the one that arrives while
  * the row still says `pending` gets a row back. The loser sees zero rows and
  * moves on rather than paying for a second marking of an answer already in hand.
+ *
+ * ── The lease ──────────────────────────────────────────────────────────────
+ * A claim has to outlive the process that took it, or it would not prevent
+ * anything — which means a worker killed mid-call leaves the row claimed
+ * forever. `grading_started_at` bounds that: a claim older than the lease is
+ * treated as abandoned and may be taken over here.
+ *
+ * Recovery is therefore AUTOMATIC. It used to require someone noticing and
+ * running `--requeue-stale` by hand, which is the same as saying a stuck answer
+ * stayed stuck until a human looked.
+ *
+ * The takeover is two separate statements rather than one `.or()` because a
+ * PostgREST or-filter has to embed the timestamp in its own comma-separated
+ * grammar, and that is a quoting bug waiting to happen for no gain — this path
+ * only runs when a claim actually failed, which is rare.
  */
-async function claimForGrading(admin, answerId) {
+async function claimForGrading(admin, answerId, { leaseMinutes = CLAIM_LEASE_MINUTES } = {}) {
+  const claim = {
+    grading_status: "grading",
+    grading_error: null,
+    grading_started_at: new Date().toISOString(),
+  };
+
+  // The ordinary path: nobody holds it.
   const { data, error } = await admin
     .from("open_question_answers")
-    .update({ grading_status: "grading", grading_error: null })
+    .update(claim)
     .eq("answer_id", answerId)
     .eq("grading_status", "pending")
     .select("answer_id");
 
   if (error) throw error;
-  return (data ?? []).length > 0;
+  if ((data ?? []).length > 0) return true;
+
+  // Claimed by someone. Take it over only if the lease has run out — an
+  // expired lease means the holder is gone, because a live worker's claim is
+  // never this old.
+  const { data: expired, error: expiredErr } = await admin
+    .from("open_question_answers")
+    .update(claim)
+    .eq("answer_id", answerId)
+    .eq("grading_status", "grading")
+    .lt("grading_started_at", leaseCutoff(leaseMinutes))
+    .select("answer_id");
+
+  if (expiredErr) throw expiredErr;
+  if ((expired ?? []).length > 0) return true;
+
+  // Claimed before grading_started_at existed, so its age is unknowable. Those
+  // rows are the pre-existing stuck ones — no live worker can be holding a
+  // claim it never stamped.
+  const { data: unstamped, error: unstampedErr } = await admin
+    .from("open_question_answers")
+    .update(claim)
+    .eq("answer_id", answerId)
+    .eq("grading_status", "grading")
+    .is("grading_started_at", null)
+    .select("answer_id");
+
+  if (unstampedErr) throw unstampedErr;
+  return (unstamped ?? []).length > 0;
 }
 
 /** Oldest first — a student who submitted an hour ago waited longest. */
@@ -101,28 +164,45 @@ async function listPendingAnswers(admin, limit = 20) {
 }
 
 /**
- * Rows stuck in `grading` because the worker died mid-call. Nothing else clears
- * them: the claim is what makes concurrent grading safe, so it has to outlive
- * the process that took it, and only a timeout can tell a crashed run from a
- * slow one.
+ * Rows stuck in `grading` because the worker died mid-call.
+ *
+ * MEASURED FROM grading_started_at, NOT created_at. It used to use created_at —
+ * the submission time — which is the wrong clock in both directions: an answer
+ * submitted hours ago and claimed seconds ago looked stale at once (releasing a
+ * healthy run, so it got marked and paid for twice), while a fresh submission
+ * that genuinely hung stayed invisible until 15 minutes after submission rather
+ * than 15 minutes after it stuck.
+ *
+ * A NULL stamp counts as stale: the row was claimed before the column existed,
+ * so its age cannot be known, and a live worker would have stamped it.
+ *
+ * Claims now expire on their own inside claimForGrading, so this is no longer
+ * the only route back — it remains for `--requeue-stale`, which is how you see
+ * and clear a backlog deliberately rather than one row at a time.
  */
-async function listStaleClaims(admin, olderThanMinutes = 15) {
-  const cutoff = new Date(Date.now() - olderThanMinutes * 60 * 1000).toISOString();
+async function listStaleClaims(admin, olderThanMinutes = CLAIM_LEASE_MINUTES) {
+  const cutoff = leaseCutoff(olderThanMinutes);
   const { data, error } = await admin
     .from("open_question_answers")
-    .select("answer_id, created_at")
+    .select("answer_id, created_at, grading_started_at")
     .eq("grading_status", "grading")
-    .lt("created_at", cutoff)
     .order("created_at", { ascending: true });
 
   if (error) throw error;
-  return data ?? [];
+  // Filtered here rather than in the query so the NULL case and the age case
+  // read as one rule. The candidate set is every row currently grading, which
+  // is a handful at any moment however large the table gets.
+  return (data ?? []).filter(
+    (row) => !row.grading_started_at || row.grading_started_at < cutoff
+  );
 }
 
 async function releaseClaim(admin, answerId) {
   const { error } = await admin
     .from("open_question_answers")
-    .update({ grading_status: "pending" })
+    // Cleared with the status: a stamp left on a row that is no longer grading
+    // would make the next reclaim scan read a stale age.
+    .update({ grading_status: "pending", grading_started_at: null })
     .eq("answer_id", answerId)
     .eq("grading_status", "grading");
   if (error) throw error;
@@ -137,6 +217,9 @@ async function saveScore(admin, answerId, { score, rubricId }) {
       graded_at: new Date().toISOString(),
       graded_with_rubric_id: rubricId,
       grading_error: null,
+      // The claim is over. Left set, the row would carry an age that means
+      // nothing and could be misread by a future reclaim scan.
+      grading_started_at: null,
     })
     .eq("answer_id", answerId);
 
@@ -154,6 +237,7 @@ async function markGradingFailed(admin, answerId, message) {
     .update({
       grading_status: "failed",
       grading_error: String(message || "unknown error").slice(0, 2000),
+      grading_started_at: null,
     })
     .eq("answer_id", answerId);
 
@@ -161,6 +245,7 @@ async function markGradingFailed(admin, answerId, message) {
 }
 
 module.exports = {
+  CLAIM_LEASE_MINUTES,
   getGradingContext,
   claimForGrading,
   listPendingAnswers,
