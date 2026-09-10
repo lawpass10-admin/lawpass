@@ -192,15 +192,28 @@ async function gradeOne(admin, answerId, { params = {}, claim = true } = {}) {
     logTiming({ answerId, status: "graded", spans, usage, timings });
     return { ok: true, status: "graded", score, warnings, usage };
   } catch (err) {
-    const detail = err && err.message ? err.message : String(err);
+    const { diagnoseError, formatForStorage } = require("../ai/diagnose-error");
+    const diagnosis = diagnoseError(err);
+    // Stored with a category tag, so the results page can say which kind of
+    // failure this was without the raw provider message ever leaving the server.
+    const detail = formatForStorage(diagnosis);
     // The llm span is whatever had elapsed when it threw, which is the number
     // worth having: a timeout and a rubric validation failure look identical in
     // the status and completely different here.
     if (!spans.llm) spans.llm = totalSpan() - spans.ctx - spans.claim;
     spans.total = totalSpan();
     logTiming({ answerId, status: "failed", spans });
+    // WHY it failed, on its own line. logTiming says how long a failure took;
+    // until now the reason went only to the database row, so the host log read
+    // "status=failed" seven times over a key the provider was rejecting.
+    console.error(
+      `[grade] FAILED answer=${answerId} category=${diagnosis.category} ` +
+        `retryable=${diagnosis.retryable} status=${diagnosis.status ?? "-"} ` +
+        `type=${diagnosis.type ?? "-"} request_id=${diagnosis.requestId ?? "-"} — ${diagnosis.hint}`
+    );
+    console.error(`[grade]   detail: ${diagnosis.message}`);
     await db.markGradingFailed(admin, answerId, detail);
-    return { ok: false, status: "failed", detail };
+    return { ok: false, status: "failed", detail, category: diagnosis.category };
   } finally {
     // A failed run is not fed into the estimate: it may have died in two
     // seconds or timed out after fifteen minutes, and neither is what the next

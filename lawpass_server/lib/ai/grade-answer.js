@@ -478,15 +478,27 @@ async function gradeAnswer({
   // them has ever been slow.
   const modelMs = modelSpan();
 
+  // Each failure carries a `code` so diagnose-error.js can classify it without
+  // matching on the message text, which is free to be reworded.
   if (message.stop_reason === "refusal") {
-    throw new Error(`[grade] request refused: ${JSON.stringify(message.stop_details)}`);
+    throw Object.assign(
+      new Error(`[grade] request refused: ${JSON.stringify(message.stop_details)}`),
+      { code: "GRADE_REFUSED" }
+    );
   }
   if (message.stop_reason === "max_tokens") {
-    throw new Error("[grade] output truncated at max_tokens — raise max_tokens and retry");
+    throw Object.assign(
+      new Error("[grade] output truncated at max_tokens — raise max_tokens and retry"),
+      { code: "GRADE_TRUNCATED" }
+    );
   }
 
   const textBlock = message.content.find((b) => b.type === "text");
-  if (!textBlock) throw new Error("[grade] no text block in response");
+  if (!textBlock) {
+    throw Object.assign(new Error("[grade] no text block in response"), {
+      code: "GRADE_NO_TEXT",
+    });
+  }
 
   // How much of the response is the marking JSON we actually keep.
   //
@@ -503,7 +515,9 @@ async function gradeAnswer({
   const result = buildScore(JSON.parse(textBlock.text), rubric, studentText, params);
   const parseMs = parseSpan();
   if (!result.ok) {
-    throw new Error(`[grade] unusable marking: ${result.errors.join("; ")}`);
+    throw Object.assign(new Error(`[grade] unusable marking: ${result.errors.join("; ")}`), {
+      code: "GRADE_UNUSABLE",
+    });
   }
 
   return {

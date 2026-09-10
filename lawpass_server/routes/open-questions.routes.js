@@ -56,6 +56,17 @@ router.get(
   asyncHandler(c.getSolution)
 );
 
+// "בדוק שוב" on a failed marking. Re-runs grading on the answer already saved —
+// the student rewrites nothing. Nested under the answer for the same reason as
+// /solution: the answer row, read under the caller's RLS, is what proves they
+// own it.
+router.post(
+  "/answers/:id/regrade",
+  authenticate,
+  requireSubscription,
+  asyncHandler(c.regradeAnswer)
+);
+
 router.get(
   "/:id",
   authenticate,

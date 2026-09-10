@@ -151,7 +151,10 @@ async function getAnswerForUser(supabase, answerId) {
   const { data, error } = await supabase
     .from("open_question_answers")
     .select(
-      "answer_id, open_question_id, attempt_number, answer_body, hand_writing, score, grading_status, created_at, graded_at"
+      // grading_error is read so getAnswer can report WHICH kind of failure a
+      // failed row was. It is reduced to a category before it is sent; the raw
+      // text is never returned to the browser.
+      "answer_id, open_question_id, attempt_number, answer_body, hand_writing, score, grading_status, grading_error, created_at, graded_at"
     )
     .eq("answer_id", answerId)
     .maybeSingle();

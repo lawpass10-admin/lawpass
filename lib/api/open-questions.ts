@@ -224,6 +224,21 @@ export type GradingProgress = {
   percent: number;
 };
 
+/**
+ * Why marking failed, when it did — safe to show in a browser.
+ *
+ * A category and a plain hint only. The provider's raw message, the request id
+ * and anything resembling a key stay in the server log and the database; see
+ * lawpass_server/lib/ai/diagnose-error.js.
+ */
+export type GradingFailure = {
+  /** e.g. "auth", "rate_limit", "timeout", "invalid_output", "unknown". */
+  category: string;
+  /** Whether trying again later could succeed without anyone changing anything. */
+  retryable: boolean;
+  hint: string;
+};
+
 export type AnswerState = {
   answer_id: string;
   open_question_id: string;
@@ -237,6 +252,8 @@ export type AnswerState = {
   hand_writing: HandwritingPage[] | null;
   score: AnswerScore | null;
   progress?: GradingProgress | null;
+  /** Present only when grading_status is "failed". */
+  grading_failure?: GradingFailure | null;
 };
 
 /**
@@ -328,6 +345,34 @@ export async function fetchAnswer(answerId: string): Promise<Result<AnswerState>
     return failed(body);
   } catch {
     return { ok: false, error: FALLBACK_ERROR };
+  }
+}
+
+/**
+ * Ask for a failed submission to be marked again — the saved answer, as it is.
+ *
+ * The student's text is already on the row, so a retry is one request, not a
+ * rewrite. The server re-checks ownership and that the answer really is
+ * `failed`. If it is already back in the queue or already marked, that comes
+ * back as success with the current status, so a double click or a stale tab
+ * simply resumes polling instead of showing an error.
+ */
+export async function regradeAnswer(
+  answerId: string
+): Promise<Result<{ grading_status: GradingStatus }>> {
+  if (!apiEnabled()) return { ok: false, error: DISABLED_ERROR };
+  try {
+    const body = await apiPostJson(
+      `/api/open-questions/answers/${encodeURIComponent(answerId)}/regrade`,
+      {},
+      { auth: true }
+    );
+    if (body.ok === true) {
+      return { ok: true, data: { grading_status: body.grading_status as GradingStatus } };
+    }
+    return failed(body);
+  } catch {
+    return { ok: false, error: "הבקשה לבדיקה חוזרת נכשלה — נסה שוב" };
   }
 }
 

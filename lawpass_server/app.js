@@ -5,6 +5,7 @@ const cors = require("cors");
 
 const { env } = require("./config/env");
 const { pingDatabase } = require("./config/supabase");
+const { checkAiCredentials } = require("./lib/ai/startup-check");
 const routes = require("./routes");
 const { notFound, errorHandler } = require("./middleware/error-handler");
 
@@ -45,6 +46,11 @@ app.listen(env.port, async () => {
   } else {
     console.warn(`[server] WARNING: could not reach Supabase DB — ${db.error}`);
   }
+
+  // And the AI key, for the same reason. Grading runs in the background after a
+  // student submits, so without this a rejected key shows up only as failed
+  // answers — never in the deploy log, where it would be caught at once.
+  await checkAiCredentials();
 });
 
 module.exports = app;

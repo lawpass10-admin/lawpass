@@ -14,6 +14,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { GradingIllustration } from "@/app/(app)/writing-task/results/[answerId]/_components/grading-illustration";
+import { RetryGradingButton } from "@/app/(app)/writing-task/results/[answerId]/_components/retry-grading-button";
 import { NoCopyText } from "@/app/(app)/_components/no-copy-text";
 import { NavigationGuard } from "@/components/app/navigation-guard";
 import { Button } from "@/components/ui/button";
@@ -61,14 +62,43 @@ export function AnswerFeedback({ answerId }: { answerId: string }) {
   // instant; the waiting screen then counts forward from it every second.
   const [gradingStartedAt, setGradingStartedAt] = useState<number | null>(null);
   const attempts = useRef(0);
+  // The last grading state written to the console, so a poll every three
+  // seconds logs a line only when something actually changed.
+  const lastLogged = useRef("");
 
   const load = useCallback(async (): Promise<AnswerState | null> => {
     const result = await fetchAnswer(answerId);
     if (!result.ok) {
+      // The poll itself failed — network, session, or a missing row. A different
+      // problem from grading having failed, and worth telling apart in the log.
+      console.warn(`[grading] answer=${answerId} poll failed — ${result.error}`);
       setError(result.error);
       setPhase("error");
       return null;
     }
+
+    // Diagnostics. The API call succeeding says nothing about the MARKING
+    // succeeding: on 2026-09-10 every request here returned 200 while grading
+    // failed on a rejected API key, and the console showed only `ok=true`.
+    const { grading_status: status, grading_failure: failure, progress } = result.data;
+    const signature = `${status}|${failure?.category ?? ""}`;
+    if (signature !== lastLogged.current) {
+      lastLogged.current = signature;
+      if (status === "failed") {
+        console.error(
+          `[grading] answer=${answerId} status=failed category=${failure?.category ?? "unknown"} ` +
+            `retryable=${failure ? String(failure.retryable) : "unknown"} — ${failure?.hint ?? "no detail from server"}`
+        );
+      } else {
+        console.info(
+          `[grading] answer=${answerId} status=${status}` +
+            (progress
+              ? ` elapsed=${Math.round(progress.elapsed_ms / 1000)}s expected=${Math.round(progress.expected_ms / 1000)}s`
+              : "")
+        );
+      }
+    }
+
     setAnswer(result.data);
     if (result.data.progress) {
       setGradingStartedAt(Date.now() - result.data.progress.elapsed_ms);
@@ -92,6 +122,10 @@ export function AnswerFeedback({ answerId }: { answerId: string }) {
 
       attempts.current += 1;
       if (attempts.current >= POLL_LIMIT) {
+        console.warn(
+          `[grading] answer=${answerId} still ${data.grading_status} after ${POLL_LIMIT} polls ` +
+            `(${Math.round((POLL_LIMIT * POLL_MS) / 60000)} min) — stopped polling`
+        );
         setPhase("timeout");
         return;
       }
@@ -103,7 +137,9 @@ export function AnswerFeedback({ answerId }: { answerId: string }) {
       cancelled = true;
       if (timer) clearTimeout(timer);
     };
-  }, [load]);
+    // answerId is read by the timeout log. It changes only when `load` does, so
+    // listing it never adds a re-run — it just keeps the dependency list honest.
+  }, [load, answerId]);
 
   // The task's title, for the header. Best-effort: a failure here costs a
   // heading, not the marking, so it never blocks the screen.
@@ -174,17 +210,50 @@ export function AnswerFeedback({ answerId }: { answerId: string }) {
   }
 
   if (phase === "failed") {
+    // What the student is told depends on WHY marking failed; the server sends
+    // the category (see GradingFailure). Whatever the reason, the answer is on
+    // the row, so the way forward is to mark it again — never to write the task
+    // a second time, which is what the only option used to be.
+    //
+    // The wording differs on whether a retry can work right now. A temporary
+    // failure may succeed at once. A fault on our side (a rejected API key, say)
+    // fails again until it is fixed, so the student is told to retry after the
+    // fix rather than now — the button stays, because after the fix it is how
+    // they get marked.
+    //
+    // `refused` gets no button: the model declined this text and would again.
+    // A response with no category comes from an API server older than the
+    // regrade endpoint, so it keeps the original wording and no button.
+    const failure = answer?.grading_failure ?? null;
+    const canRetry = Boolean(failure) && failure?.category !== "refused";
+
+    const message = !failure
+      ? "לא הצלחנו לסיים את הבדיקה של התשובה הזו. התשובה שלך שמורה ולא אבדה — נסה שוב מאוחר יותר, ואם זה חוזר, פנה אלינו."
+      : failure.category === "refused"
+        ? "לא הצלחנו לבדוק את התשובה הזו באופן אוטומטי. התשובה שלך שמורה ולא אבדה — פנה אלינו ונטפל בה."
+        : failure.retryable
+          ? "הבדיקה נקטעה בגלל תקלה זמנית. התשובה שלך שמורה ולא אבדה — אפשר לבדוק אותה שוב בלחיצה, בלי לכתוב אותה מחדש. אם זה חוזר, פנה אלינו."
+          : "הבדיקה נכשלה בגלל תקלה במערכת שלנו — לא בגלל התשובה שלך. התשובה שמורה ולא אבדה, ואין צורך לכתוב אותה מחדש: אחרי שנתקן את התקלה, לחץ על ״בדוק שוב את התשובה״. אם זה נמשך, פנה אלינו.";
+
     return (
       <div className="space-y-4">
-        <Notice tone="danger">
-          לא הצלחנו לסיים את הבדיקה של התשובה הזו. התשובה שלך שמורה ולא אבדה — נסה שוב
-          מאוחר יותר, ואם זה חוזר, פנה אלינו.
-        </Notice>
-        <Link href="/writing-task">
-          <Button type="button" variant="outline" className="h-11 md:h-10">
-            חזרה למטלות
-          </Button>
-        </Link>
+        <Notice tone="danger">{message}</Notice>
+        {failure ? (
+          // A reference a student can quote when they get in touch — the
+          // category only, never the provider's message. dir="ltr" keeps the
+          // Latin code from being reordered inside the Hebrew sentence.
+          <p className="font-heebo text-xs" style={{ color: "var(--color-ink-muted)" }}>
+            קוד תקלה: <span dir="ltr" className="font-mono">{failure.category}</span>
+          </p>
+        ) : null}
+        <div className="flex flex-wrap items-start gap-4">
+          {canRetry && answer ? <RetryGradingButton answerId={answer.answer_id} /> : null}
+          <Link href="/writing-task">
+            <Button type="button" variant="outline" className="h-11 md:h-10">
+              חזרה למטלות
+            </Button>
+          </Link>
+        </div>
       </div>
     );
   }

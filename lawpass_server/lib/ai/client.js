@@ -13,10 +13,14 @@ function getClient() {
 
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) {
-    throw new Error(
+    const error = new Error(
       "[ai] ANTHROPIC_API_KEY is not set. Add it to the env file that config/env.js " +
         "loads (app/.env.local) or export it in the shell before running generation."
     );
+    // A code as well as a message, so diagnose-error.js can classify this
+    // failure without matching on wording that is free to change.
+    error.code = "ANTHROPIC_API_KEY_MISSING";
+    throw error;
   }
 
   client = new Anthropic({

@@ -396,8 +396,12 @@ function startGrading(answerId) {
           `[open-questions] grade OK answer=${answerId} score=${result.score.total}/${result.score.max}`
         );
       } else {
+        // Category first: it separates "fix a setting" from "wait and retry" at
+        // a glance, and it is the field worth filtering the host log by.
         console.error(
-          `[open-questions] grade ${result.status} answer=${answerId} — ${result.detail}`
+          `[open-questions] grade ${result.status}` +
+            (result.category ? ` category=${result.category}` : "") +
+            ` answer=${answerId} — ${result.detail}`
         );
       }
     })
@@ -407,6 +411,8 @@ function startGrading(answerId) {
       );
     });
 }
+
+const { describeStoredFailure } = require("../lib/ai/diagnose-error");
 
 /**
  * GET /api/open-questions/answers/:id — one of the caller's own submissions.
@@ -422,8 +428,15 @@ async function getAnswer(req, res) {
     return res.json({ ok: false, error: "התשובה לא נמצאה" });
   }
 
+  // A failed row's reason, reduced to what a browser may see: the category,
+  // whether retrying could help, and a plain hint. The provider's raw message
+  // in grading_error never leaves the server.
+  const gradingFailure =
+    answer.grading_status === "failed" ? describeStoredFailure(answer.grading_error) : null;
+
   console.info(
-    `[open-questions] answer OK user=${req.user.id} id=${answer.answer_id} status=${answer.grading_status}`
+    `[open-questions] answer OK user=${req.user.id} id=${answer.answer_id} status=${answer.grading_status}` +
+      (gradingFailure ? ` failure=${gradingFailure.category}` : "")
   );
   return res.json({
     ok: true,
@@ -434,6 +447,7 @@ async function getAnswer(req, res) {
       grading_status: answer.grading_status,
       created_at: answer.created_at,
       graded_at: answer.graded_at,
+      grading_failure: gradingFailure,
       text: answer.answer_body?.text ?? "",
       word_count: answer.answer_body?.word_count ?? 0,
       // The photographed pages, so the results screen can show what was filed
@@ -505,6 +519,78 @@ async function getSolution(req, res) {
   return res.json({ ok: true, solution });
 }
 
+const gradingDb = require("../db/grading");
+
+/**
+ * POST /api/open-questions/answers/:id/regrade — "בדוק שוב את התשובה".
+ *
+ * Re-runs grading on the answer already saved, so a failure on our side never
+ * costs the student a rewrite. Before this, the only way forward after a failed
+ * marking was to write the whole task again as a new attempt.
+ *
+ * The rules are enforced here, not just by hiding the button:
+ *   * ownership — the row is read under the caller's RLS, so someone else's
+ *     answer id is "not found";
+ *   * only `failed` moves — requeueFailed has `failed` in its WHERE clause, so
+ *     two clicks racing each other start exactly one marking run;
+ *   * never `refused` — the model declined this text, and it would again.
+ *
+ * Allowed for failures on our side too (a rejected API key, say), not only for
+ * temporary ones. That is deliberate: once the fault is fixed, this button is
+ * how those students get marked, and hiding it would leave them stuck. Before
+ * the fix a retry fails straight away, and a rejected request costs no tokens.
+ *
+ * Not already failed (pending, grading, or graded) answers ok with the current
+ * status rather than an error, so a double click or a stale tab just resumes.
+ */
+async function regradeAnswer(req, res) {
+  const answer = await db.getAnswerForUser(req.supabase, req.params.id);
+  if (!answer) {
+    console.info(`[open-questions] regrade MISS user=${req.user.id} id=${req.params.id}`);
+    return res.json({ ok: false, error: "התשובה לא נמצאה" });
+  }
+
+  if (answer.grading_status !== "failed") {
+    console.info(
+      `[open-questions] regrade NOOP user=${req.user.id} answer=${answer.answer_id} status=${answer.grading_status}`
+    );
+    return res.json({ ok: true, grading_status: answer.grading_status });
+  }
+
+  const previous = describeStoredFailure(answer.grading_error);
+  if (previous.category === "refused") {
+    console.info(
+      `[open-questions] regrade REJECTED user=${req.user.id} answer=${answer.answer_id} reason=refused`
+    );
+    return res.json({
+      ok: false,
+      error: "לא ניתן לבדוק שוב את התשובה הזו באופן אוטומטי — פנה אלינו.",
+    });
+  }
+
+  // A handwriting-only answer is never queued (see submitAnswer), so it should
+  // not be failed either — but if one is, the text grader has nothing to read.
+  if (!(answer.answer_body?.word_count > 0)) {
+    return res.json({ ok: false, error: "אין בתשובה הזו טקסט שאפשר לבדוק" });
+  }
+
+  const moved = await gradingDb.requeueFailed(adminClient(), answer.answer_id);
+  if (!moved) {
+    // Another request moved it between our read and this update. Grading is
+    // already under way on that request's behalf — report it and let the page poll.
+    console.info(
+      `[open-questions] regrade RACE user=${req.user.id} answer=${answer.answer_id} — already requeued`
+    );
+    return res.json({ ok: true, grading_status: "pending" });
+  }
+
+  console.info(
+    `[open-questions] regrade QUEUED user=${req.user.id} answer=${answer.answer_id} previous_failure=${previous.category}`
+  );
+  startGrading(answer.answer_id);
+  return res.json({ ok: true, grading_status: "pending" });
+}
+
 module.exports = {
   getSubjects,
   getQuestionsBySubject,
@@ -513,6 +599,7 @@ module.exports = {
   uploadHandwriting,
   getAnswer,
   getSolution,
+  regradeAnswer,
   toStudentQuestion,
   toListEntry,
   toStudentSolution,

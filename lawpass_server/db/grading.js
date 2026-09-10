@@ -244,6 +244,30 @@ async function markGradingFailed(admin, answerId, message) {
   if (error) throw error;
 }
 
+/**
+ * Put a failed submission back in the queue, and report whether it moved.
+ *
+ * `failed` is in the WHERE clause for the same reason `pending` is in
+ * claimForGrading's: two retry clicks racing each other both issue this update,
+ * and only the first finds the row still failed. The second changes nothing, so
+ * one click is one marking run however many requests arrive.
+ *
+ * The old error is cleared with the status. The new run writes its own if it
+ * fails too, and a stale reason left on a row that is grading again would be
+ * reported to the student as the reason for a failure that has not happened.
+ */
+async function requeueFailed(admin, answerId) {
+  const { data, error } = await admin
+    .from("open_question_answers")
+    .update({ grading_status: "pending", grading_error: null, grading_started_at: null })
+    .eq("answer_id", answerId)
+    .eq("grading_status", "failed")
+    .select("answer_id");
+
+  if (error) throw error;
+  return (data ?? []).length > 0;
+}
+
 module.exports = {
   CLAIM_LEASE_MINUTES,
   getGradingContext,
@@ -251,6 +275,7 @@ module.exports = {
   listPendingAnswers,
   listStaleClaims,
   releaseClaim,
+  requeueFailed,
   saveScore,
   markGradingFailed,
 };
