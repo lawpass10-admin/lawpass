@@ -8,16 +8,23 @@ import {
   Gauge,
   LogOut,
   Pencil,
-  Scale,
   Settings,
   Shield,
-  Timer,
   XCircle,
 } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import * as React from "react";
 
+import {
+  listDiuniSetsAction,
+  listMahotiSetsAction,
+} from "@/app/(app)/_actions";
+import {
+  ExamPickerDialog,
+  type PickerSet,
+} from "@/components/app/exam-picker-dialog";
 import { signOutAction } from "@/lib/api/auth";
 import {
   DropdownMenu,
@@ -60,16 +67,52 @@ const PLAN_TOTAL_DAYS: Record<string, number> = {
   "6_months": 180,
 };
 
+/**
+ * The two rows that open a paper picker instead of navigating. Matched by
+ * href so the entries below stay plain rows like the others — and so a
+ * picker's button and its row cannot drift apart on the destination.
+ *
+ * Both subjects serve generated papers, so "open the subject" is really "open
+ * WHICH paper"; the picker asks, instead of the sidebar deciding on the
+ * candidate's behalf by always serving the newest.
+ */
+const MAHOTI_HREF = "/mahoti";
+const DIUNI_HREF = "/diuni";
+
+const PICKER_ROWS: Record<
+  string,
+  {
+    description: string;
+    emptyLabel: string;
+    load: () => Promise<PickerSet[]>;
+  }
+> = {
+  [MAHOTI_HREF]: {
+    description:
+      "בחר את המבחן שברצונך לפתוח. כל מבחן מוצג לצד מחברת החקיקה שממנה נכתב.",
+    emptyLabel: "אין עדיין מבחני דין מהותי זמינים.",
+    load: listMahotiSetsAction,
+  },
+  [DIUNI_HREF]: {
+    description: "בחר את המבחן שברצונך לפתוח, בפורמט חלק ב' של בחינת הלשכה.",
+    emptyLabel: "אין עדיין מבחני דין דיוני זמינים.",
+    load: listDiuniSetsAction,
+  },
+};
+
 // Phase 14 polish — icons re-tuned to match the final prototype:
 // dashboard/practice/exam map to Gauge/Scale/Timer (legal-leaning,
 // thin stroke). Bookmarks + mistakes stay on Bookmark + XCircle.
+//
+// "תרגול" (/practice) and "סימולציות בחינה" (/exam) were removed from this
+// list on PM request. Only the two ROWS are gone: both routes, their pages
+// and everything behind them are untouched and still reachable by URL — put
+// the entries back to restore the rows.
 const NAV_LEARNING = [
   { href: "/dashboard", label: "סטטיסטיקה אישית ותרגול מותאם", Icon: Gauge },
-  { href: "/practice", label: "תרגול", Icon: Scale },
-  { href: "/exam", label: "סימולציות בחינה", Icon: Timer },
   { href: "/writing-task", label: "מטלת כתיבה", Icon: FileText },
-  { href: "/mahoti", label: "דיון מהותי", Icon: BookOpen },
-  { href: "/diuni", label: "דין דיוני", Icon: Gavel },
+  { href: MAHOTI_HREF, label: "דין מהותי", Icon: BookOpen },
+  { href: DIUNI_HREF, label: "דין דיוני", Icon: Gavel },
 ] as const;
 
 const NAV_LIBRARY = [
@@ -242,6 +285,22 @@ export function AppSidebar({
   // navigation, so isActive tracks the current route correctly.
   const pathname = usePathname() ?? "";
 
+  // Which picker is open, by href — see PICKER_ROWS. One piece of state for
+  // both rows: they are mutually exclusive (a click on either replaces
+  // whatever was open), and it keeps one <ExamPickerDialog> mounted rather
+  // than one per subject.
+  // `href` is the subject; `open` is whether it is showing. The two are
+  // separate so the state survives the close: dropping the subject on close
+  // would unmount the dialog mid-fade and it would vanish instead of closing.
+  const [picker, setPicker] = React.useState<{
+    href: string;
+    open: boolean;
+  } | null>(null);
+  const pickerContent = picker ? PICKER_ROWS[picker.href] : null;
+  // The dialog's heading and icon are the row's own, so the two can never
+  // disagree about which subject was clicked.
+  const pickerRow = NAV_LEARNING.find((item) => item.href === picker?.href);
+
   return (
     <Sidebar side="right" collapsible="icon">
       <SidebarHeaderArea />
@@ -256,10 +315,24 @@ export function AppSidebar({
             {NAV_LEARNING.map((item) => {
               const active = isPathActive(pathname, item.href);
               const { Icon } = item;
+              const opensDialog = item.href in PICKER_ROWS;
               return (
                 <SidebarMenuItem key={item.href} className="relative">
                   <SidebarMenuButton
-                    render={<Link href={item.href} />}
+                    // A <button> for the picker rows, a <Link> for the rest.
+                    // Not a link with preventDefault: these rows do not
+                    // navigate on their own, so they should not be announced
+                    // as destinations or offer "open in new tab" onto a paper
+                    // the candidate has not chosen yet.
+                    {...(opensDialog
+                      ? {
+                          onClick: () =>
+                            setPicker({ href: item.href, open: true }),
+                          "aria-haspopup": "dialog" as const,
+                          "aria-expanded":
+                            picker?.open === true && picker.href === item.href,
+                        }
+                      : { render: <Link href={item.href} /> })}
                     isActive={active}
                     className={NAV_BUTTON_CLS}
                   >
@@ -357,6 +430,27 @@ export function AppSidebar({
           email={userEmail}
         />
       </SidebarFooter>
+
+      {/* Inside <Sidebar> only as a matter of where the state lives — the
+          dialog portals to <body>, so neither the sidebar's overflow nor the
+          mobile Sheet can clip it.
+
+          Keyed by the subject so switching rows remounts it: without the key
+          the second subject's papers would appear under the first's loaded
+          list, with the previous selection still highlighted. */}
+      {picker && pickerContent && pickerRow ? (
+        <ExamPickerDialog
+          key={picker.href}
+          open={picker.open}
+          onOpenChange={(open) => setPicker({ href: picker.href, open })}
+          title={pickerRow.label}
+          Icon={pickerRow.Icon}
+          href={pickerRow.href}
+          description={pickerContent.description}
+          emptyLabel={pickerContent.emptyLabel}
+          load={pickerContent.load}
+        />
+      ) : null}
     </Sidebar>
   );
 }

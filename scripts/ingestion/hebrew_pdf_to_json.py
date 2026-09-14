@@ -475,9 +475,138 @@ def strip_list_number(text: str) -> str:
     return LEADING_LIST_NUMBER.sub("", text, count=1).strip()
 
 
+# The notice the exam paper closes with, addressed to the candidate rather than
+# forming part of any question:
+#
+#   לידיעתכם, מדבקת הזיהוי הינה לשימוש פנימי ואינה מוצגת לבודק המטלה.
+#   לתשומת לבך! חל איסור לכלול בגוף התשובה פרטים מזהים כלשהם. בהצלחה!
+#
+# It sits at the very end of the last question, which is where the LAST attached
+# source also ends — that block runs to the end of the text — so without this it
+# is swallowed into the final quote and printed to the student as though it were
+# part of the judgment being quoted. That had happened to seven quotes.
+#
+# Everything from the notice to the end goes, including a bare page number
+# immediately before it. Anchored on the opening words rather than on a full
+# match, because the wording varies between papers ("מדבקת הזיהוי הינה" against
+# "מדבקת הזיהוי ופרטי הזיהוי בראש טופס התשובות הינם") and bidi extraction moves
+# the comma to the wrong side of the word.
+PAPER_TRAILER = re.compile(
+    r"\s*\d*\s*(?:לידיעתכם\s*,?\s*מדבקת\s+הזיהוי|לתשומת\s+לבך\s*!|בהצלחה\s*!)[\s\S]*$"
+)
+
+
+def strip_paper_trailer(text: str) -> str:
+    """Drop the paper's closing notice to the candidate. See PAPER_TRAILER."""
+    return PAPER_TRAILER.sub("", text)
+
+
 BASIC_LAW_HEAD = re.compile(r"^" + LIST_NUMBER + r"(?:מתוך\s+)?חוק\s+יסוד")
 # Where a quoted statute body opens: a section number, as ".3" or ")7ב(".
 SECTION_START = re.compile(r"\s\.\d+|\s\)\d+")
+
+
+# Court abbreviations whose gershayim the exam PDFs' fonts drop. A closed list,
+# matched only as a whole word, so nothing outside it can be rewritten.
+COURT_ABBREVIATIONS = {
+    "בגץ": 'בג"ץ',
+    "תא": 'ת"א',
+    "עא": 'ע"א',
+    "רעא": 'רע"א',
+    "עתמ": 'עת"מ',
+    "ברמ": 'בר"מ',
+    "עע": 'ע"ע',
+}
+
+#: Ordered repairs for a citation line. Each undoes one thing bidi extraction
+#: does; none reorders or invents content. See repair_citation.
+CITATION_REPAIRS = [
+    # Mirrored brackets: ")אגרות(" for "(אגרות)". First, because the rules below
+    # key on the comma that follows the bracket.
+    (re.compile(r"\)([^()]{1,30})\("), r"(\1)"),
+    (re.compile(r"\]([^\[\]]{1,30})\["), r"[\1]"),
+    # "נ' " — the geresh is a neutral character and lands on either side of the
+    # nun. The SPACED form must run first: "פרפור נ 'נשר" is "פרפור נ' נשר", and
+    # the second pattern alone would read the "'נ" of "'נשר" as the separator and
+    # produce "פרפור נ נ' שר".
+    (re.compile(r"(\s)נ\s+'(?=[א-ת])"), r"\1נ' "),
+    (re.compile(r"(^|\s)'נ(?=[א-ת])"), r"\1נ' "),
+    # Punctuation carried to the front of the following word.
+    (re.compile(r"\s+,"), ", "),
+    (re.compile(r"\s+:"), ": "),
+    # The hyphen before the year, extracted as a colon or dropped entirely.
+    (re.compile(r":(\d)"), r"-\1"),
+    (re.compile(r'(הת?[א-ת]{1,4}"[א-ת])(\d{4})'), r"\1-\2"),
+    # Transposed gershayim in the Hebrew year: התש"נח for התשנ"ח. The mark always
+    # sits before the LAST letter, so this fires only where two letters follow it
+    # — התשע"ט and התשס"ז are already right and do not match.
+    (re.compile(r'(הת[א-ת]+)"([א-ת])([א-ת])(?![א-ת])'), r'\1\2"\3'),
+    # An LTR digit run running straight into the word after it.
+    (re.compile(r"(\d)([א-ת])"), r"\1 \2"),
+    (re.compile(r"\s{2,}"), " "),
+]
+
+
+#: Repairs for the QUOTED TEXT of a source. Far narrower than CITATION_REPAIRS,
+#: because this is the text of a statute or a judgment and a wrong "fix" here
+#: rewrites the law. See repair_quote_text.
+QUOTE_TEXT_REPAIRS = [
+    # ")129א(" -> "(129א)", but ONLY where what sits between the brackets is a
+    # provision marker. The general "flip any mirrored pair" rule CORRUPTS these
+    # quotes: in the statute extracts the brackets landed inside words —
+    # "בקשה לסעד זמנ)י תוגש … ב(" is "בקשה לסעד זמני תוגש … (ב)" — and pairing
+    # them turns "זמנ)י" into "זמנ(י".
+    (re.compile(r"\)(\d{1,3}[א-ת]?|[א-ת])\("), r"(\1)"),
+    # ".5בית המשפט" -> "5. בית המשפט". Digits only: allowing a Hebrew letter
+    # after the number turns ".5בית" into "5ב. ית", because the ב of בית is
+    # indistinguishable from a sub-provision suffix.
+    (re.compile(r"\.(\d{1,3})(?=[א-ת])"), r"\1. "),
+    # A full stop carried to the front of the next word. The (?!\.) is load-
+    # bearing: without it the rule takes the first dot of an ellipsis and turns
+    # '" ...החלטה"' into '". ..החלטה"'.
+    (re.compile(r"\s+\.(?!\.)"), ". "),
+    (re.compile(r"\s+,"), ", "),
+    (re.compile(r"\s{2,}"), " "),
+]
+
+
+def repair_quote_text(text: str) -> str:
+    """Repair punctuation and spacing in a quoted source. Never its words.
+
+    Guarded by an invariant rather than by inspection: the letters and digits
+    must come out in exactly the order they went in. Anything that would move
+    one is a bug in a rule above, and the original is returned instead.
+    """
+    repaired = text
+    for pattern, replacement in QUOTE_TEXT_REPAIRS:
+        repaired = pattern.sub(replacement, repaired)
+    repaired = repaired.strip()
+
+    letters = lambda s: re.sub(r"[^0-9א-ת]", "", s)
+    if letters(repaired) != letters(text):
+        return text
+    return repaired
+
+
+def repair_citation(citation: str) -> str:
+    """Undo the bidi damage in a source's citation line.
+
+    The citation is the heading printed above each attached source, and it is
+    also substituted wherever a {{L1}} placeholder stands in generated text — so
+    a damaged one is read twice, as a heading and mid-sentence.
+
+    Only mechanical, reversible repairs. What is NOT attempted, because it would
+    be an inference about a citation rather than a repair of punctuation:
+
+    * Case-number ORDER. 'ע"א 23-123 דרור' may be 123-23 reversed, since the
+      digits are one LTR run inside an RTL line. Settling that needs the PDF.
+    * A letter that arrived in the wrong place entirely ('משרד הבינוינ').
+    """
+    for word, fixed in COURT_ABBREVIATIONS.items():
+        citation = re.sub(rf"(^|\s){word}(?=\s)", rf"\g<1>{fixed}", citation)
+    for pattern, replacement in CITATION_REPAIRS:
+        citation = pattern.sub(replacement, citation)
+    return citation.strip()
 
 
 def split_citation_and_quote(block: str):
@@ -575,6 +704,9 @@ def segment(pages, exam_id):
     for idx, m in enumerate(marks):
         number = int(m.group(1))
         body = full[m.end(): marks[idx + 1].start() if idx + 1 < len(marks) else len(full)]
+        # Before anything is split off it, so the notice can reach neither the
+        # task instructions nor the last attached source.
+        body = strip_paper_trailer(body)
         external_id = f"{exam_id}-Q{number}"
 
         # The sources begin after the answer-limit sentence, which may sit
@@ -618,6 +750,9 @@ def segment(pages, exam_id):
                     f"{external_id}: source {n} has no quoted text — check the split: {citation[:60]!r}"
                 )
             kind = "statute" if STATUTE_HEAD.match(fold(citation)) else "case_law"
+            # After the kind is decided: STATUTE_HEAD keys on the raw shape.
+            citation = repair_citation(citation)
+            quote = repair_quote_text(quote) if quote else quote
             quotes.append({
                 "id": f"{'L' if kind == 'statute' else 'V'}{n}-Q{number}",
                 "question_external_id": external_id,

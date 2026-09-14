@@ -40,8 +40,6 @@ export type OpenQuestionQuote = {
   text?: string;
 };
 
-export type OpenQuestionTimelineEntry = { date?: string; event?: string };
-
 /**
  * The candidate's paper. The exam-writer fields (legal_topic_analysis,
  * model_answer_outline, common_pitfall) are absent by construction — the
@@ -62,7 +60,9 @@ export type OpenQuestionDetail = {
   fact_pattern?: string;
   task_instructions?: string;
   answer_limit?: string;
-  timeline?: OpenQuestionTimelineEntry[];
+  // No `timeline`. The paper prints the dates inside the facts and nothing
+  // else; the server's allowlist stopped sending the field, so — as with the
+  // exam-writer fields above — it cannot be typed here either.
   quotes: OpenQuestionQuote[];
 };
 

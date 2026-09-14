@@ -378,7 +378,10 @@ function buildGradePrompt({ question, modelAnswer, rubric, params }) {
           fact_pattern: question.fact_pattern,
           task_instructions: question.task_instructions,
           answer_limit: question.answer_limit,
-          timeline: question.timeline,
+          // No timeline: the candidate is not shown one, so the grader must not
+          // be either. An older row may still carry the field from when the
+          // paper printed a dates table; marking against facts the candidate
+          // never saw would penalise them for the generator's history.
         },
         rubric,
         model_answer: modelAnswer

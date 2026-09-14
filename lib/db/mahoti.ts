@@ -202,6 +202,83 @@ export async function getMahotiSet(
 }
 
 /**
+ * One line in the paper picker — enough to choose between papers, and
+ * deliberately not enough to sit one.
+ *
+ * `questionCount` and `lawCount` are nullable because they are read out of the
+ * stored json rather than counted: a row written before the generator recorded
+ * `exam.question_count` simply has no number to show, which the picker renders
+ * as a paper with no subtitle rather than as a paper with "0 שאלות".
+ */
+export type MahotiSetSummary = {
+  questionId: string;
+  createdAt: string | null;
+  title: string;
+  questionCount: number | null;
+  lawCount: number | null;
+};
+
+/**
+ * How many papers the picker offers.
+ *
+ * One, for now, on purpose: only the newest paper has been through the
+ * generator's current verification pass, so the older rows are not yet content
+ * anyone should be sent into. Raise this — or drop the argument entirely — once
+ * the back catalogue is worth offering.
+ */
+export const MAHOTI_PICKER_LIMIT = 1;
+
+/** The `questions -> exam` and `question_notebook -> notebook` sub-objects,
+ *  which is all the picker reads. Selecting the whole `questions` array to
+ *  count it would pull the entire paper — 40 questions of legal text — for
+ *  every row in a list that shows one line each. */
+type SummaryRow = {
+  question_id: string;
+  created_at: string | null;
+  exam: { title?: string; question_count?: number } | null;
+  notebook_meta: { law_count?: number } | null;
+};
+
+/**
+ * The authored papers a candidate may open, newest first.
+ *
+ * Same two filters as the default read in `getMahotiSet`, for the same two
+ * reasons: `built_for IS NULL` keeps one candidate's custom exam out of
+ * everyone else's list, and a row is only listed once BOTH halves are present —
+ * a notebook-only row is an intermediate state, and offering it would open a
+ * paper with nothing in it.
+ */
+export async function listMahotiSets(
+  limit: number = MAHOTI_PICKER_LIMIT
+): Promise<MahotiSetSummary[]> {
+  const supabase = createAdminClient();
+
+  const { data, error } = await supabase
+    .from(TABLE)
+    .select(
+      "question_id, created_at, exam:questions->exam, notebook_meta:question_notebook->notebook"
+    )
+    .is("built_for", null)
+    .not("questions", "is", null)
+    .not("question_notebook", "is", null)
+    .order("created_at", { ascending: false })
+    .limit(limit)
+    .returns<SummaryRow[]>();
+
+  if (error) {
+    throw new Error(`failed to list ${TABLE}: ${error.message}`);
+  }
+
+  return (data ?? []).map((row) => ({
+    questionId: row.question_id,
+    createdAt: row.created_at,
+    title: row.exam?.title ?? "דין מהותי",
+    questionCount: row.exam?.question_count ?? null,
+    lawCount: row.notebook_meta?.law_count ?? null,
+  }));
+}
+
+/**
  * The paper that follows `currentId` in the table's own order — what
  * "למבחן הבא" moves to at the end of a review.
  *

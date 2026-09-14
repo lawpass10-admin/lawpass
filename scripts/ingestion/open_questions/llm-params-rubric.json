@@ -24,7 +24,8 @@
   "version": 1,
   "model": {
     "id": "claude-opus-5",
-    "max_tokens": 16000,
+    "_max_tokens_note": "thinking and answer share this budget. 16000 truncated a real run at effort=high — a rubric is ten items each carrying a Hebrew requirement, a comment and an evidence quote, and the reasoning that picks them is longer than the rubric itself. Same lesson as llm-params-answers.json, which found 24000 too small for an answer.",
+    "max_tokens": 32000,
     "effort": "high"
   },
   "generation": {
@@ -37,7 +38,7 @@
     "weighting": "The legal analysis carries the mark. Identifying particulars — court, parties, case number, the caption block — are worth a point or two between them, not a quarter of the total. Where the question turns on a multi-condition test, each condition that has to be argued separately is its own item; a single item covering 'the whole test' hides exactly the difference the question was set to measure.",
     "partial_credit": "State the half-mark rule as an observable difference, not a quality word. 'Names the condition but does not apply it to the facts' is markable; 'partial understanding' is not.",
     "deduction_policy": "Deductions are for faults the content items cannot express — padding the answer with facts the question planted as distractors, reciting a source instead of applying it, relief that does not follow from the argument, an appendix attached without saying what it proves. Two to four of them, one or two points each. They are not a second chance to penalise something an item already scores.",
-    "extra_instructions": "Write requirements a marker can check against the student's text without re-reading the whole answer. Where the item depends on citing a specific source, name the source in the requirement so it can be searched for."
+    "extra_instructions": "Write requirements a marker can check against the student's text without re-reading the whole answer. Where the item depends on citing a specific source, name the source in the requirement so it can be searched for. AND ONLY A SOURCE THAT IS ATTACHED: a requirement may name a provision only if that provision is in the question's own quote bank, cited by the number the attached text carries. Check each one against the bank before you write it, searching for the number as the statute text itself writes it — provisions are numbered \".6\" or \")129א(\" in these quotes and the words \"תקנה 6\" usually appear nowhere, so a search for the phrase will report a provision missing when it is in fact attached. A candidate cannot cite what they were not given, and an item they cannot satisfy measures nothing. A REQUIREMENT ABOUT THE DOCUMENT'S FURNITURE MUST HAVE BEEN ASKED FOR. Where an item turns on formal particulars rather than on legal analysis — the advocate's name and signature at the foot, an affidavit, consistent party designations, identification details — it may be required only if task_instructions actually ask for it. If the paper is silent, either leave the point out or cover it in the ארגון band, where it belongs, rather than as a content item worth a mark."
   },
   "validation": {
     "min_content_items": 4,

@@ -583,7 +583,8 @@ function buildRubricPrompt({ question, answer, exemplarRubricText, params }) {
             fact_pattern: question.fact_pattern,
             task_instructions: question.task_instructions,
             answer_limit: question.answer_limit,
-            timeline: question.timeline,
+            // No timeline — a marking criterion must rest on what the paper
+            // actually puts in front of the candidate.
           },
           model_answer: {
             document_type: answer.document_type,

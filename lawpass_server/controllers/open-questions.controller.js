@@ -42,7 +42,9 @@ const STUDENT_FIELDS = [
   "fact_pattern",
   "task_instructions",
   "answer_limit",
-  "timeline",
+  // No "timeline". The paper no longer prints a dates table, and dropping the
+  // field here is what stops the rows generated before that change from still
+  // serving one.
 ];
 
 /** Quote fields — the sources printed on the exam paper, verbatim. */

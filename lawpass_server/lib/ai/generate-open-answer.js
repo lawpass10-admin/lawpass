@@ -462,7 +462,8 @@ function buildAnswerPrompt({ question, bank, rubricText, exemplars, params }) {
             fact_pattern: question.fact_pattern,
             task_instructions: question.task_instructions,
             answer_limit: question.answer_limit,
-            timeline: question.timeline,
+            // No timeline — the model answer is written from what the candidate
+            // is shown, and the paper no longer prints a dates table.
           },
           quote_bank: bankForPrompt(bank),
         },

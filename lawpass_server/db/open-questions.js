@@ -60,10 +60,16 @@ async function listSubjects(supabase) {
 /**
  * Every question filed under one subject, newest first.
  *
- * Matched on the exact stored string. The subjects come off the PDFs and some
- * carry bidi damage from extraction (תקנות סדר הדין האזרחי ,התשע"ט:2018), so
- * two spellings of the same statute are two subjects here — deliberately, since
- * the list the student picks from is built from these same strings.
+ * Matched on the exact stored string, and nothing is normalised at read time:
+ * the list the student picks from is built by grouping these same strings, so a
+ * subject is whatever the column says.
+ *
+ * That makes a damaged spelling a data problem, not a query problem. The
+ * subjects come off the PDFs and Hebrew extraction moves commas and mangles the
+ * hyphen before the year, which had put four spellings of
+ * "תקנות סדר הדין האזרחי, תשע״ט-2018" in the picker as four separate subjects
+ * with the questions divided between them. They were merged in migration
+ * 20260914000001; a new spelling that appears later belongs fixed the same way.
  */
 async function listQuestionsBySubject(supabase, subject) {
   const { data, error } = await supabase

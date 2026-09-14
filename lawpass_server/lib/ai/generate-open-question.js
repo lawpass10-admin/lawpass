@@ -18,7 +18,7 @@ const {
 // (scripts/ingestion/open_questions/llm-params.json) is the intended place to tune.
 const DEFAULT_PARAMS = {
   model: { id: "claude-opus-5", max_tokens: 24000, effort: "high" },
-  generation: { prompt_version: "open-question-angle/2", prompt_cache: true },
+  generation: { prompt_version: "open-question-angle/3", prompt_cache: true },
   authoring: {
     difficulty: "match_source",
     fact_pattern_length: "match_source",
@@ -89,7 +89,9 @@ New people, new places, new dates, new amounts, new factual setting. Do not reus
 
 Write in Hebrew, in the register of a bar-exam paper. The fact pattern should be comparable in length to the source and must contain no quoted source text at all — it is a story, not an analysis.
 
-fact_pattern, task_instructions, timeline, client_role, deliverable are what the candidate sees.
+There is no separate list of dates. Every legally significant date belongs inside the fact pattern, in the order the events happened, stated once. The real paper gives the candidate a narrative and expects them to build the chronology themselves; a dates table hands them that work already done, and repeating each date twice makes the paper read as a summary of itself.
+
+fact_pattern, task_instructions, client_role, deliverable are what the candidate sees.
 legal_topic_analysis, model_answer_outline, common_pitfall are for the exam writer and are where placeholders belong.`;
 
 const DIFFICULTY_RULE = {
@@ -102,7 +104,12 @@ const DIFFICULTY_RULE = {
 const LENGTH_RULE = {
   match_source: "The fact pattern should be about as long as the source's.",
   shorter: "Keep the fact pattern noticeably shorter than the source's — trim colour, keep every legally operative fact.",
-  longer: "The fact pattern may run somewhat longer than the source's, if the extra detail is legally operative.",
+  // Directive and numeric, because permissive wording did not move it: "may run
+  // somewhat longer … if the extra detail is legally operative" produced 267 and
+  // 269 words against sources of 243-356. A model does not count its own Hebrew
+  // reliably, so the target is stated as a count AND as the concrete thing that
+  // fills it.
+  longer: "The fact pattern must run to 300-350 words — longer than the source's, not shorter. Ours have been coming in near 265, which is too thin. Spend the extra length on legally operative detail: what each document actually said, the sums and dates in full, the step the client took before coming to you, and what the other side answered.",
 };
 
 /** Authoring taste, assembled from the params file and appended to the core rules. */
@@ -130,7 +137,6 @@ const ANGLE_SCHEMA = {
     "fact_pattern",
     "task_instructions",
     "answer_limit",
-    "timeline",
     "legal_topic_analysis",
     "model_answer_outline",
     "common_pitfall",
@@ -145,19 +151,9 @@ const ANGLE_SCHEMA = {
     fact_pattern: { type: "string", description: "The new scenario in Hebrew. No source quotes." },
     task_instructions: { type: "string", description: "Hebrew instructions to the candidate, mirroring the source's constraints" },
     answer_limit: { type: "string", description: "Length limit, in Hebrew" },
-    timeline: {
-      type: "array",
-      description: "The legally significant dates, in order",
-      items: {
-        type: "object",
-        additionalProperties: false,
-        required: ["date", "event"],
-        properties: {
-          date: { type: "string" },
-          event: { type: "string" },
-        },
-      },
-    },
+    // No `timeline`. The dates live in fact_pattern and nowhere else — see the
+    // "Output" section of CORE_RULES. The field is gone from the schema rather
+    // than merely unused so a model cannot volunteer one back.
     legal_topic_analysis: { type: "string", description: "Hebrew. Why this is the same legal tension as the source. Use placeholders for sources." },
     model_answer_outline: { type: "string", description: "Hebrew. The argument a full-mark answer makes. Use placeholders for sources." },
     common_pitfall: { type: "string", description: "Hebrew. The mistake candidates make here." },
@@ -223,7 +219,9 @@ function buildAngleRequest({
         fact_pattern: source.fact_pattern,
         task_instructions: source.task_instructions,
         answer_limit: source.answer_limit,
-        timeline: source.timeline,
+        // The source's own date list is withheld too. Shown one, the model
+        // reproduces the shape — and the dates it carries are already in the
+        // source's fact pattern, which is where the new question must put them.
       },
       quote_bank: bankForPrompt(bank),
     },

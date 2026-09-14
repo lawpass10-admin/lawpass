@@ -6,24 +6,49 @@
     "",
     "NOT tunable here, by design: the quote-locking rules. They live in",
     "lib/ai/generate-open-question.js because weakening them would silently",
-    "break quote fidelity instead of failing loudly."
+    "break quote fidelity instead of failing loudly.",
+    "",
+    "Revision history of the rules:",
+    "  v2 — calibrated against six answers filed by a practising advocate",
+    "       (three of them marked 19, 19.5 and 17 out of 20; language and",
+    "       organisation scored 4/4 on all three, so every mark lost was in",
+    "       content, and each one pointed at the QUESTION rather than at the",
+    "       writing). Five changes came out of it:",
+    "         * register — the papers narrate formally and quote the client's",
+    "           spoken Hebrew; ours was colloquial in the narration itself.",
+    "         * בתאריך scoped to the fact pattern. The advocate wrote ביום 21",
+    "           times and בתאריך never; the official model answers, 5 and none.",
+    "         * no dates table — the field is gone from the schema; the",
+    "           chronology is the candidate's to build.",
+    "         * every provision the outline needs must be in the quote bank.",
+    "         * the formal particulars the marking wants must be named in",
+    "           task_instructions, and the fact pattern must reach 280-350 words.",
+    "       effort also went low -> medium.",
+    "",
+    "       One finding did NOT survive checking and is recorded so it is not",
+    "       rediscovered: the advocate's 0/1 on 2026-S-Q1-B item C4 looked like",
+    "       a rubric demanding an unattached provision, but תקנה 6 IS in that",
+    "       paper's quote bank — the statute text numbers it \".6\" and never",
+    "       writes the words \"תקנה 6\". The mark was fair. The attached-sources",
+    "       rule above is kept as standing discipline, not as a fix for it."
   ],
-  "version": 1,
+  "version": 2,
   "model": {
     "id": "claude-opus-5",
     "max_tokens": 24000,
-    "effort": "low"
+    "effort": "medium"
   },
   "generation": {
-    "prompt_version": "open-question-angle/2",
+    "prompt_version": "open-question-angle/3",
     "prompt_cache": true
   },
   "authoring": {
     "difficulty": "match_source",
-    "fact_pattern_length": "match_source",
+    "_fact_pattern_length_note": "was match_source, which produced 265-267 words against source papers of 243-356 (2026-S-Q1's own facts run 332). Stating the target in extra_instructions did not move it; the length rule is what the prompt actually carries, so it is set here instead.",
+    "fact_pattern_length": "longer",
     "setting_variety": "Vary the milieu between angles — workplace, commercial, municipal, family, road-accident — rather than reusing the source's social setting.",
-    "register": "SCOPE THIS TO THE SCENARIO ONLY. Write fact_pattern in plain, everyday Hebrew — the way a client actually tells the story when they walk into the office. Short sentences, ordinary words, concrete human detail (what was said, what it cost, who stopped answering the phone). Do not name the legal doctrine, do not analyse, do not signpost which source applies: the candidate's job is to spot that. Use a legal term only where the facts genuinely require one (כתב הגנה, בקשה לסילוק על הסף, המצאה) and then use it plainly, without explaining it. Everything else — task_instructions, legal_topic_analysis, model_answer_outline, common_pitfall — stays in precise legal Hebrew.",
-    "extra_instructions": "Build the facts so that distinguishing ת\"א 2233-14 (V3) is the hardest part of the answer: the defendant must have a genuinely arguable reliance claim, not a weak one. Keep the dates, sums and intervals exact even though the telling is casual — the arithmetic is the question. WORDING: introduce every specific calendar date with בתאריך, never with ביום — write \"בתאריך 12.3.2019\", not \"ביום 12.3.2019\". This applies wherever a date appears: fact_pattern, timeline events, task_instructions and the analysis fields. Leave the fixed expression בו ביום (meaning 'that same day') alone — it carries no date and must not be rewritten."
+    "register": "SCOPE THIS TO THE SCENARIO ONLY. THE NARRATION IS FORMAL; THE CLIENT'S VOICE IS NOT. The real papers narrate in complete sentences, third person, past tense, neutral vocabulary — 'היקף העבודה, והיוקרה הכרוכה בה, גרמו לרן לצמצם את עבודתו עם לקוחות פרטיים' — and then set the client's own words inside quotation marks, where spoken Hebrew is not only allowed but expected. Write the same way. Formal narration: 'העסק פרח בתחילה, ומשנפתח ממול מוסך של רשת גדולה פחת מספר לקוחותיו', NOT 'בהתחלה זה הלך טוב, אחר כך נכנס מוסך גדול של רשת ממול'. 'המשיב לא פרע דבר', NOT 'מריאן לא החזיר שקל'. Never label the client's emotional state in the narration (רונית מבוהלת): either quote what they said, or state the fact that makes it matter. Keep the concrete human detail — what was said, what it cost, who stopped answering the phone — but report it in that register. No brand or site names as colour (יד2, פייסבוק) unless where the information came from is itself legally operative. Do not name the legal doctrine, do not analyse, do not signpost which source applies: the candidate's job is to spot that. Use a legal term only where the facts genuinely require one (כתב הגנה, בקשה לסילוק על הסף, המצאה) and then use it plainly, without explaining it. Everything else — task_instructions, legal_topic_analysis, model_answer_outline, common_pitfall — stays in precise legal Hebrew.",
+    "extra_instructions": "Build the facts so that distinguishing ת\"א 2233-14 (V3) is the hardest part of the answer: the defendant must have a genuinely arguable reliance claim, not a weak one. Keep the dates, sums and intervals exact — the arithmetic is the question, and the paper prints each date once, inside the narrative, in the order the events happened. WORDING: in the FACT PATTERN ONLY, introduce a specific calendar date with בתאריך rather than ביום — \"בתאריך 12.3.2019\". That is the paper's narrating voice and it stops there: task_instructions, legal_topic_analysis, model_answer_outline and common_pitfall all use ביום, because they are written in the voice of the document the candidate must produce, and every official model answer and every answer a practising advocate filed against these papers writes ביום and never בתאריך. Leave the fixed expression בו ביום (meaning 'that same day') alone — it carries no date and must not be rewritten. EVERY PROVISION THE ANSWER NEEDS MUST BE ATTACHED. model_answer_outline and quote_usage may rest only on text that is actually in the quote bank, cited by the number that text itself carries. Before you finish, take each provision number your outline relies on and find it in the bank; if it is not there, either rewrite the outline around what IS attached or do not raise the point. A requirement the candidate cannot reach from the sources in front of them is unanswerable, and it does not stay in the outline — it becomes a marking criterion. Search the attached text by the number as the text itself writes it: a statute quote numbers its provisions \".6\" or \")129א(\" and almost never spells out the words \"תקנה 6\", so looking for the phrase rather than the marker will tell you a provision is missing when it is there. NAME THE FORMAL PARTICULARS IN task_instructions. Whatever the marking will look for in the document's furniture has to be asked for in words, not left to \"הפרטים המזהים הנדרשים\": if the advocate's name and signature are expected at the foot, say so; if an affidavit is expected, say that it must be attached or its absence explained; if the parties carry two designations, say that they must be used consistently. Marks were lost on all three of these, on three different papers, by an advocate who writes these documents for a living — that is an under-specified paper, not a candidate's lapse. LENGTH: the real papers' fact patterns run 240 to 360 words; aim for 280-350. Ours have been landing near 265, which is short enough to thin out the detail the argument needs."
   },
   "validation": {
     "leak_shingle_size": 7,

@@ -1,0 +1,12 @@
+LawPass — open question set generation
+finished    : 2026-09-14T15:25:54.794Z
+duration    : 09:49
+requested   : 1 set(s)
+
+1 OUT OF 1 SET(S) LOADED TO THE DATABASE
+  loaded  1   partial 0   failed 0
+
+  loaded   2026-S-Q1-G    09:49
+
+Every row loaded is a draft. A draft rubric grades nothing until someone reads it
+and re-runs load_rubric.mjs with --approve.

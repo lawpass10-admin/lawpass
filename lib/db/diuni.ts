@@ -167,6 +167,72 @@ export async function getDiuniSet(
 }
 
 /**
+ * One line in the paper picker — enough to choose between papers, and
+ * deliberately not enough to sit one. The mahoti twin of this type carries a
+ * law count as well; a diuni paper has no notebook behind it, so a paper's
+ * size here is its question count alone.
+ *
+ * `questionCount` is nullable because it is read out of the stored json rather
+ * than counted: a row written before the loader recorded `exam.question_count`
+ * has no number to show, which the picker renders as a paper with no subtitle
+ * rather than as a paper with "0 שאלות".
+ */
+export type DiuniSetSummary = {
+  questionId: string;
+  createdAt: string | null;
+  title: string;
+  questionCount: number | null;
+};
+
+/**
+ * How many papers the picker offers. One, for now, matching the mahoti picker —
+ * see MAHOTI_PICKER_LIMIT in lib/db/mahoti.ts for the reasoning.
+ */
+export const DIUNI_PICKER_LIMIT = 1;
+
+/** The `questions -> exam` sub-object, which is all the picker reads.
+ *  Selecting the whole `questions` array to count it would pull the entire
+ *  paper for every line of a one-line-per-paper list. */
+type SummaryRow = {
+  question_id: string;
+  created_at: string | null;
+  exam: { title?: string; question_count?: number } | null;
+};
+
+/**
+ * The authored papers a candidate may open, newest first.
+ *
+ * Same filters as the default read in `getDiuniSet`: `built_for IS NULL` keeps
+ * one candidate's custom exam out of everyone else's list, and a row without
+ * `questions` is an intermediate state rather than a paper.
+ */
+export async function listDiuniSets(
+  limit: number = DIUNI_PICKER_LIMIT
+): Promise<DiuniSetSummary[]> {
+  const supabase = createAdminClient();
+
+  const { data, error } = await supabase
+    .from(TABLE)
+    .select("question_id, created_at, exam:questions->exam")
+    .is("built_for", null)
+    .not("questions", "is", null)
+    .order("created_at", { ascending: false })
+    .limit(limit)
+    .returns<SummaryRow[]>();
+
+  if (error) {
+    throw new Error(`failed to list ${TABLE}: ${error.message}`);
+  }
+
+  return (data ?? []).map((row) => ({
+    questionId: row.question_id,
+    createdAt: row.created_at,
+    title: row.exam?.title ?? "דין דיוני",
+    questionCount: row.exam?.question_count ?? null,
+  }));
+}
+
+/**
  * The paper that follows `currentId` in the table's own order — what
  * "למבחן הבא" moves to at the end of a review. Wraps at the end rather than
  * dead-ending. Returns null when there is nothing to move to.

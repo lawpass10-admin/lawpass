@@ -88,6 +88,9 @@ dotenv.config();
 const KNOWN_FLAGS = new Set([
   "questions",
   "laws",
+  "min-chapters",
+  "max-chapters",
+  "chaptered-laws",
   "min-pages",
   "max-pages",
   "batch",
@@ -146,6 +149,44 @@ if (MIN_PAGES > MAX_PAGES) {
   console.error(`--min-pages (${MIN_PAGES}) cannot exceed --max-pages (${MAX_PAGES}).`);
   process.exit(1);
 }
+
+/**
+ * How many chapters of one law a notebook carries.
+ *
+ * The notebook used to sample loose sections, which produced a law represented
+ * by section 6, section 91 and section 240 — three fragments with nothing
+ * between them. A chapter is the unit the legislator grouped by, so sampling
+ * whole chapters gives a candidate material that reads as law rather than as a
+ * list of clippings.
+ *
+ * A law with fewer chapters than the minimum contributes all of them: the
+ * floor describes how much to take when there is a choice, not a quota to pad
+ * out. Laws with no chapter divisions at all (חוק־יסוד: הכנסת is 59 sections
+ * and no פרק) are treated as a single chapter — see groupIntoChapters.
+ */
+const MIN_CHAPTERS = intArg(args["min-chapters"], 7, { max: 100, name: "min-chapters" });
+const MAX_CHAPTERS = intArg(args["max-chapters"], 15, { max: 100, name: "max-chapters" });
+
+if (MIN_CHAPTERS > MAX_CHAPTERS) {
+  console.error(`--min-chapters (${MIN_CHAPTERS}) cannot exceed --max-chapters (${MAX_CHAPTERS}).`);
+  process.exit(1);
+}
+
+/**
+ * How many of the sampled laws must actually have chapters to draw from.
+ *
+ * The corpus cannot give 25 laws of 7+ chapters: measured over the 120 loaded
+ * laws, 56 have no chapter divisions at all and only 30 reach seven. That is a
+ * fact about Israeli legislation — חוק החוזים, חוק השומרים and the Basic Laws
+ * are flat — not a gap in the scrape.
+ *
+ * So the floor is a QUOTA rather than a per-law rule: this many of the 25 come
+ * from laws that can satisfy it, and the rest are drawn from everything, so a
+ * short flat law a candidate is actually examined on can still appear. Set it
+ * to 0 for a purely random draw, or to --laws to demand chaptered laws only
+ * (which, with 30 candidates, makes every notebook look much like the last).
+ */
+const CHAPTERED_QUOTA = intArg(args["chaptered-laws"], 12, { min: 0, max: 200, name: "chaptered-laws" });
 const BATCH_SIZE = intArg(args.batch, 5, { max: 10, name: "batch" });
 const CONCURRENCY = intArg(args.concurrency, 4, { max: 10, name: "concurrency" });
 /**
@@ -249,7 +290,16 @@ function shuffled(items, rng) {
 function normalise(text) {
   return String(text ?? "")
     .replace(/[‎‏‪-‮]/g, "") // bidi marks
-    .replace(/["'`״]/g, '"')
+    // Quote marks. The corpus is typeset with Hebrew quotes — 606 ”, 605 “,
+    // 218 ״, 100 ׳ in one notebook, and not a single straight quote — while a
+    // model reproducing the same words types "…". Folding every variant onto
+    // one character makes the check about the WORDS rather than the
+    // typography, which is what "verbatim" is meant to mean here. Two clean
+    // runs rejected questions whose text was letter-for-letter correct.
+    .replace(/["'`״”“‘’׳]/g, '"')
+    // Hyphens likewise: maqaf (־), en dash (–) and hyphen-minus are used
+    // interchangeably by the source and by the model.
+    .replace(/[־–—]/g, "-")
     .replace(/\s+/g, " ")
     .trim();
 }
@@ -260,19 +310,41 @@ function normalise(text) {
  * with none, not a crash. Run with --inspect to see the real shape of a row
  * before trusting this mapping.
  */
+/**
+ * Typographic tidying of scraped law text — never rewording.
+ *
+ * Measured over the 120-law corpus: 98 places carry a space before a comma or
+ * semicolon ("30,000 שקלים חדשים ;") and one carries an invisible bidi control
+ * character. Both come from the source page and both are visible to a candidate
+ * reading the notebook, so they are fixed here rather than shipped.
+ *
+ * Deliberately conservative. It removes characters and collapses whitespace; it
+ * never changes a word, a quote mark, or the order of anything. The notebook is
+ * the exam's only source of truth and every quote is checked against it
+ * character by character — "fixing" Hebrew here would silently move the ground
+ * the questions stand on.
+ */
+function tidy(text) {
+  return String(text ?? "")
+    .replace(/[‎‏‪-‮]/g, "") // bidi controls: invisible, and they break search
+    .replace(/[ \t]+([,.;:])/g, "$1") // "חדשים ;" → "חדשים;"
+    .replace(/[ \t]{2,}/g, " ")
+    .trim();
+}
+
 function normaliseSection(raw) {
   const subsections = Array.isArray(raw?.subsections) ? raw.subsections : [];
   return {
     number: String(raw?.number ?? raw?.section_number ?? "").trim(),
-    heading: String(raw?.heading ?? raw?.title ?? "").trim(),
-    text: String(raw?.text ?? raw?.body ?? "").trim(),
-    chapter: raw?.chapter ? String(raw.chapter).trim() : null,
+    heading: tidy(raw?.heading ?? raw?.title ?? ""),
+    text: tidy(raw?.text ?? raw?.body ?? ""),
+    chapter: raw?.chapter ? tidy(raw.chapter) : null,
     subsections: subsections.map((sub) => ({
       marker: String(sub?.marker ?? sub?.number ?? "").trim(),
-      text: String(sub?.text ?? sub?.body ?? "").trim(),
+      text: tidy(sub?.text ?? sub?.body ?? ""),
       paragraphs: (Array.isArray(sub?.paragraphs) ? sub.paragraphs : []).map((p) => ({
         marker: String(p?.marker ?? p?.number ?? "").trim(),
-        text: String(p?.text ?? p?.body ?? "").trim(),
+        text: tidy(p?.text ?? p?.body ?? ""),
       })),
     })),
   };
@@ -325,62 +397,141 @@ const CHARS_PER_A4_PAGE = 3000;
  * trap: the model would quote text the verifier can still find in the stored
  * section but the candidate cannot read on screen.
  */
-function sampleSections(laws, rng, targetChars, maxChars) {
-  // Each law's sections in random order, tagged with their original index so
-  // the chosen ones can be put back into document order at the end.
-  const queues = laws.map((law) =>
-    shuffled(
-      law.sections.map((section, index) => ({
-        section,
-        index,
-        cost: sectionHaystack(section).length,
-      })),
+/** What a section with no chapter belongs to. Matches the scraper's own label
+ *  for the same thing, so the two never disagree in the candidate's view. */
+const NO_CHAPTER = "(סעיפים ללא פרק)";
+
+/**
+ * One law's sections, grouped into the chapters the legislator wrote.
+ *
+ * Order is the law's own: a chapter appears where its first section does. Laws
+ * with no chapter divisions — חוק־יסוד: הכנסת is 59 sections and not one פרק —
+ * come back as a single group, so they flow through the same sampling as
+ * everything else instead of needing a branch of their own.
+ */
+function groupIntoChapters(law) {
+  const order = [];
+  const byTitle = new Map();
+  for (const section of law.sections) {
+    const title = section.chapter || NO_CHAPTER;
+    if (!byTitle.has(title)) {
+      byTitle.set(title, []);
+      order.push(title);
+    }
+    byTitle.get(title).push(section);
+  }
+  return order.map((title) => ({ title, sections: byTitle.get(title) }));
+}
+
+/**
+ * Picks CHAPTERS, then fills them with sections until the page budget is met.
+ *
+ * This used to sample loose sections, which left a law represented by section
+ * 6, section 91 and section 240 — three clippings with nothing between them. A
+ * chapter is the unit the legislator grouped by, so a notebook built of whole
+ * chapters reads as law.
+ *
+ * MIN_CHAPTERS..MAX_CHAPTERS chapters are drawn per law, or all of them when
+ * the law has fewer. Then:
+ *
+ *   1. every drawn chapter gets its cheapest section, so no chapter appears in
+ *      the notebook as a heading with nothing beneath it;
+ *   2. the rest of the budget goes round-robin across chapters, which spreads
+ *      it evenly instead of letting one 400-section chapter of חוק העונשין eat
+ *      it before the alphabet gets going.
+ *
+ * Sections are never truncated to fit. Half a section is a quote trap: the
+ * model would quote text the verifier still finds in the stored section but the
+ * candidate cannot read on screen.
+ */
+function sampleChapters(laws, rng, targetChars, maxChars) {
+  // Per law: the chapters drawn, each with its sections in a random order and
+  // tagged with their document position so they can be put back in order.
+  const drawn = laws.map((law) => {
+    const chapters = groupIntoChapters(law);
+    const take = Math.min(chapters.length, MAX_CHAPTERS);
+    // Position in the LAW, not in the chapter. The chosen sections are pooled
+    // across chapters and sorted at the end, so an index counted per chapter
+    // would interleave chapter 9's first section with chapter 2's first.
+    const position = new Map(law.sections.map((section, index) => [section, index]));
+    return shuffled(
+      chapters.map((chapter, index) => ({ chapter, index })),
       rng
     )
-  );
-  const chosen = laws.map(() => []);
+      .slice(0, take)
+      .sort((a, b) => a.index - b.index)
+      .map(({ chapter }) => ({
+        title: chapter.title,
+        queue: shuffled(
+          chapter.sections.map((section) => ({
+            section,
+            index: position.get(section),
+            cost: sectionHaystack(section).length,
+          })),
+          rng
+        ),
+        chosen: [],
+      }));
+  });
+
   let used = 0;
 
-  // Pass 1 — guarantee every law is represented, cheapest section first so a
-  // law made entirely of enormous sections still gets in.
-  for (let i = 0; i < queues.length; i++) {
-    const queue = queues[i];
-    if (!queue.length) continue;
-    let pick = 0;
-    for (let j = 1; j < queue.length; j++) {
-      if (queue[j].cost < queue[pick].cost) pick = j;
+  // Pass 1 — one section per drawn chapter, cheapest first so a chapter made
+  // entirely of enormous sections still gets a foot in the door.
+  for (const chapters of drawn) {
+    for (const chapter of chapters) {
+      if (!chapter.queue.length) continue;
+      let pick = 0;
+      for (let j = 1; j < chapter.queue.length; j++) {
+        if (chapter.queue[j].cost < chapter.queue[pick].cost) pick = j;
+      }
+      const [entry] = chapter.queue.splice(pick, 1);
+      if (used + entry.cost > maxChars) continue;
+      chapter.chosen.push(entry);
+      used += entry.cost;
     }
-    const [entry] = queue.splice(pick, 1);
-    chosen[i].push(entry);
-    used += entry.cost;
   }
 
-  // Pass 2 — round-robin fill.
+  // Pass 2 — round-robin across every (law, chapter) pair.
   let placedThisRound = true;
   while (placedThisRound && used < targetChars) {
     placedThisRound = false;
-    for (let i = 0; i < queues.length && used < targetChars; i++) {
-      const queue = queues[i];
-      while (queue.length) {
-        const entry = queue.shift();
-        if (used + entry.cost > maxChars) {
-          // Too big for the room that is left. Drop it and try this law's
-          // next section rather than closing the law out entirely.
+    for (const chapters of drawn) {
+      for (const chapter of chapters) {
+        if (used >= targetChars) break;
+        while (chapter.queue.length) {
+          const entry = chapter.queue.shift();
+          if (used + entry.cost > maxChars) {
+            // Too big for the room left. Try this chapter's next section
+            // rather than closing the chapter out entirely.
+            placedThisRound = true;
+            continue;
+          }
+          chapter.chosen.push(entry);
+          used += entry.cost;
           placedThisRound = true;
-          continue;
+          break;
         }
-        chosen[i].push(entry);
-        used += entry.cost;
-        placedThisRound = true;
-        break;
       }
     }
   }
 
   return {
     used,
-    perLaw: chosen.map((entries) =>
-      entries.sort((a, b) => a.index - b.index).map((e) => e.section)
+    // Sections stay FLAT on the law, in document order. Everything downstream —
+    // indexNotebook, the app's notebook viewer, the custom-exam merge — reads
+    // law.sections, and each section already carries its chapter, so grouping
+    // is a rendering decision rather than a change to the stored shape.
+    perLaw: drawn.map((chapters) =>
+      chapters
+        .flatMap((chapter) => chapter.chosen)
+        .sort((a, b) => a.index - b.index)
+        .map((entry) => entry.section)
+    ),
+    perLawChapters: drawn.map((chapters) =>
+      chapters
+        .filter((chapter) => chapter.chosen.length)
+        .map((chapter) => ({ title: chapter.title, section_count: chapter.chosen.length }))
     ),
   };
 }
@@ -418,7 +569,32 @@ function buildNotebook(corpus) {
   }
 
   const floorChars = MIN_PAGES * CHARS_PER_A4_PAGE;
-  const picked = shuffled(all, rng).slice(0, LAW_COUNT);
+
+  // The quota first: fill CHAPTERED_QUOTA slots from laws that can actually
+  // satisfy the chapter floor, then the remaining slots from everything left.
+  // Both draws are seeded, so the notebook is still reproducible from --seed.
+  const chapterCount = new Map(all.map((law) => [law.law_id, groupIntoChapters(law).length]));
+  const chaptered = shuffled(
+    all.filter((law) => chapterCount.get(law.law_id) >= MIN_CHAPTERS),
+    rng
+  );
+  const quota = Math.min(CHAPTERED_QUOTA, LAW_COUNT, chaptered.length);
+  const quotaPicked = chaptered.slice(0, quota);
+  const quotaIds = new Set(quotaPicked.map((law) => law.law_id));
+  const picked = [
+    ...quotaPicked,
+    ...shuffled(
+      all.filter((law) => !quotaIds.has(law.law_id)),
+      rng
+    ).slice(0, LAW_COUNT - quota),
+  ];
+
+  if (CHAPTERED_QUOTA && quota < CHAPTERED_QUOTA) {
+    console.log(
+      `  note: --chaptered-laws=${CHAPTERED_QUOTA} but only ${chaptered.length} laws in the ` +
+        `corpus have ${MIN_CHAPTERS}+ chapters; took ${quota}`
+    );
+  }
 
   // A random draw of 25 can be all short laws — seed 7 lands on a set holding
   // only ~68 pages in total, and no amount of section sampling reaches a
@@ -459,13 +635,18 @@ function buildNotebook(corpus) {
   // just over it.
   const targetChars = Math.round(((MIN_PAGES + MAX_PAGES) / 2) * CHARS_PER_A4_PAGE);
   const maxChars = MAX_PAGES * CHARS_PER_A4_PAGE;
-  const { used, perLaw } = sampleSections(picked, rng, targetChars, maxChars);
+  const { used, perLaw, perLawChapters } = sampleChapters(picked, rng, targetChars, maxChars);
 
   const laws = picked
     .map((law, i) => ({
       law_id: law.law_id,
       law_name: law.law_name,
       section_count: perLaw[i].length,
+      // Which chapters this law contributes, in the law's own order. Only
+      // chapters that actually carry a section appear — a chapter listed with
+      // nothing under it is a heading pretending to be content.
+      chapter_count: perLawChapters[i].length,
+      chapters: perLawChapters[i],
       sections: perLaw[i],
     }))
     .filter((law) => law.section_count > 0)
@@ -487,12 +668,14 @@ function buildNotebook(corpus) {
     notebook: {
       seed: SEED,
       law_count: laws.length,
+      chapter_count: laws.reduce((n, law) => n + law.chapter_count, 0),
       section_count: laws.reduce((n, law) => n + law.section_count, 0),
       estimated_a4_pages: pages,
       built_at: new Date().toISOString(),
       // Sampling parameters travel with the notebook, so a paper can be
       // explained — and rebuilt — from the row alone.
       page_budget: { min: MIN_PAGES, max: MAX_PAGES, chars_per_page: CHARS_PER_A4_PAGE },
+      chapter_budget: { min: MIN_CHAPTERS, max: MAX_CHAPTERS },
       sections_available: availableSections,
     },
     laws,
@@ -585,6 +768,7 @@ const SYSTEM_PROMPT = `אתה כותב שאלות רב-ברירה לבחינת �
 חוקי ברזל:
 1. מותר להסתמך אך ורק על לשון החוק שמופיעה במחברת שמצורפת להודעת המשתמש. אין להסתמך על ידע חיצוני, על פסיקה, או על נוסח שאינו מופיע במחברת.
 2. לכל שאלה חייב להיות לפחות מקור אחד, ובו law_id ו-section_number בדיוק כפי שהם מופיעים במחברת, וכן source_quote — ציטוט מילה במילה מתוך אותו סעיף. הציטוט חייב להיות רצף תווים שמופיע ככתבו בטקסט הסעיף. אל תקצר, אל תנסח מחדש ואל תוסיף נקודות השמטה.
+2א. שורות הפתיחה של פרק (”## שם הפרק“) ושל סעיף (”סעיף 5 — כותרת“) הן מבנה וניווט בלבד. אין לצטט מהן: source_quote חייב לבוא מגוף הסעיף, מתת-סעיף או מפסקה שתחתיו. ציטוט מכותרת ייפסל בבדיקה.
 3. ארבע אפשרויות בדיוק, באותיות א, ב, ג, ד. תשובה נכונה אחת. שלושת המסיחים חייבים להיות שגויים לפי לשון החוק, אך סבירים למי שלמד ברפרוף — טעות מושגית נפוצה, החלפה בין סעיפים, או תנאי שהושמט.
 4. מסכת עובדות קצרה וקונקרטית: שמות, תאריכים וסכומים. שאלה שהיא ציטוט חוק בתחפושת אינה שאלת בחינה.
 5. השאלה נכתבת בעברית משפטית תקנית, בגוף שלישי, ללא פנייה לנבחן.
@@ -634,27 +818,48 @@ function lawsForBatch(notebook, batchIndex, lawsPerBatch = 4) {
  *  from the end of each law rather than truncated mid-sentence — half a
  *  section is a quote trap, since the model would quote text the verifier
  *  can still find but the candidate cannot read. */
+/** A marker is stored the way the law writes it — "(א)", "(1)" — parentheses
+ *  included. Wrapping it again produced "((א))" on every subsection in the
+ *  notebook. Only a bare marker gets brackets. */
+function marked(marker, text, indent = "") {
+  if (!marker) return `${indent}${text}`;
+  const label = /^[([]/.test(marker) ? marker : `(${marker})`;
+  return `${indent}${label} ${text}`;
+}
+
 function renderLaws(laws, charBudget = 90_000) {
   let used = 0;
   const blocks = [];
 
   for (const law of laws) {
     const lines = [`### ${law.law_name}  (law_id: ${law.law_id})`];
+    // The chapter heading is printed when the chapter CHANGES, so it appears
+    // once at the top of its own sections rather than above every one of them.
+    // Sections arrive in document order, so a chapter's sections are contiguous
+    // and one pass is enough.
+    let currentChapter = null;
+
     for (const section of law.sections) {
+      const chapter = section.chapter || null;
+      const heading =
+        chapter && chapter !== currentChapter ? `## ${chapter}` : null;
+
       const body = [
         `סעיף ${section.number}${section.heading ? ` — ${section.heading}` : ""}`,
         section.text,
         ...section.subsections.flatMap((sub) => [
-          sub.marker ? `(${sub.marker}) ${sub.text}` : sub.text,
-          ...sub.paragraphs.map((p) => (p.marker ? `  (${p.marker}) ${p.text}` : `  ${p.text}`)),
+          marked(sub.marker, sub.text),
+          ...sub.paragraphs.map((p) => marked(p.marker, p.text, "  ")),
         ]),
       ]
         .filter(Boolean)
         .join("\n");
 
-      if (used + body.length > charBudget) break;
-      used += body.length;
-      lines.push(body);
+      const chunk = heading ? `${heading}\n\n${body}` : body;
+      if (used + chunk.length > charBudget) break;
+      used += chunk.length;
+      if (heading) currentChapter = chapter;
+      lines.push(chunk);
     }
     if (lines.length > 1) blocks.push(lines.join("\n\n"));
   }
@@ -1264,15 +1469,37 @@ async function main() {
     notebook = buildNotebook(corpus);
     console.log(
       `Notebook (seed ${SEED}): ${notebook.notebook.law_count} laws, ` +
+        `${notebook.notebook.chapter_count} chapters, ` +
         `${notebook.notebook.section_count} of ${notebook.notebook.sections_available} ` +
         `available sections, ~${notebook.notebook.estimated_a4_pages} A4 pages ` +
         `(budget ${MIN_PAGES}–${MAX_PAGES})`
+    );
+    // Chapters per law is the rule most likely to be quietly missed — a law
+    // that contributed one chapter looks fine in a total.
+    const perLaw = notebook.laws.map((law) => law.chapter_count);
+    const short = notebook.laws.filter((law) => law.chapter_count < MIN_CHAPTERS);
+    console.log(
+      `  chapters per law: ${Math.min(...perLaw)}–${Math.max(...perLaw)} ` +
+        `(target ${MIN_CHAPTERS}–${MAX_CHAPTERS})` +
+        (short.length
+          ? `; ${short.length} law(s) under the floor because the law itself has fewer chapters`
+          : "")
     );
 
     if (ESTIMATE || DRY_RUN) {
       console.log(
         ESTIMATE ? "[estimate] not inserting the notebook row" : "[dry-run] not inserting the notebook row"
       );
+      if (DRY_RUN) {
+        // The notebook the model is shown, for one law. The content rules — a
+        // chapter heading once at the top of its own sections, nothing but the
+        // law's own words — are visual, and a count of chapters cannot show
+        // whether they hold.
+        const sample = notebook.laws.find((law) => law.chapter_count > 1) ?? notebook.laws[0];
+        console.log(`\n--- how the notebook reads (${sample.law_name}) ---`);
+        console.log(renderLaws([sample]).split("\n").slice(0, 26).join("\n"));
+        console.log("--- end of sample ---\n");
+      }
     } else {
       questionId = await insertNotebookRow(notebook);
       console.log(`Inserted mahoti_questions row ${questionId} (questions still NULL)`);
