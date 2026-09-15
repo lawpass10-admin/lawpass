@@ -83,6 +83,42 @@ function renderTokens(str, bank) {
   });
 }
 
+/**
+ * Placeholder substitution for text a PERSON (or the grader) is about to read,
+ * across a whole value tree.
+ *
+ * renderTokens above is the generator's: it throws on an unknown id, because at
+ * generation time an unknown id is a defect that must stop the output being
+ * written. This one is for text already stored. The loaders keep the model
+ * answer in placeholder form — every stored answer does — so it has to be
+ * rendered on the way out, and there an unknown id must not throw: one stale
+ * reference would blank a student's whole solution screen, or fail a grading
+ * run, over a single source name. An unknown id reads as `fallback` instead.
+ *
+ * Same output as renderTokens for every known id: {{ID}} is the citation and
+ * {{ID.text}} the verbatim text in quotation marks.
+ */
+function renderForReader(value, quotes, fallback = "המקור המצורף") {
+  const byId = new Map(
+    (Array.isArray(quotes) ? quotes : []).filter((q) => q && q.id).map((q) => [q.id, q])
+  );
+  const render = (v) => {
+    if (typeof v === "string") {
+      return v.replace(TOKEN, (_match, id, dotText) => {
+        const quote = byId.get(id);
+        if (!quote) return fallback;
+        return dotText ? `"${quote.text}"` : quote.citation;
+      });
+    }
+    if (Array.isArray(v)) return v.map(render);
+    if (v && typeof v === "object") {
+      return Object.fromEntries(Object.entries(v).map(([k, x]) => [k, render(x)]));
+    }
+    return v;
+  };
+  return render(value);
+}
+
 /** Every placeholder id used anywhere in a value tree. */
 function collectTokenIds(value, found = new Set()) {
   if (typeof value === "string") {
@@ -349,6 +385,7 @@ module.exports = {
   bankForPrompt,
   renderTokens,
   renderGenerated,
+  renderForReader,
   repairPlaceholderIds,
   validateGenerated,
   findQuoteLeaks,

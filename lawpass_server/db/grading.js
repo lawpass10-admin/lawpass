@@ -39,7 +39,12 @@ async function getGradingContext(admin, answerId) {
     .maybeSingle();
 
   if (qErr) throw qErr;
-  if (!question) return { answer, blocked: "the question this answer belongs to no longer exists" };
+  // Both `blocked` reasons carry a [category] tag. describeStoredFailure reads
+  // the tag to decide what the student is told and whether a retry is offered;
+  // untagged, a blocked answer was reported as an unexpected, retryable failure.
+  if (!question) {
+    return { answer, blocked: "[question_missing] the question this answer belongs to no longer exists" };
+  }
 
   const { data: rubricRow, error: rErr } = await admin
     .from("open_question_rubrics")
@@ -53,7 +58,7 @@ async function getGradingContext(admin, answerId) {
     return {
       answer,
       question,
-      blocked: "this question has no approved rubric — generate one and load it with --approve",
+      blocked: "[no_rubric] this question has no approved rubric — generate one and load it with --approve",
     };
   }
 

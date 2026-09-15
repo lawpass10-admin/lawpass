@@ -1,16 +1,14 @@
 "use client";
 
 import {
-  Bookmark,
+  Archive,
   BookOpen,
   FileText,
   Gavel,
   Gauge,
   LogOut,
-  Pencil,
   Settings,
   Shield,
-  XCircle,
 } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
@@ -115,26 +113,27 @@ const NAV_LEARNING = [
   { href: DIUNI_HREF, label: "דין דיוני", Icon: Gavel },
 ] as const;
 
-const NAV_LIBRARY = [
-  {
-    href: "/bookmarks",
-    label: "שאלות שסימנתי",
-    Icon: Bookmark,
-    countKey: "bookmarks",
-  },
-  {
-    href: "/mistakes",
-    label: "שאלות שטעיתי בהן",
-    Icon: XCircle,
-    countKey: "mistakes",
-  },
-  {
-    href: "/notes",
-    label: "הערות שלי",
-    Icon: Pencil,
-    countKey: "notes",
-  },
-] as const;
+type LibraryItem = {
+  href: string;
+  label: string;
+  Icon: React.ComponentType<{ strokeWidth?: number }>;
+  /** Which count badge the row carries, if any. */
+  countKey?: "bookmarks" | "mistakes" | "notes";
+};
+
+// "שאלות שסימנתי" (/bookmarks), "שאלות שטעיתי בהן" (/mistakes) and "הערות
+// שלי" (/notes) were removed from this list on PM request, replaced by the one
+// archive row. Only the ROWS are gone: the three routes and everything behind
+// them are untouched and still reachable by URL, and the count props and badge
+// code below are kept — put an entry back with its countKey to restore a row
+// with its badge:
+//
+//   { href: "/bookmarks", label: "שאלות שסימנתי", Icon: Bookmark, countKey: "bookmarks" },
+//   { href: "/mistakes", label: "שאלות שטעיתי בהן", Icon: XCircle, countKey: "mistakes" },
+//   { href: "/notes", label: "הערות שלי", Icon: Pencil, countKey: "notes" },
+const NAV_LIBRARY: LibraryItem[] = [
+  { href: "/exam-archive", label: "ארכיון המבחנים שלי", Icon: Archive },
+];
 
 function isPathActive(pathname: string, href: string): boolean {
   return pathname === href || pathname.startsWith(`${href}/`);
@@ -361,7 +360,9 @@ export function AppSidebar({
                   ? bookmarksCount
                   : item.countKey === "mistakes"
                     ? mistakesCount
-                    : notesCount;
+                    : item.countKey === "notes"
+                      ? notesCount
+                      : 0;
               return (
                 <SidebarMenuItem key={item.href} className="relative">
                   <SidebarMenuButton

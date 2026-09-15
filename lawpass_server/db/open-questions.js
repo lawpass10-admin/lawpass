@@ -28,18 +28,44 @@ const STUDENT_TYPE = "new";
 const STUDENT_COLUMNS = "open_question_id, subject, type, created_at, question";
 
 /**
+ * Ids of the questions the grader can mark — those with an approved rubric.
+ *
+ * Through an RPC, not a join: open_question_rubrics is admin-only under RLS, so
+ * joining to it through the student's client would hide every rubric and with
+ * them every question. gradable_open_question_ids() (20260915000001) runs as
+ * its owner and returns ids alone. See that migration for why this exists: a
+ * question with only a draft rubric was offered to students, answered, and
+ * could not be marked.
+ */
+async function listGradableQuestionIds(supabase) {
+  const { data, error } = await supabase.rpc("gradable_open_question_ids");
+  if (error) throw error;
+  // A SETOF uuid comes back as bare strings; tolerate the object form too, so
+  // a PostgREST upgrade that wraps scalars does not silently empty the picker.
+  return (data ?? []).map((row) =>
+    typeof row === "string" ? row : row.gradable_open_question_ids
+  );
+}
+
+/**
  * The distinct subjects that actually have at least one question, each with
  * its question count, newest first by most recent question.
  *
  * Postgres has no DISTINCT ON through PostgREST, so the grouping is done here:
  * the row count is small (tens, not thousands) and it saves an RPC for what is
  * one cheap pass over an indexed column.
+ *
+ * Only GRADABLE questions count. A subject whose only questions are waiting on
+ * rubric approval does not appear at all, rather than appearing and leading to
+ * a paper whose answer will fail.
  */
 async function listSubjects(supabase) {
+  const gradable = await listGradableQuestionIds(supabase);
   const { data, error } = await supabase
     .from("open_questions")
     .select("subject, created_at")
     .eq("type", STUDENT_TYPE)
+    .in("open_question_id", gradable)
     .not("subject", "is", null)
     .order("created_at", { ascending: false });
 
@@ -72,10 +98,12 @@ async function listSubjects(supabase) {
  * 20260914000001; a new spelling that appears later belongs fixed the same way.
  */
 async function listQuestionsBySubject(supabase, subject) {
+  const gradable = await listGradableQuestionIds(supabase);
   const { data, error } = await supabase
     .from("open_questions")
     .select(STUDENT_COLUMNS)
     .eq("type", STUDENT_TYPE)
+    .in("open_question_id", gradable)
     .eq("subject", subject)
     .order("created_at", { ascending: false });
 
@@ -87,6 +115,12 @@ async function listQuestionsBySubject(supabase, subject) {
  * One question by id, or null when it does not exist, is a 'source' row, or
  * RLS hides it. All three collapse to the same null on purpose — a student
  * pasting an id learns nothing about which rows are there.
+ *
+ * NOT filtered to gradable questions, unlike the two listings above. The results
+ * page reads the question through here to show a student their own submission,
+ * and a student who answered a question before its rubric was pulled must still
+ * be able to read what they wrote. Filing a NEW answer is refused separately, in
+ * submitAnswer, via isGradable.
  */
 async function getQuestionById(supabase, id) {
   const { data, error } = await supabase
@@ -189,7 +223,11 @@ async function getAnswerForUser(supabase, answerId) {
 async function getModelAnswerFor(supabase, questionId) {
   const { data, error } = await supabase
     .from("open_questions")
-    .select("open_question_id, answers")
+    // `question` comes too, for its quote bank only: the solution cites its
+    // sources by id (L1-Q1), and the citation and text those ids stand for live
+    // on the question. They are the sources printed on the student's own paper,
+    // so resolving them reveals nothing the student was not already shown.
+    .select("open_question_id, answers, question")
     .eq("type", STUDENT_TYPE)
     .eq("open_question_id", questionId)
     .maybeSingle();
@@ -198,7 +236,14 @@ async function getModelAnswerFor(supabase, questionId) {
   return data ?? null;
 }
 
+/** Whether one question can be marked. See listGradableQuestionIds. */
+async function isGradable(supabase, openQuestionId) {
+  const gradable = await listGradableQuestionIds(supabase);
+  return gradable.includes(openQuestionId);
+}
+
 module.exports = {
+  isGradable,
   listSubjects,
   listQuestionsBySubject,
   getQuestionById,

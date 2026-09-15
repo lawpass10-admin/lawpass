@@ -16,6 +16,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { GradingIllustration } from "@/app/(app)/writing-task/results/[answerId]/_components/grading-illustration";
 import { RetryGradingButton } from "@/app/(app)/writing-task/results/[answerId]/_components/retry-grading-button";
 import { NoCopyText } from "@/app/(app)/_components/no-copy-text";
+import { clearStoredExam } from "@/app/(app)/writing-task/_components/exam-storage";
+import { SourceText } from "@/app/(app)/writing-task/_components/source-text";
 import { NavigationGuard } from "@/components/app/navigation-guard";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -28,6 +30,7 @@ import {
   type GradingProgress,
   type ModelSolution,
   type ScoredItem,
+  type SolutionSourceUsed,
 } from "@/lib/api/open-questions";
 
 /**
@@ -231,7 +234,13 @@ export function AnswerFeedback({ answerId }: { answerId: string }) {
       ? "לא הצלחנו לסיים את הבדיקה של התשובה הזו. התשובה שלך שמורה ולא אבדה — נסה שוב מאוחר יותר, ואם זה חוזר, פנה אלינו."
       : failure.category === "refused"
         ? "לא הצלחנו לבדוק את התשובה הזו באופן אוטומטי. התשובה שלך שמורה ולא אבדה — פנה אלינו ונטפל בה."
-        : failure.retryable
+        : // Not a fault at all: the task's marking scheme has not been approved
+          // yet. Said plainly, because the generic "fault on our side" wording
+          // implies something broke. The button stays — once the rubric is
+          // approved, it is exactly how this answer gets marked.
+          failure.category === "no_rubric"
+          ? "מחוון הבדיקה של המטלה הזו עדיין ממתין לאישור, ולכן התשובה טרם נבדקה. התשובה שלך שמורה ולא אבדה, ואין צורך לכתוב אותה מחדש — לאחר אישור המחוון, לחץ על ״בדוק שוב את התשובה״."
+          : failure.retryable
           ? "הבדיקה נקטעה בגלל תקלה זמנית. התשובה שלך שמורה ולא אבדה — אפשר לבדוק אותה שוב בלחיצה, בלי לכתוב אותה מחדש. אם זה חוזר, פנה אלינו."
           : "הבדיקה נכשלה בגלל תקלה במערכת שלנו — לא בגלל התשובה שלך. התשובה שמורה ולא אבדה, ואין צורך לכתוב אותה מחדש: אחרי שנתקן את התקלה, לחץ על ״בדוק שוב את התשובה״. אם זה נמשך, פנה אלינו.";
 
@@ -478,10 +487,21 @@ function Marked({
         </CardContent>
       </Card>
 
+      <SubmittedAnswer answer={answer} />
+
       <SolutionPanel answerId={answer.answer_id} />
 
       <div className="flex flex-wrap items-center gap-4 pb-4">
-        <Link href={`/writing-task/${answer.open_question_id}`}>
+        <Link
+          href={`/writing-task/${answer.open_question_id}`}
+          // A new attempt starts on a blank sheet. The workspace restores any
+          // sitting it finds saved for this question (so a refresh loses nothing),
+          // which is exactly wrong here: the saved sheet is the answer already
+          // filed. Cleared on click, before the navigation, so the workspace
+          // mounts with nothing to restore — even if a sheet was saved some other
+          // way, by another tab or before the fix to the workspace's own save.
+          onClick={() => clearStoredExam(answer.open_question_id)}
+        >
           <Button type="button" className="h-11 md:h-10">
             כתוב את המטלה שוב
           </Button>
@@ -681,14 +701,82 @@ function SolutionDocument({ solution }: { solution: ModelSolution }) {
           ) : null}
 
           {solution.sources_used.length > 0 ? (
-            <SolutionList
-              heading="המקורות שנעשה בהם שימוש"
-              items={solution.sources_used.map((s) =>
-                [s.quote_id, s.role].filter(Boolean).join(" — ")
-              )}
-            />
+            <SourcesUsed sources={solution.sources_used} />
           ) : null}
         </NoCopyText>
+      </CardContent>
+    </Card>
+  );
+}
+
+/**
+ * What the candidate actually filed, shown between the marking and the model
+ * solution.
+ *
+ * The page used to show the grade and the model answer but never the answer
+ * being graded — so a candidate reading "חסרה ההפניה לתקנה 2(ד)" had to take
+ * that on trust, and one opening an old sitting from the exam archive could not
+ * see what they had written at all. The text was always in the payload
+ * (AnswerState.text); it simply was not rendered.
+ *
+ * Collapsible, open by default: it is the thing the whole page is about, but a
+ * two-page answer above the model solution is a long scroll for someone who has
+ * already read it once.
+ */
+function SubmittedAnswer({ answer }: { answer: AnswerState }) {
+  const text = answer.text.trim();
+  const pages = answer.hand_writing ?? [];
+  if (!text && pages.length === 0) return null;
+
+  return (
+    <Card>
+      <CardContent className="px-5 py-5 md:px-7">
+        <details open className="group">
+          <summary className="flex cursor-pointer list-none items-baseline justify-between gap-3 select-none">
+            <h2
+              className="font-heebo font-bold"
+              style={{ fontSize: 17, color: "var(--color-navy-ink)" }}
+            >
+              התשובה שלך
+            </h2>
+            <span className="font-heebo text-sm" style={{ color: "var(--color-gold-deep)" }}>
+              <span className="group-open:hidden">הצג</span>
+              <span className="hidden group-open:inline">הסתר</span>
+              {answer.word_count > 0 ? (
+                <span className="ms-2 tabular-nums" style={{ color: "var(--color-ink-muted)" }}>
+                  · {answer.word_count} מילים · ניסיון {answer.attempt_number}
+                </span>
+              ) : null}
+            </span>
+          </summary>
+
+          {text ? (
+            <p
+              className="mt-4 whitespace-pre-wrap font-heebo"
+              style={{ fontSize: 15, lineHeight: 1.9, color: "var(--color-ink)" }}
+            >
+              {text}
+            </p>
+          ) : null}
+
+          {pages.length > 0 ? (
+            <ul className="mt-4 flex flex-wrap gap-3">
+              {pages.map((page, i) => (
+                <li key={page.public_id ?? i}>
+                  <a
+                    href={page.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="font-heebo text-sm underline underline-offset-4"
+                    style={{ color: "var(--color-navy-ink)" }}
+                  >
+                    דף {i + 1} בכתב יד
+                  </a>
+                </li>
+              ))}
+            </ul>
+          ) : null}
+        </details>
       </CardContent>
     </Card>
   );
@@ -717,6 +805,80 @@ function Parties({
         </div>
       ))}
     </dl>
+  );
+}
+
+/**
+ * The sources the model answer relied on, each named by its citation — never
+ * by the bank id ("L1-Q1") the answer was generated against, which means
+ * nothing to a student.
+ *
+ * The role (how the answer used the source) is always visible; the source text
+ * itself sits behind a native <details>, closed by default. A statute extract
+ * runs to thousands of characters, and printed open three of them would bury
+ * the explanation they are there to support — but it is one click away, so a
+ * student reading "מבסס את הסעד הדיוני" can check exactly what it rests on.
+ *
+ * An entry the server could not resolve (no match in the question's bank) keeps
+ * its role under a generic heading rather than showing the raw id.
+ */
+function SourcesUsed({ sources }: { sources: SolutionSourceUsed[] }) {
+  return (
+    <div
+      className="rounded-lg border px-4 py-3"
+      style={{ borderColor: "var(--color-border, rgba(0,0,0,0.12))" }}
+    >
+      <h3
+        className="mb-2.5 font-heebo font-bold"
+        style={{ fontSize: 14, color: "var(--color-navy-ink)" }}
+      >
+        המקורות שנעשה בהם שימוש
+      </h3>
+      <ul className="space-y-3">
+        {sources.map((source, i) => (
+          <li
+            key={`${source.quote_id ?? "source"}-${i}`}
+            className="border-b pb-3 last:border-b-0 last:pb-0"
+            style={{ borderColor: "var(--color-border, rgba(0,0,0,0.08))" }}
+          >
+            <p
+              className="font-heebo font-bold"
+              style={{ fontSize: 14, lineHeight: 1.6, color: "var(--color-navy-ink)" }}
+            >
+              {source.citation || "מקור מצורף"}
+            </p>
+            {source.role ? (
+              <p
+                className="mt-0.5 font-heebo"
+                style={{ fontSize: 13.5, lineHeight: 1.75, color: "var(--color-ink-dim)" }}
+              >
+                {source.role}
+              </p>
+            ) : null}
+            {source.text ? (
+              <details className="group mt-2">
+                <summary
+                  className="cursor-pointer select-none font-heebo text-sm font-medium underline-offset-4 hover:underline"
+                  style={{ color: "var(--color-gold-deep)" }}
+                >
+                  <span className="group-open:hidden">הצג את נוסח המקור</span>
+                  <span className="hidden group-open:inline">הסתר את נוסח המקור</span>
+                </summary>
+                <div
+                  className="mt-2 rounded-lg border px-4 py-3"
+                  style={{
+                    borderColor: "var(--color-border, rgba(0,0,0,0.10))",
+                    background: "var(--color-paper-2, rgba(0,0,0,0.02))",
+                  }}
+                >
+                  <SourceText text={source.text} />
+                </div>
+              </details>
+            ) : null}
+          </li>
+        ))}
+      </ul>
+    </div>
   );
 }
 

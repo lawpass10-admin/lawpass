@@ -23,6 +23,7 @@
 // The grader receives the answer text and nothing else about who wrote it.
 
 const { getClient } = require("./client");
+const { renderForReader } = require("./quote-bank");
 const { startSpan } = require("../timing");
 
 const PROMPT_VERSION = "open-grade/1";
@@ -366,7 +367,13 @@ function buildScore(graded, rubric, studentText, params) {
  * and is read rather than rewritten from the second submission onward. The
  * student's answer, the only part that varies, goes last.
  */
-function buildGradePrompt({ question, modelAnswer, rubric, params }) {
+function buildGradePrompt({ question, modelAnswer: storedAnswer, rubric, params }) {
+  // The stored model answer is in placeholder form ({{L1-Q1}}), and this prompt
+  // carries no quote bank to resolve it against — so the grader was reading a
+  // reference answer that cited "{{L1-Q1}}" where a student's answer cites
+  // "תקנות סדר הדין האזרחי". Rendered with the question's own sources, the
+  // two documents it compares finally name their authorities the same way.
+  const modelAnswer = storedAnswer ? renderForReader(storedAnswer, question.quotes) : null;
   const invariantBlock = {
     type: "text",
     text: JSON.stringify(

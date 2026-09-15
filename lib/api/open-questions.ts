@@ -380,7 +380,19 @@ export async function regradeAnswer(
 
 export type SolutionSection = { heading: string; paragraphs: string[] };
 export type SolutionExhibit = { marker?: string; description?: string };
-export type SolutionSourceUsed = { quote_id?: string; role?: string };
+/**
+ * A source the model answer relied on. `quote_id` is the bank id ("L1-Q1") the
+ * answer was generated against; the server resolves it to the citation and text
+ * printed on the paper. Those three are absent when the id has no match in the
+ * question's bank, and the entry then carries only its role.
+ */
+export type SolutionSourceUsed = {
+  quote_id?: string;
+  role?: string;
+  type?: string;
+  citation?: string;
+  text?: string;
+};
 
 /**
  * The model answer for a task, as the review screen renders it: the document a

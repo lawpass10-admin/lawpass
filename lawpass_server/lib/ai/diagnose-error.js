@@ -53,6 +53,19 @@ const CATEGORIES = {
     retryable: true,
     hint: "the model's marking could not be parsed or failed validation",
   },
+  // Not AI failures — the question itself is not set up to be marked. Neither is
+  // retryable: retrying runs the same lookup and gets the same answer until
+  // someone approves a rubric. Before these existed the reason was stored
+  // untagged, fell through to `unknown`, and the page offered the student a
+  // retry button that could only ever fail again.
+  no_rubric: {
+    retryable: false,
+    hint: "this question has no approved rubric — approve one with load_rubric.mjs --approve, then requeue the answer",
+  },
+  question_missing: {
+    retryable: false,
+    hint: "the question this answer belongs to no longer exists",
+  },
   unknown: { retryable: true, hint: "unexpected failure — the API server log has the detail" },
 };
 
@@ -144,6 +157,11 @@ function describeStoredFailure(stored) {
   const text = String(stored ?? "");
   const tag = /^\[([a-z_]+)\]/.exec(text);
   let category = tag && CATEGORIES[tag[1]] ? tag[1] : null;
+
+  // Blocked reasons stored before they carried a tag. Matched on the wording
+  // grading.js used, which is fixed text of ours rather than a provider message.
+  if (!category && /no approved rubric/.test(text)) category = "no_rubric";
+  if (!category && /no longer exists/.test(text)) category = "question_missing";
 
   if (!category) {
     const status = Number((/^(\d{3})\b/.exec(text) || [])[1]);

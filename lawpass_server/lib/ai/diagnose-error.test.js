@@ -102,6 +102,25 @@ test("the category survives storage and is read back", () => {
   }
 });
 
+test("a blocked question is not an unknown, retryable failure", () => {
+  // The rows grading.js writes now, and the untagged wording it wrote before —
+  // which is what answer 33a35208 was stored with, and reported as `unknown`.
+  for (const stored of [
+    "[no_rubric] this question has no approved rubric — generate one and load it with --approve",
+    "this question has no approved rubric — generate one and load it with --approve",
+  ]) {
+    const d = describeStoredFailure(stored);
+    assert.equal(d.category, "no_rubric");
+    assert.equal(d.retryable, false);
+  }
+  for (const stored of [
+    "[question_missing] the question this answer belongs to no longer exists",
+    "the question this answer belongs to no longer exists",
+  ]) {
+    assert.equal(describeStoredFailure(stored).category, "question_missing");
+  }
+});
+
 test("legacy untagged rows are classified by their leading status", () => {
   const legacy =
     '401 {"type":"error","error":{"type":"authentication_error","message":"API key is invalid."},"request_id":null}';

@@ -2,7 +2,7 @@
 
 import { CheckCircle2, Loader2, PenLine } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -15,7 +15,9 @@ import {
   type OpenQuestionQuote,
 } from "@/lib/api/open-questions";
 
+import { clearStoredExam, readStoredExam, writeStoredExam } from "./exam-storage";
 import { HandwritingDialog } from "./handwriting-dialog";
+import { SourceText } from "./source-text";
 
 /**
  * The question, then the answer sheet.
@@ -74,85 +76,6 @@ const EXAM_SECONDS = 50 * 60;
 const EXAM_WARN_SECONDS = 5 * 60;
 /** Red from here down. */
 const EXAM_DANGER_SECONDS = 60;
-/**
- * How long a finished sitting stays on screen before it is forgotten.
- *
- * A sitting that ended minutes ago should come back on refresh — the student
- * still wants to read and send what they wrote. One that ended yesterday should
- * not: reopening a spent exam every time the page loads is a haunting, not a
- * feature.
- */
-const EXAM_KEEP_AFTER_END_MS = 2 * 60 * 60 * 1000;
-
-/**
- * Where an in-progress sitting is kept across a refresh.
- *
- * localStorage, per question, and deliberately not the server: this is a
- * rehearsal aid, not invigilation. A student who wants more than fifty minutes
- * can clear the key, and that is fine — the clock is here to train the pace, not
- * to be enforced. Making it enforceable means the deadline living on a row the
- * client cannot write, which is a different feature and a bigger one.
- */
-const examStorageKey = (questionId: string) => `lawpass:writing-task-exam:${questionId}`;
-
-type StoredExam = { deadline: number; text: string; pages: HandwritingPage[] };
-
-/**
- * Storage is not a trusted source: it survives deploys, another tab may have
- * written an older shape, and a user can edit it by hand. Anything that is not
- * the expected shape is dropped rather than handed to the UI as a page.
- */
-function readStoredPages(value: unknown): HandwritingPage[] {
-  if (!Array.isArray(value)) return [];
-  return value
-    .filter(
-      (p): p is HandwritingPage =>
-        typeof p === "object" &&
-        p !== null &&
-        typeof (p as HandwritingPage).url === "string" &&
-        typeof (p as HandwritingPage).public_id === "string"
-    )
-    .slice(0, 2);
-}
-
-function readStoredExam(questionId: string): StoredExam | null {
-  try {
-    const raw = window.localStorage.getItem(examStorageKey(questionId));
-    if (!raw) return null;
-    const parsed: unknown = JSON.parse(raw);
-    if (typeof parsed !== "object" || parsed === null) return null;
-    const { deadline, text, pages } = parsed as Partial<StoredExam>;
-    if (typeof deadline !== "number" || !Number.isFinite(deadline)) return null;
-    if (Date.now() > deadline + EXAM_KEEP_AFTER_END_MS) return null;
-    return {
-      deadline,
-      text: typeof text === "string" ? text : "",
-      pages: readStoredPages(pages),
-    };
-  } catch {
-    // Storage can be unavailable (private mode, a blocked origin, a corrupt
-    // value). None of that should stop the page rendering — the sitting simply
-    // does not survive a refresh.
-    return null;
-  }
-}
-
-function writeStoredExam(questionId: string, value: StoredExam): void {
-  try {
-    window.localStorage.setItem(examStorageKey(questionId), JSON.stringify(value));
-  } catch {
-    // Quota or a blocked origin. Nothing to do and nothing worth interrupting
-    // the student for.
-  }
-}
-
-function clearStoredExam(questionId: string): void {
-  try {
-    window.localStorage.removeItem(examStorageKey(questionId));
-  } catch {
-    // As above.
-  }
-}
 
 export function WritingTaskWorkspace({ questionId }: { questionId: string }) {
   const router = useRouter();
@@ -188,6 +111,19 @@ export function WritingTaskWorkspace({ questionId }: { questionId: string }) {
    * missing, and saying so beats a results screen that spins forever.
    */
   const [filedUngraded, setFiledUngraded] = useState(false);
+  /**
+   * Set once a send has been filed and the page is leaving for the results
+   * screen. From then on nothing may save the sitting again.
+   *
+   * A ref, not state: it is read inside timers and a pagehide listener that were
+   * scheduled BEFORE the send, and those closures would only ever see the state
+   * value from the render that created them. This is the bug it exists for — the
+   * send cleared the stored sheet, then a save debounced from the last keystroke
+   * fired while the results page was still loading and wrote the filed answer
+   * straight back, so "כתוב את המטלה שוב" reopened the old text instead of a
+   * blank sheet.
+   */
+  const filedAndLeaving = useRef(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -245,10 +181,15 @@ export function WritingTaskWorkspace({ questionId }: { questionId: string }) {
   useEffect(() => {
     if (examDeadline === null) return;
     const value = { deadline: examDeadline, text: examText, pages: handwriting };
-    const id = setTimeout(() => writeStoredExam(questionId, value), 700);
+    // Both writers check filedAndLeaving at the moment they RUN, not when they
+    // were scheduled — see the ref for why that distinction is the whole fix.
+    const save = () => {
+      if (!filedAndLeaving.current) writeStoredExam(questionId, value);
+    };
+    const id = setTimeout(save, 700);
     // A closing tab does not wait for the timer, so flush on the way out. This
     // is the difference between losing the last sentence and losing nothing.
-    const flush = () => writeStoredExam(questionId, value);
+    const flush = save;
     window.addEventListener("pagehide", flush);
     return () => {
       clearTimeout(id);
@@ -339,6 +280,12 @@ export function WritingTaskWorkspace({ questionId }: { questionId: string }) {
       // it survives a refresh or a closed tab in a way this editor cannot.
       // `submitting` is deliberately left true: the navigation is in flight and
       // re-enabling the button would invite a second submission.
+      //
+      // The sitting is filed and this page is leaving: stop every pending save
+      // before the navigation, and clear once more after stopping them, so a save
+      // that slipped in between the first clear and here is removed too.
+      filedAndLeaving.current = true;
+      clearStoredExam(questionId);
       router.push(`/writing-task/results/${result.data.answer_id}`);
       return;
     }
@@ -755,8 +702,6 @@ function Section({
  * under it instead of a bold line touching the text.
  */
 function SourceCard({ quote }: { quote: OpenQuestionQuote }) {
-  const blocks = quote.text ? provisionBlocks(quote.text) : [];
-
   return (
     <article
       className="rounded-xl border px-5 py-4"
@@ -778,61 +723,9 @@ function SourceCard({ quote }: { quote: OpenQuestionQuote }) {
           {quote.citation}
         </h3>
       ) : null}
-      <div className="space-y-3.5">
-        {blocks.map((block, i) => (
-          <p
-            key={i}
-            className="whitespace-pre-wrap font-heebo"
-            style={{
-              fontSize: 15,
-              lineHeight: 1.95,
-              color: "var(--color-ink)",
-            }}
-          >
-            {block}
-          </p>
-        ))}
-      </div>
+      {quote.text ? <SourceText text={quote.text} /> : null}
     </article>
   );
-}
-
-/**
- * Split a source into the provisions it is made of, so each starts on its own
- * paragraph instead of running into the previous one.
- *
- * The text arrives from the exam PDF as a single unbroken string — there is not
- * one newline in it — with the provision markers buried mid-line. Three forms
- * occur, and all three have to be matched:
- *
- *   "(129א). בתום"   repaired by migration 20260914000005
- *   "5. בית המשפט"   a section number, likewise repaired
- *   ") .ד( הליך"     still mirrored, on the quotes that migration left alone
- *                    because their brackets landed inside words
- *
- * Deliberately conservative — it must never break a sentence in half. A
- * parenthetical inside prose ("מחלוקות (פלוגתאות) כאשר") does not match,
- * because the content between the brackets is a word rather than a marker, and
- * case-law quotes, which have no markers at all, come back as one block.
- */
-function provisionBlocks(text: string): string[] {
-  const MARKER = [
-    // "(129א)." / "(א) " — a bracketed marker, with or without its full stop.
-    /(?=\((?:[0-9]{1,3}[א-ת]?|[א-ת])\)\s*\.?\s)/,
-    // "5. בית" / "129. " — a bare section number opening a sentence. Requires
-    // the space after the stop so a decimal or a date cannot match.
-    /(?=(?:^|\s)[0-9]{1,3}\.\s)/,
-    // ") .ד(" — the mirrored form, on quotes that still carry it.
-    /(?=\)\s*[.;]?\s*[0-9]{0,3}[א-ת]?\s*\()/,
-  ]
-    .map((r) => r.source)
-    .join("|");
-
-  const parts = text
-    .split(new RegExp(MARKER, "g"))
-    .map((part) => part.trim())
-    .filter(Boolean);
-  return parts.length > 0 ? parts : [text];
 }
 
 /** Blank-line separated source text -> paragraphs, same rule as the PDF renderer. */

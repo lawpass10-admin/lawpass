@@ -29,6 +29,7 @@ const {
 } = require("../lib/cloudinary");
 const { env } = require("../config/env");
 const { startSpan, secs } = require("../lib/timing");
+const { renderForReader } = require("../lib/ai/quote-bank");
 
 /** Question fields the candidate is allowed to see. Everything else is cut. */
 const STUDENT_FIELDS = [
@@ -100,10 +101,32 @@ function toStudentQuestion(row) {
  *
  * Returns null for a question the generator never wrote an answer for, which
  * the caller reports as "no solution available" rather than as an error.
+ *
+ * `quotes` is the question's quote bank. The generator records each source the
+ * answer relied on by its bank id — "L1-Q1" — which means nothing to a student,
+ * so every entry is resolved here to the citation and text that id stands for,
+ * through the same QUOTE_FIELDS allowlist the paper itself is served with. An
+ * id with no match in the bank keeps its role and gets no citation, rather than
+ * being dropped: the explanation of how the source was used is still worth
+ * reading.
  */
-function toStudentSolution(answers) {
-  const a = Array.isArray(answers) ? answers[0] : answers;
-  if (!a || typeof a !== "object") return null;
+function toStudentSolution(answers, quotes = []) {
+  const stored = Array.isArray(answers) ? answers[0] : answers;
+  if (!stored || typeof stored !== "object") return null;
+
+  // The stored answer is in placeholder form — {{L1-Q1}} where a source is
+  // cited, {{V2-Q1.text}} where it is quoted — because the loaders write what
+  // the generator returned. Rendered here, before any field is picked, so every
+  // part of the document (headings, paragraphs, exhibits, signature) reads the
+  // source's name rather than its bank id. sources_used keeps its raw quote_id:
+  // it is resolved separately below, into a name AND the text to open.
+  const a = { ...renderForReader(stored, quotes), sources_used: stored.sources_used };
+
+  const bank = new Map(
+    (Array.isArray(quotes) ? quotes : [])
+      .filter((q) => q && q.id)
+      .map((q) => [q.id, pick(q, QUOTE_FIELDS)])
+  );
 
   return {
     document_type: a.document_type ?? null,
@@ -120,7 +143,13 @@ function toStudentSolution(answers) {
     exhibits: (a.exhibits ?? []).map((e) => pick(e, EXHIBIT_FIELDS)),
     closing: a.closing ?? null,
     signature_line: a.signature_line ?? null,
-    sources_used: (a.sources_used ?? []).map((s) => pick(s, SOURCE_USED_FIELDS)),
+    sources_used: (a.sources_used ?? []).map((s) => {
+      const used = pick(s, SOURCE_USED_FIELDS);
+      const quote = bank.get(used.quote_id);
+      return quote
+        ? { ...used, type: quote.type, citation: quote.citation, text: quote.text }
+        : used;
+    }),
   };
 }
 
@@ -213,6 +242,20 @@ async function submitAnswer(req, res) {
       `[open-questions] submit REJECTED user=${req.user.id} id=${questionId} reason=question_not_found`
     );
     return res.json({ ok: false, error: "השאלה לא נמצאה" });
+  }
+
+  // A question can be read without an approved rubric but not answered: an
+  // answer filed now would sit as a failed grading the student can do nothing
+  // about. The listings already hide such questions, so reaching here means a
+  // direct link — refuse before the student's text is stored, not after.
+  if (!(await db.isGradable(req.supabase, questionId))) {
+    console.warn(
+      `[open-questions] submit REJECTED user=${req.user.id} id=${questionId} reason=no_approved_rubric`
+    );
+    return res.json({
+      ok: false,
+      error: "המטלה עדיין אינה פתוחה להגשה — היא ממתינה לאישור מחוון הבדיקה. נסו שוב מאוחר יותר.",
+    });
   }
 
   // The pages were uploaded by an earlier request and come back as plain
@@ -507,7 +550,7 @@ async function getSolution(req, res) {
   }
 
   const row = await db.getModelAnswerFor(req.supabase, answer.open_question_id);
-  const solution = row ? toStudentSolution(row.answers) : null;
+  const solution = row ? toStudentSolution(row.answers, row.question?.quotes) : null;
   if (!solution) {
     console.info(
       `[open-questions] solution EMPTY user=${req.user.id} question=${answer.open_question_id}`

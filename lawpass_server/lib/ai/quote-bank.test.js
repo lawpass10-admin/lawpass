@@ -15,7 +15,34 @@ const {
   validateGenerated,
   findQuoteLeaks,
   repairPlaceholderIds,
+  renderForReader,
 } = require("./quote-bank");
+
+test("renderForReader turns a stored answer's placeholders into source names", () => {
+  const quotes = [
+    { id: "L1-Q1", type: "statute", citation: "מתוך תקנות סדר הדין האזרחי, התשע\"ט-2018", text: "5. בית המשפט יאזן" },
+    { id: "V2-Q1", type: "case_law", citation: "ע\"א 23-123 דרור נ' יסעור", text: "יש להכריעו בשלב מוקדם" },
+  ];
+  const stored = {
+    opening: "לפי {{L1-Q1}} מתבקש",
+    sections: [{ heading: "{{V2-Q1}}", paragraphs: ["נקבע ב{{V2-Q1}}: {{V2-Q1.text}}"] }],
+  };
+
+  const out = renderForReader(stored, quotes);
+  assert.equal(out.opening, "לפי מתוך תקנות סדר הדין האזרחי, התשע\"ט-2018 מתבקש");
+  assert.equal(out.sections[0].heading, "ע\"א 23-123 דרור נ' יסעור");
+  assert.equal(out.sections[0].paragraphs[0], "נקבע בע\"א 23-123 דרור נ' יסעור: \"יש להכריעו בשלב מוקדם\"");
+  // The stored object is not mutated — the caller may still need the raw ids.
+  assert.equal(stored.opening, "לפי {{L1-Q1}} מתבקש");
+});
+
+test("renderForReader never throws on an id the bank does not have", () => {
+  // renderTokens throws here, correctly, at generation time. On a student's
+  // solution screen one stale reference must not blank the whole document.
+  assert.equal(renderForReader("ראו {{X9-Q9}}", []), "ראו המקור המצורף");
+  assert.equal(renderForReader("ראו {{X9-Q9.text}}", null), "ראו המקור המצורף");
+  assert.equal(renderForReader(null, []), null);
+});
 
 const FIXTURE = path.resolve(
   __dirname,
