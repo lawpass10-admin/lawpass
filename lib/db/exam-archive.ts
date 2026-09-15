@@ -8,11 +8,11 @@
  *     students-select-own policy, so RLS scopes every read to
  *     `user_id = auth.uid()` — there is no user id parameter here, and there
  *     must never be one.
- *   * The paper TITLES are read through the service-role client, because
- *     mahoti_questions and diuni_questions are admin-only under RLS (see the
- *     note at the top of lib/db/mahoti.ts). That read is keyed only by ids taken
- *     from the caller's own rows, and only a title comes back — so it can reach
- *     no paper the candidate has not sat, and nothing of any paper but its name.
+ *   * Writing-task TITLES are read through the service-role client. That read
+ *     is keyed only by ids taken from the caller's own rows, and only a title
+ *     comes back — so it can reach no task the candidate has not sat, and
+ *     nothing of any task but its name. Multiple-choice sittings need no such
+ *     read: they are titled by number, see listMcq.
  *
  * Each entry links to the screen that already shows that sitting in full — the
  * paper, the candidate's answers, the correct ones and the 360 review — so the
@@ -78,52 +78,41 @@ function percent(score: number): string {
 }
 
 /**
- * Titles for a set of multiple-choice papers, keyed by question_id.
- * `table` is mahoti_questions or diuni_questions — the two share a shape.
+ * A multiple-choice subject's sittings, titled "<subject> — מבחן N".
+ *
+ * NUMBERED, NOT NAMED. The papers' own stored titles do not tell sittings
+ * apart: every מהותי paper is called "דיון מהותי" and every דיוני one
+ * "דין דיוני — מבחן 1", so the list read as the same line over and over. N is
+ * the sitting's place in the candidate's own history for this subject — the
+ * first exam they ever filed is מבחן 1 — so a number, once seen, stays attached
+ * to that sitting as more are added. A retake of the same paper is a new
+ * sitting and gets its own number; which retake it was stays on the subtitle
+ * (ניסיון k), next to the date.
+ *
+ * Counted with `count: "exact"` rather than from the rows returned, so the
+ * numbers stay true for a candidate with more sittings than PER_SUBJECT: the
+ * newest row is always number `count`, whatever the cap cut off below it.
  */
-async function mcqTitles(
-  table: "mahoti_questions" | "diuni_questions",
-  ids: string[],
-  fallback: string
-): Promise<Map<string, string>> {
-  if (ids.length === 0) return new Map();
-  const admin = createAdminClient();
-  const { data, error } = await admin
-    .from(table)
-    .select("question_id, title:questions->exam->>title")
-    .in("question_id", ids)
-    .returns<{ question_id: string; title: string | null }[]>();
-
-  if (error) throw new Error(`failed to read ${table} titles: ${error.message}`);
-  return new Map((data ?? []).map((row) => [row.question_id, row.title || fallback]));
-}
-
 async function listMcq(
   answersTable: "mahoti_answers" | "diuni_answers",
-  questionsTable: "mahoti_questions" | "diuni_questions",
   route: "/mahoti/review" | "/diuni/review",
-  fallbackTitle: string
+  subject: string
 ): Promise<ArchiveEntry[]> {
   const supabase = await createClient();
-  const { data, error } = await supabase
+  const { data, error, count } = await supabase
     .from(answersTable)
-    .select("answer_id, question_id, attempts, answer_score, created_at")
+    .select("answer_id, question_id, attempts, answer_score, created_at", { count: "exact" })
     .order("created_at", { ascending: false })
     .limit(PER_SUBJECT)
     .returns<McqAnswerRow[]>();
 
   if (error) throw new Error(`failed to read ${answersTable}: ${error.message}`);
   const rows = data ?? [];
+  const total = count ?? rows.length;
 
-  const titles = await mcqTitles(
-    questionsTable,
-    [...new Set(rows.map((r) => r.question_id))],
-    fallbackTitle
-  );
-
-  return rows.map((row) => ({
+  return rows.map((row, index) => ({
     answerId: row.answer_id,
-    title: titles.get(row.question_id) ?? fallbackTitle,
+    title: `${subject} — מבחן ${total - index}`,
     attempt: row.attempts,
     createdAt: row.created_at,
     result: percent(row.answer_score),
@@ -181,8 +170,8 @@ async function listWriting(): Promise<ArchiveEntry[]> {
 /** Every sitting the signed-in candidate has filed, newest first, per subject. */
 export async function getMyExamArchive(): Promise<ExamArchive> {
   const [mahoti, diuni, writing] = await Promise.all([
-    listMcq("mahoti_answers", "mahoti_questions", "/mahoti/review", "דין מהותי"),
-    listMcq("diuni_answers", "diuni_questions", "/diuni/review", "דין דיוני"),
+    listMcq("mahoti_answers", "/mahoti/review", "דין מהותי"),
+    listMcq("diuni_answers", "/diuni/review", "דין דיוני"),
     listWriting(),
   ]);
   return { mahoti, diuni, writing };
