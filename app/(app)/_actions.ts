@@ -3,10 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
-import { requireActiveSubscription } from "@/lib/auth/subscription-gate";
 import { isValidPlanId, type PlanId } from "@/lib/billing/plans";
-import { listDiuniSets, type DiuniSetSummary } from "@/lib/db/diuni";
-import { listMahotiSets, type MahotiSetSummary } from "@/lib/db/mahoti";
 import { createClient } from "@/lib/supabase/server";
 
 type ActionResult = { ok: true } | { ok: false; error: string };
@@ -88,50 +85,4 @@ export async function grantMockSubscriptionAction(
   // the new row (same pattern as Phase 4 verifyOtpAction).
   revalidatePath("/", "layout");
   redirect("/dashboard");
-}
-
-/**
- * The דין־מהותי papers the sidebar's picker offers.
- *
- * A read behind a Server Action rather than a prop on the layout: the layout
- * renders on every protected route, and this list is wanted only when the
- * dialog is opened. It is also not a read the browser could do for itself —
- * `mahoti_questions` is admin-only under RLS and lib/db/mahoti.ts reaches it
- * through the service-role client — so the subscription gate runs here, exactly
- * as it does on /mahoti itself, before any row is returned.
- *
- * Failure returns an empty list rather than throwing: a picker that cannot
- * reach the table should say it has no papers, not break the page the sidebar
- * is drawn on.
- */
-export async function listMahotiSetsAction(): Promise<MahotiSetSummary[]> {
-  await requireActiveSubscription();
-  try {
-    return await listMahotiSets();
-  } catch (error) {
-    console.error(
-      `[mahoti] listMahotiSets FAILED message=${
-        error instanceof Error ? error.message : String(error)
-      }`
-    );
-    return [];
-  }
-}
-
-/**
- * The דין־דיוני papers the sidebar's picker offers — the twin of
- * `listMahotiSetsAction` above, and gated and degraded the same way.
- */
-export async function listDiuniSetsAction(): Promise<DiuniSetSummary[]> {
-  await requireActiveSubscription();
-  try {
-    return await listDiuniSets();
-  } catch (error) {
-    console.error(
-      `[diuni] listDiuniSets FAILED message=${
-        error instanceof Error ? error.message : String(error)
-      }`
-    );
-    return [];
-  }
 }

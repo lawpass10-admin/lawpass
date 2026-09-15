@@ -3,9 +3,11 @@
 import { ChevronLeft, ChevronRight, ClipboardCheck, Loader2 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { toast } from "sonner";
 
+import styles from "@/app/(app)/_components/fit-to-box/question-fit.module.css";
+import { useFitToBox, type FitBounds } from "@/app/(app)/_components/fit-to-box/use-fit-to-box";
 import { NoCopyText } from "@/app/(app)/_components/no-copy-text";
 import { Choice } from "@/app/(app)/practice/play/_components/choice";
 import {
@@ -13,121 +15,22 @@ import {
   type ExamProgressCellStatus,
 } from "@/app/(app)/exam/play/_components/exam-progress-strip";
 import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
 import { submitMahotiAttempt, type MahotiAttempt } from "@/lib/api/mahoti";
 import type { MahotiLetter, MahotiSet } from "@/lib/db/mahoti";
 import { cn } from "@/lib/utils";
 
 import { ExamTimerBar } from "./exam-timer-bar";
 import { NotebookPane } from "./notebook-pane";
-import styles from "./question-fit.module.css";
-
-/** Type-scale bounds for the fit-to-box pass, in px. 15 is the size the
- *  column was designed at; 13 is the floor for the column as a whole,
- *  matching the notebook opposite it — the question is the thing being read,
- *  so it must never end up smaller than the reference material beside it. */
-const FIT_MAX_FONT_PX = 15;
-const FIT_MIN_FONT_PX = 13;
-/** Floor for the options once the question has stopped shrinking. Below 10px
- *  Heebo stops being comfortably readable, and a question whose options only
- *  fit at 9px is one the layout genuinely cannot hold. */
-const ANSWER_MIN_FONT_PX = 10;
-const FIT_STEP_PX = 0.5;
 
 /**
- * How many answers unlock "שלח את המבחן לבדיקה" before the paper is finished.
- *
- * A generated paper is 40 questions, and a candidate who has answered 30 has
- * done enough for the marking to be worth reading — waiting for all 40 turns a
- * useful review into an all-or-nothing one. The remaining questions still count
- * against the score (they are marked as unanswered, out of the paper's full
- * total), which is what the bar says before the button is pressed.
- *
- * Capped at the paper's own length by the caller, so a paper shorter than this
- * unlocks when it is genuinely complete rather than never.
+ * Type-scale bounds for the fit-to-box pass, in px. 15 is the size the column
+ * was designed at; 13 is the floor for the column as a whole, matching the
+ * notebook opposite it — the question is the thing being read, so it must never
+ * end up smaller than the reference material beside it. 10 is the options'
+ * floor: below it Heebo stops being comfortably readable, and a question whose
+ * options only fit at 9px is one the layout genuinely cannot hold.
  */
-const SUBMIT_UNLOCK_AT = 30;
-
-/**
- * Shrinks the question column's type until the fact pattern and all four
- * options clear the box, so the candidate never has to scroll to see an
- * answer they are choosing between.
- *
- * Two stages. First the whole column steps down together, 15px to 13px. If
- * that still overflows, the fact pattern holds at 13px and only the options
- * keep shrinking — a long fact pattern is read once, while the four options
- * are what the candidate compares against each other, and all four visible
- * a size smaller beats three visible at full size.
- *
- * Writes the size straight to the DOM as a custom property rather than
- * holding it in React state: this is a measure-then-paint loop, and a
- * `setState` in an effect would both re-render the tree for a value only CSS
- * consumes and trip React 19's `set-state-in-effect` rule.
- *
- * The ResizeObserver watches the box, whose own border box is fixed by the
- * flex parent — changing the font size inside it moves `scrollHeight`, never
- * the observed size — so the loop cannot feed itself.
- */
-function useFitToBox(ref: React.RefObject<HTMLDivElement | null>, key: unknown) {
-  useEffect(() => {
-    const box = ref.current;
-    if (!box) return;
-
-    let frame = 0;
-    function fit(): void {
-      if (!box) return;
-      const overflows = () => box.scrollHeight > box.clientHeight;
-
-      // Stage 1 — the column steps down as a whole. Starts from the top of
-      // the range every pass, so a short question gets the full size back.
-      let question = FIT_MAX_FONT_PX;
-      box.style.setProperty("--mahoti-q-font", `${question}px`);
-      box.style.removeProperty("--mahoti-a-font");
-      while (question > FIT_MIN_FONT_PX && overflows()) {
-        question -= FIT_STEP_PX;
-        box.style.setProperty("--mahoti-q-font", `${question}px`);
-      }
-      if (!overflows()) return;
-
-      // Stage 2 — the question is at its floor; the options give way alone.
-      let answers = question;
-      while (answers > ANSWER_MIN_FONT_PX && overflows()) {
-        answers -= FIT_STEP_PX;
-        box.style.setProperty("--mahoti-a-font", `${answers}px`);
-      }
-    }
-    function schedule(): void {
-      cancelAnimationFrame(frame);
-      frame = requestAnimationFrame(fit);
-    }
-
-    schedule();
-    const observer = new ResizeObserver(schedule);
-    observer.observe(box);
-
-    // The first pass can land before Heebo has swapped in, and fallback
-    // metrics measure short — the text would overflow the moment the real
-    // font arrived. A ResizeObserver never sees that: the swap moves
-    // scrollHeight, not the box. `fonts.ready` is the signal that does.
-    let cancelled = false;
-    void document.fonts?.ready.then(() => {
-      if (!cancelled) schedule();
-    });
-
-    return () => {
-      cancelled = true;
-      cancelAnimationFrame(frame);
-      observer.disconnect();
-    };
-  }, [ref, key]);
-}
+const FIT: FitBounds = { maxPx: 15, minPx: 13, answersMinPx: 10 };
 
 /**
  * The דיון מהותי study screen: the paper on the left, the notebook it was
@@ -158,9 +61,6 @@ export function MahotiWorkspace({ set }: { set: MahotiSet }) {
   // one run of the paper — re-sitting is allowed, but only by sitting it again.
   const [attempt, setAttempt] = useState<MahotiAttempt | null>(null);
   const [submitting, setSubmitting] = useState(false);
-  // Open while an early submit — one with questions still unanswered — waits
-  // for the candidate to confirm it.
-  const [confirmOpen, setConfirmOpen] = useState(false);
   const fitRef = useRef<HTMLDivElement | null>(null);
 
   const total = set.questions.length;
@@ -176,20 +76,18 @@ export function MahotiWorkspace({ set }: { set: MahotiSet }) {
     (count, _, i) => (answers[i] ? count + 1 : count),
     0
   );
-  const unanswered = total - answeredCount;
-
   // "Answered the last question" is read as "nothing is left unanswered".
   // Taken literally — position === total - 1 — a candidate who jumped to the
   // last question first would stop their own clock with five questions still
   // open. Answering them in order lands on the same moment either way.
   const allAnswered = total > 0 && answeredCount === total;
 
-  // The submit bar appears at SUBMIT_UNLOCK_AT answers and stays for the rest
-  // of the sitting — finishing the paper is still the expected path, it is just
-  // no longer the only one. min() with `total` keeps a paper shorter than the
-  // threshold from being unsubmittable.
-  const canSubmit =
-    total > 0 && answeredCount >= Math.min(SUBMIT_UNLOCK_AT, total);
+  // The paper is sent for marking only once EVERY question has an answer. It
+  // used to unlock at 30 of 40, with the rest counted wrong; that was removed
+  // on PM request — the real sitting is answered in full, so this is too. With
+  // nothing left unanswered there is no early submit to confirm, which is why
+  // the confirmation dialog that used to guard it is gone as well.
+  const canSubmit = allAnswered;
 
   // The review is addressed by the FILED sitting, not by the letters: it then
   // shows the score that is in the table rather than one it worked out again
@@ -250,7 +148,7 @@ export function MahotiWorkspace({ set }: { set: MahotiSet }) {
 
   // Re-fit whenever the question changes: the next fact pattern is a
   // different length, so the size that fit the last one means nothing.
-  useFitToBox(fitRef, position);
+  useFitToBox(fitRef, position, FIT);
 
   return (
     // The whole screen is one non-scrolling column: the page itself never
@@ -330,7 +228,7 @@ export function MahotiWorkspace({ set }: { set: MahotiSet }) {
             ref={fitRef}
             className={cn("min-h-0 flex-1 overflow-hidden", styles.fit)}
           >
-            {/* Sized by --mahoti-q-font, not a fixed value: at half the row a
+            {/* Sized by --fit-q-font, not a fixed value: at half the row a
                 long fact pattern at 19px pushed the choices below the fold,
                 and even 15px does not always fit. */}
             <div className="mb-2.5 rounded-xl border border-border bg-card p-3.5 shadow-sm">
@@ -401,26 +299,14 @@ export function MahotiWorkspace({ set }: { set: MahotiSet }) {
               </Button>
             </div>
 
-            {/* Appears at SUBMIT_UNLOCK_AT answers and stays. The review opens
-                in a new tab so this one stays intact — the candidate can go
-                back to a question with their answers still on screen. */}
-            {canSubmit ? (
-              <div
-                className={cn(
-                  "flex flex-wrap items-center justify-between gap-3 rounded-xl border px-3 py-2",
-                  // Amber while questions are still open: the bar is an offer,
-                  // not the finish line, and green would read as "done".
-                  allAnswered || attempt
-                    ? "border-emerald-500/40 bg-emerald-50 dark:bg-emerald-950/20"
-                    : "border-amber-500/40 bg-amber-50 dark:bg-amber-950/20"
-                )}
-              >
+            {/* Appears once every question is answered (see canSubmit) and
+                stays after the sitting is filed, to reopen its results. */}
+            {canSubmit || attempt ? (
+              <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-emerald-500/40 bg-emerald-50 px-3 py-2 dark:bg-emerald-950/20">
                 <p className="text-xs text-foreground/80">
                   {attempt
                     ? `ניסיון ${attempt.attempts} נשמר · ${attempt.correct}/${attempt.total} (${attempt.score}%)`
-                    : allAnswered
-                      ? `ענית על כל ${total} השאלות. השעון נעצר.`
-                      : `ענית על ${answeredCount} מתוך ${total} שאלות. אפשר לשלוח לבדיקה עכשיו — ${unanswered} שאלות שלא נענו ייחשבו כשגויות.`}
+                    : `ענית על כל ${total} השאלות. השעון נעצר.`}
                 </p>
                 {attempt ? (
                   // Re-opens the result rather than the solution. The score and
@@ -438,13 +324,7 @@ export function MahotiWorkspace({ set }: { set: MahotiSet }) {
                 ) : (
                   <Button
                     size="sm"
-                    // With questions still open the click asks first. Filing is
-                    // a recorded sitting with a score on it, and a stray click
-                    // at question 30 would otherwise cost the candidate the
-                    // other ten before they knew it was possible.
-                    onClick={() =>
-                      unanswered > 0 ? setConfirmOpen(true) : handleSubmit()
-                    }
+                    onClick={() => void handleSubmit()}
                     disabled={submitting}
                   >
                     {submitting ? (
@@ -463,40 +343,6 @@ export function MahotiWorkspace({ set }: { set: MahotiSet }) {
         </section>
       </div>
 
-      {/* The early-submit confirmation. Rendered here rather than beside the
-          button so it is not inside the fit-to-box column, whose type-shrinking
-          measures its own scrollHeight. */}
-
-      <Dialog open={confirmOpen} onOpenChange={setConfirmOpen}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle>לשלוח את המבחן עכשיו?</DialogTitle>
-            <DialogDescription>
-              ענית על {answeredCount} מתוך {total} שאלות. {unanswered} שאלות
-              שנשארו ללא מענה ייחשבו כשגויות בציון. אפשר גם להמשיך לענות ולשלוח
-              בסוף — ואפשר לגשת למבחן הזה שוב בכל עת.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => setConfirmOpen(false)}
-            >
-              המשך לענות
-            </Button>
-            <Button
-              type="button"
-              onClick={() => {
-                setConfirmOpen(false);
-                void handleSubmit();
-              }}
-            >
-              שלח לבדיקה
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }

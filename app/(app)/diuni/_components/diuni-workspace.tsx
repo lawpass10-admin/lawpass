@@ -8,9 +8,11 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { toast } from "sonner";
 
+import styles from "@/app/(app)/_components/fit-to-box/question-fit.module.css";
+import { useFitToBox, type FitBounds } from "@/app/(app)/_components/fit-to-box/use-fit-to-box";
 import { NoCopyText } from "@/app/(app)/_components/no-copy-text";
 import { Choice } from "@/app/(app)/practice/play/_components/choice";
 import {
@@ -22,27 +24,27 @@ import {
   ExamTimerBar,
 } from "@/app/(app)/mahoti/_components/exam-timer-bar";
 import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
 import { submitDiuniAttempt, type DiuniAttempt } from "@/lib/api/diuni";
 import type { DiuniLetter, DiuniSet } from "@/lib/db/diuni";
 import { cn } from "@/lib/utils";
 
 /**
- * How many answers unlock "שלח את המבחן לבדיקה" before the paper is finished.
+ * Type-scale bounds for the fit-to-box pass, in px.
  *
- * Three quarters of the paper, matching the rule /mahoti uses (30 of 40): a
- * candidate who has answered that much has done enough for the marking to be
- * worth reading, and waiting for the last question turns a useful review into
- * an all-or-nothing one. The unanswered questions still count against the score.
+ * Larger than /mahoti's (15/13/10) at the top: this column has the whole width
+ * to itself, with no notebook beside it to stay no smaller than, so a short
+ * question is set at a comfortable 17px.
+ *
+ * The column floor is LOWER than /mahoti's — 11px, not 13. With 13 a long diuni
+ * question held its size while the options alone shrank to 10px and the fourth
+ * was still cut off: the fact pattern stayed large and the answers became
+ * unreadable. Letting the question and the options come down together first is
+ * the better trade — the stage where the options shrink on their own now starts
+ * from 11px, a step away from their 10px floor rather than three. /mahoti keeps
+ * 13 because its question must not read smaller than the notebook beside it;
+ * there is no notebook here.
  */
-const SUBMIT_UNLOCK_FRACTION = 0.75;
+const FIT: FitBounds = { maxPx: 17, minPx: 11, answersMinPx: 10 };
 
 /**
  * The דין דיוני study screen.
@@ -51,8 +53,12 @@ const SUBMIT_UNLOCK_FRACTION = 0.75;
  * <Choice> rows, same prev/next pair — so a candidate moving between screens is
  * not re-learning the interface. Unlike /mahoti there is no notebook beside it:
  * a diuni question is answered from knowledge of procedure, so the column has
- * the width to itself and the fit-to-box type shrinking that screen needs is
- * unnecessary here.
+ * the width to itself.
+ *
+ * It does share /mahoti's fit-to-box type scaling. It used to scroll instead, on
+ * the reasoning that a diuni question is short enough not to need it — but real
+ * ones are not, and a scrollbar puts the fourth answer below the fold, so reading
+ * the question and reading the options become two separate acts.
  *
  * The selected letters are local state. Nothing is scored in the browser — the
  * paper arrives with `correct_answer` already stripped (see lib/db/diuni.ts), and
@@ -71,7 +77,8 @@ export function DiuniWorkspace({ set }: { set: DiuniSet }) {
   // here is what stops a second click filing a second attempt for one run.
   const [attempt, setAttempt] = useState<DiuniAttempt | null>(null);
   const [submitting, setSubmitting] = useState(false);
-  const [confirmOpen, setConfirmOpen] = useState(false);
+  const fitRef = useRef<HTMLDivElement | null>(null);
+  useFitToBox(fitRef, position, FIT);
 
   const total = set.questions.length;
   const question = set.questions[position];
@@ -86,10 +93,12 @@ export function DiuniWorkspace({ set }: { set: DiuniSet }) {
     (count, _, i) => (answers[i] ? count + 1 : count),
     0,
   );
-  const unanswered = total - answeredCount;
   const allAnswered = total > 0 && answeredCount === total;
-  const unlockAt = Math.max(1, Math.ceil(total * SUBMIT_UNLOCK_FRACTION));
-  const canSubmit = total > 0 && answeredCount >= Math.min(unlockAt, total);
+  // Sent for marking only once EVERY question has an answer — the same rule as
+  // /mahoti. It used to unlock at three quarters of the paper with the rest
+  // counted wrong; removed on PM request, along with the confirmation dialog
+  // that guarded an early submit, since there is no longer an early submit.
+  const canSubmit = allAnswered;
 
   function resultsUrlFor(answerId: string): string {
     return `/diuni/results?attempt=${encodeURIComponent(answerId)}`;
@@ -178,26 +187,54 @@ export function DiuniWorkspace({ set }: { set: DiuniSet }) {
           ) : null}
         </div>
 
-        {/* The one scrolling region on the screen. A diuni fact pattern is
-            shorter than a mahoti one and has the full width, so it fits without
-            the type-shrinking pass /mahoti needs — and where a very long one
-            does not, scrolling the column is better than shrinking the four
-            answers the candidate is comparing. */}
-        {/* The reading column is capped and centred rather than filling the
+        {/* No scrollbar — `useFitToBox` steps the type down until the fact
+            pattern and all four options clear this box, so the whole question
+            is readable in one look. `overflow-hidden` is the backstop for the
+            rare question that does not fit even at the floors; the strip's
+            question numbers remain the way out.
+
+            The reading column is capped and centred rather than filling the
             card. The page is as wide as /mahoti so the progress strip can lay
             34-40 cells out in one straight row, but a fact pattern set across
             1480px runs to ~180 characters a line, which nobody reads twice.
             The strip gets the width; the prose does not. */}
-        <div className="mx-auto min-h-0 w-full max-w-[980px] flex-1 overflow-y-auto px-5 py-4">
-          <div className="rounded-lg border border-border bg-background p-5">
-            <NoCopyText
-              dir="auto"
-              className="leading-relaxed whitespace-pre-wrap"
-            >
-              {[question.fact_pattern, question.stem]
-                .filter((part) => part && part.trim())
-                .join("\n\n")}
-            </NoCopyText>
+        <div
+          ref={fitRef}
+          className={cn(
+            "mx-auto min-h-0 w-full max-w-[980px] flex-1 overflow-hidden px-5 py-3",
+            styles.fit,
+          )}
+        >
+          {/* Padding in em (styles.questionCard), so it shrinks with the type
+              instead of holding ~40px of height the text could have used.
+
+              The fact pattern and the question sentence are two blocks with a
+              small gap, not one string joined by "\n\n": under
+              whitespace-pre-wrap that blank line cost a full line-height at
+              whatever size the text was set — the largest single gap in the
+              column, and pure whitespace. */}
+          <div
+            className={cn(
+              "rounded-lg border border-border bg-background",
+              styles.questionCard,
+            )}
+          >
+            {question.fact_pattern?.trim() ? (
+              <NoCopyText dir="auto" className="leading-relaxed whitespace-pre-wrap">
+                {question.fact_pattern.trim()}
+              </NoCopyText>
+            ) : null}
+            {question.stem?.trim() ? (
+              <NoCopyText
+                dir="auto"
+                className={cn(
+                  "leading-relaxed whitespace-pre-wrap font-medium",
+                  question.fact_pattern?.trim() && "mt-[0.6em]",
+                )}
+              >
+                {question.stem.trim()}
+              </NoCopyText>
+            ) : null}
           </div>
 
           {/* Dimmed as well as disabled while the clock is unstarted: a
@@ -206,7 +243,8 @@ export function DiuniWorkspace({ set }: { set: DiuniSet }) {
               page rather than as a locked one. */}
           <div
             className={cn(
-              "mt-4 flex flex-col gap-2 transition-opacity",
+              "mt-3 flex flex-col gap-1.5 transition-opacity",
+              styles.answers,
               !examStarted && "opacity-60",
             )}
           >
@@ -251,23 +289,12 @@ export function DiuniWorkspace({ set }: { set: DiuniSet }) {
               </Button>
             </div>
 
-            {canSubmit ? (
-              <div
-                className={cn(
-                  "flex flex-wrap items-center justify-between gap-3 rounded-xl border px-3 py-2",
-                  // Amber while questions are still open: the bar is an offer,
-                  // not the finish line, and green would read as "done".
-                  allAnswered || attempt
-                    ? "border-emerald-500/40 bg-emerald-50 dark:bg-emerald-950/20"
-                    : "border-amber-500/40 bg-amber-50 dark:bg-amber-950/20",
-                )}
-              >
+            {canSubmit || attempt ? (
+              <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-emerald-500/40 bg-emerald-50 px-3 py-2 dark:bg-emerald-950/20">
                 <p className="text-xs text-foreground/80">
                   {attempt
                     ? `ניסיון ${attempt.attempts} נשמר · ${attempt.correct}/${attempt.total} (${attempt.score}%)`
-                    : allAnswered
-                      ? `ענית על כל ${total} השאלות. השעון נעצר.`
-                      : `ענית על ${answeredCount} מתוך ${total} שאלות. אפשר לשלוח לבדיקה עכשיו — ${unanswered} שאלות שלא נענו ייחשבו כשגויות.`}
+                    : `ענית על כל ${total} השאלות. השעון נעצר.`}
                 </p>
                 {attempt ? (
                   // Re-opens the result rather than the solution. The score and
@@ -285,9 +312,7 @@ export function DiuniWorkspace({ set }: { set: DiuniSet }) {
                 ) : (
                   <Button
                     size="sm"
-                    onClick={() =>
-                      unanswered > 0 ? setConfirmOpen(true) : handleSubmit()
-                    }
+                    onClick={() => void handleSubmit()}
                     disabled={submitting}
                   >
                     {submitting ? (
@@ -305,38 +330,6 @@ export function DiuniWorkspace({ set }: { set: DiuniSet }) {
           </div>
         </div>
       </section>
-
-
-      <Dialog open={confirmOpen} onOpenChange={setConfirmOpen}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle>לשלוח את המבחן עכשיו?</DialogTitle>
-            <DialogDescription>
-              ענית על {answeredCount} מתוך {total} שאלות. {unanswered} שאלות
-              שנשארו ללא מענה ייחשבו כשגויות בציון. אפשר גם להמשיך לענות ולשלוח
-              בסוף — ואפשר לגשת למבחן הזה שוב בכל עת.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => setConfirmOpen(false)}
-            >
-              המשך לענות
-            </Button>
-            <Button
-              type="button"
-              onClick={() => {
-                setConfirmOpen(false);
-                void handleSubmit();
-              }}
-            >
-              שלח לבדיקה
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }
