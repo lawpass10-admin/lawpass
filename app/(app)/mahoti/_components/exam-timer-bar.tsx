@@ -43,8 +43,16 @@ export function ExamTimerBar({
   frozen = false,
   totalSeconds = MAHOTI_TOTAL_SECONDS,
   onStartedChange,
+  children,
 }: {
   frozen?: boolean;
+  /**
+   * Extra controls for the bar, rendered beside the clock. /mahoti and /diuni
+   * put "בדוק שאלות" here: the bar is the one row of controls on these screens,
+   * and a button placed anywhere else would cost the question column height it
+   * cannot spare.
+   */
+  children?: React.ReactNode;
   /**
    * Length of the sitting. Defaults to the mahoti figure so the original
    * caller is unchanged; /diuni passes its own 100 minutes. A prop rather
@@ -182,6 +190,8 @@ export function ExamTimerBar({
             ? `${minutesLeft} דקות נותרו`
             : "פחות מדקה נותרה"}
       </span>
+
+      {children}
     </div>
   );
 }

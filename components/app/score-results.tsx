@@ -1,6 +1,7 @@
 import { ArrowLeft, ClipboardCheck, RotateCcw } from "lucide-react";
 import Link from "next/link";
 
+import { ExamPageNav } from "@/app/(app)/_components/exam-page-nav";
 import { Button } from "@/components/ui/button";
 import type { TopicScore } from "@/lib/scoring/topic-score";
 import { cn } from "@/lib/utils";
@@ -51,24 +52,22 @@ export function ScoreResults({
 
   return (
     <div className="mx-auto w-full max-w-[880px] px-5 py-8">
-      <nav className="flex items-baseline gap-2 font-heebo leading-none">
-        <Link
-          href="/dashboard"
-          className="text-[11px] text-muted-foreground hover:underline"
-        >
-          דשבורד
-        </Link>
-        <span aria-hidden className="text-[11px] text-muted-foreground">
-          ›
-        </span>
-        <Link href={backUrl} className="text-[11px] text-muted-foreground hover:underline">
-          {subject}
-        </Link>
-        <span aria-hidden className="text-[11px] text-muted-foreground">
-          ›
-        </span>
-        <span className="text-[11px] font-semibold text-foreground">תוצאות</span>
-      </nav>
+      {/* The breadcrumb still says where this screen sits; the buttons beside
+          it are how a candidate leaves. This route renders in focus mode, with
+          no sidebar, so an 11px link was the only exit. */}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <nav className="flex items-baseline gap-2 font-heebo leading-none" aria-label="פירורי לחם">
+          <Link href={backUrl} className="text-[11px] text-muted-foreground hover:underline">
+            {subject}
+          </Link>
+          <span aria-hidden className="text-[11px] text-muted-foreground">
+            ›
+          </span>
+          <span className="text-[11px] font-semibold text-foreground">תוצאות</span>
+        </nav>
+
+        <ExamPageNav backHref={backUrl} backLabel={backLabel} />
+      </div>
 
       <header className="mt-3">
         <h1 className="font-heebo text-[26px] font-extrabold tracking-tight md:text-[32px]">

@@ -6,7 +6,7 @@ import { getMyExamArchive } from "@/lib/db/exam-archive";
 import { ArchiveTabs } from "./_components/archive-tabs";
 
 /**
- * /exam-archive — ארכיון המבחנים שלי: every exam the candidate has filed, under
+ * /exam-archive — משוב מפורט על מבחנים שעשיתי: every exam the candidate has filed, under
  * the same three subject tabs as the dashboard.
  *
  * Server Component: the list is read here, through lib/db/exam-archive.ts,
@@ -31,16 +31,17 @@ export default async function ExamArchivePage() {
           <span aria-hidden style={{ color: "var(--color-ink-muted)" }}>
             ›
           </span>
-          <span style={{ color: "var(--color-ink-dim)" }}>ארכיון המבחנים שלי</span>
+          <span style={{ color: "var(--color-ink-dim)" }}>משוב מפורט על מבחנים שעשיתי</span>
         </nav>
         <h1
           className="font-heebo font-extrabold tracking-tight"
           style={{ fontSize: "clamp(24px, 2.1vw, 32px)", color: "var(--color-navy-ink)", lineHeight: 1.15 }}
         >
-          ארכיון המבחנים שלי
+          משוב מפורט על מבחנים שעשיתי
         </h1>
         <p className="font-heebo" style={{ fontSize: 15, color: "var(--color-ink-dim)" }}>
-          כל המבחנים שהגשת. לחיצה על מבחן פותחת אותו במלואו — התשובות שלך, התשובות הנכונות וההסבר המלא.
+          כאן מרוכזים כל המבחנים שהגשת, לפי נושא. לחיצה על מבחן פותחת את המשוב המלא עליו — התשובות
+          שלך לצד התשובות הנכונות, וההסבר לכל שאלה.
         </p>
       </header>
 

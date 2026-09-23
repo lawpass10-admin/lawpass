@@ -1,5 +1,4 @@
-import Link from "next/link";
-
+import { ExamPageNav } from "@/app/(app)/_components/exam-page-nav";
 import { requireActiveSubscription } from "@/lib/auth/subscription-gate";
 import { getDiuniSet } from "@/lib/db/diuni";
 
@@ -82,20 +81,17 @@ function PageHead({
   questionCount: number;
 }) {
   return (
-    <header className="flex shrink-0 items-baseline gap-2 font-heebo leading-none">
-      <Link
-        href="/dashboard"
-        className="text-[11px] text-muted-foreground hover:underline"
-      >
-        דשבורד
-      </Link>
-      <span aria-hidden className="text-[11px] text-muted-foreground">
-        ›
-      </span>
-      <h1 className="text-[13px] font-bold">{title}</h1>
-      <span className="text-[11px] text-muted-foreground">
-        {questionCount > 0 ? `${questionCount} שאלות · 100 דקות` : ""}
-      </span>
+    <header className="flex shrink-0 flex-wrap items-center justify-between gap-2 font-heebo leading-none">
+      <div className="flex items-baseline gap-2">
+        <h1 className="text-[13px] font-bold">{title}</h1>
+        <span className="text-[11px] text-muted-foreground">
+          {questionCount > 0 ? `${questionCount} שאלות · 100 דקות` : ""}
+        </span>
+      </div>
+
+      {/* The sidebar is hidden on this route (focus mode), so the way out has
+          to be a control rather than the 11px breadcrumb it used to be. */}
+      <ExamPageNav backHref="/diuni-start" backLabel="חזרה לבחירת מבחן" />
     </header>
   );
 }

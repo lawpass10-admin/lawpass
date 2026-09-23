@@ -1,7 +1,7 @@
 "use client";
 
 import { ChevronLeft, ChevronRight } from "lucide-react";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import type { Notebook, NotebookLaw, NotebookSection } from "@/lib/db/mahoti";
@@ -17,11 +17,57 @@ import { cn } from "@/lib/utils";
  * zoom level. Page 0 is the table of contents, mirroring the PDF the same
  * notebook renders to.
  */
+/**
+ * The order the contents lists instruments in: Basic Laws, then statutes,
+ * ordinances, orders, professional rules, and regulations last — the hierarchy
+ * of Israeli legislation, primary before subordinate.
+ *
+ * SORTED HERE AS WELL AS IN THE GENERATOR. scripts/mahoti/generate-mahoti-set.mjs
+ * writes new notebooks in this order (INSTRUMENT_RANK there, kept in step with
+ * this), but notebooks already stored were written Hebrew-alphabetical. Sorting
+ * on the way to the screen is what puts those in the same order without
+ * rewriting a single stored row.
+ *
+ * `(?![א-ת])` and not `\b`: JavaScript's word boundary is defined on Latin word
+ * characters and never matches between a Hebrew letter and a space. The Basic
+ * Law test requires the colon form, or "חוק יסודות המשפט" — an ordinary statute
+ * the corpus also holds — would file itself among the Basic Laws.
+ */
+const INSTRUMENT_RANK: [RegExp, number][] = [
+  [/^חוק[\s־-]?יסוד\s*:/, 0],
+  [/^חוק(?![א-ת])/, 1],
+  [/^פקוד[הת](?![א-ת])/, 2],
+  [/^צו(ו?ים)?(?![א-ת])/, 3],
+  [/^כלל(י|ים)(?![א-ת])/, 4],
+  [/^תקנ(ות|ה)(?![א-ת])/, 5],
+];
+
+function instrumentRank(lawName: string): number {
+  const name = (lawName ?? "").trim();
+  for (const [pattern, rank] of INSTRUMENT_RANK) {
+    if (pattern.test(name)) return rank;
+  }
+  // Unrecognised sorts last, so it reads as something to give a rank to rather
+  // than being folded in among the statutes.
+  return INSTRUMENT_RANK.length;
+}
+
 export function NotebookPane({ notebook }: { notebook: Notebook }) {
   // 0 = table of contents, 1..laws.length = one law each.
   const [page, setPage] = useState(0);
 
-  const laws = notebook.laws;
+  // One sorted copy feeds both the contents and the paging, so a law's number
+  // in the list IS the page it opens — sorting only the contents would send
+  // every entry to the wrong page.
+  const laws = useMemo(
+    () =>
+      [...notebook.laws].sort(
+        (a, b) =>
+          instrumentRank(a.law_name) - instrumentRank(b.law_name) ||
+          a.law_name.localeCompare(b.law_name, "he")
+      ),
+    [notebook.laws]
+  );
   const totalPages = laws.length + 1;
   const law = page === 0 ? null : laws[page - 1];
 

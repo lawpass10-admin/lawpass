@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import { z } from "zod";
 
 import { isValidPlanId, type PlanId } from "@/lib/billing/plans";
 import { createClient } from "@/lib/supabase/server";
@@ -85,4 +86,83 @@ export async function grantMockSubscriptionAction(
   // the new row (same pattern as Phase 4 verifyOtpAction).
   revalidatePath("/", "layout");
   redirect("/dashboard");
+}
+
+// =============================================================================
+// Feedback — the "שלחו לנו משוב" button in the sidebar
+// =============================================================================
+
+/**
+ * The ceiling matches both the textarea's maxLength and the CHECK constraint on
+ * user_feedback (migration 20260923000006). Three places agree on one number,
+ * so a message that the box accepted is never rejected by the database.
+ */
+const FEEDBACK_MAX_CHARS = 4000;
+
+const submitFeedbackSchema = z.object({
+  text: z.string().trim().min(1).max(FEEDBACK_MAX_CHARS),
+  /**
+   * The route the student was on when they opened the box. Optional, and
+   * deliberately not trusted for anything but context: it comes from the
+   * client, so it is capped and stored as a plain string rather than resolved
+   * against the route table. "The exam page is broken" is a different report
+   * from "the dashboard is broken", and this is the cheapest way to know which.
+   */
+  page: z.string().max(200).optional(),
+});
+
+/**
+ * Store one piece of feedback for the signed-in student.
+ *
+ * WRITTEN WITH THE SSR CLIENT, not the admin client. The insert therefore
+ * passes through the `user_feedback_students_insert_own` policy, whose WITH
+ * CHECK pins user_id to auth.uid() — authorization is the database's, and this
+ * action cannot file feedback on behalf of somebody else even if it tried to.
+ *
+ * NO SUBSCRIPTION CHECK, on purpose: see the migration's header. A lapsed
+ * student is precisely the one with something to tell us.
+ */
+export async function submitUserFeedbackAction(
+  input: unknown
+): Promise<ActionResult> {
+  const parsed = submitFeedbackSchema.safeParse(input);
+  if (!parsed.success) {
+    return { ok: false, error: "לא ניתן לשלוח הודעה ריקה" };
+  }
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false, error: "לא מחובר" };
+
+  const { error } = await supabase.from("user_feedback").insert({
+    user_id: user.id,
+    feedback_body: {
+      text: parsed.data.text,
+      page: parsed.data.page ?? null,
+      // The server's clock, not the browser's — this is the one timestamp
+      // inside the payload and it should not be a machine we do not control.
+      // created_at on the row is the authority; this travels with the text so
+      // an exported body is self-contained.
+      submitted_at: new Date().toISOString(),
+    },
+  });
+
+  if (error) {
+    // TODO(slice-7): replace with structured logger.
+    console.error(
+      `[feedback] insert FAILED user=${user.id} code=${
+        (error as { code?: string }).code ?? "unknown"
+      } message=${error.message}`
+    );
+    return { ok: false, error: "השליחה נכשלה. נסו שוב בעוד רגע" };
+  }
+
+  // TODO(slice-7): replace with structured logger.
+  console.info(
+    `[feedback] insert OK user=${user.id} chars=${parsed.data.text.length}`
+  );
+
+  return { ok: true };
 }

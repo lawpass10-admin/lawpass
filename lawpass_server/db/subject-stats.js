@@ -40,9 +40,9 @@ const round1 = (n) => Math.round(n * 10) / 10;
  * showing them "0%" would read as a score they earned. The card renders a dash
  * for null.
  */
-function summarise(percentages, questions) {
+function summarise(percentages, questions, dates = []) {
   if (percentages.length === 0) {
-    return { attempts: 0, questions, average: null, lowest: null, highest: null };
+    return { attempts: 0, questions, average: null, lowest: null, highest: null, exams: [] };
   }
   const sum = percentages.reduce((a, b) => a + b, 0);
   return {
@@ -51,6 +51,17 @@ function summarise(percentages, questions) {
     average: round1(sum / percentages.length),
     lowest: round1(Math.min(...percentages)),
     highest: round1(Math.max(...percentages)),
+    // Every sitting, oldest first — the card plots this as a line, one point per
+    // exam, each labelled with its score and dated underneath. The callers order
+    // their reads by created_at, so position in this array IS the exam number.
+    //
+    // `dates` is optional and defaults to empty: a caller that has no dates to
+    // hand (the unit tests) still gets a well-formed series, with null dates the
+    // chart simply does not label.
+    exams: percentages.map((score, i) => ({
+      score: round1(score),
+      date: dates[i] ?? null,
+    })),
   };
 }
 
@@ -67,15 +78,21 @@ function summarise(percentages, questions) {
 async function readChoiceSubject(supabase, userId, table) {
   const { data, error } = await supabase
     .from(table)
-    .select("answer_score, answer_body")
-    .eq("user_id", userId);
+    .select("answer_score, answer_body, created_at")
+    .eq("user_id", userId)
+    // Chronological: the card plots one point per sitting and numbers them
+    // מבחן 1, 2, 3…, so the order the rows arrive in is the x-axis.
+    .order("created_at", { ascending: true });
 
   if (error) throw error;
 
   const rows = data ?? [];
-  const percentages = rows
-    .map((r) => Number(r.answer_score))
-    .filter((n) => Number.isFinite(n));
+  // Score and date are taken in one pass, so a row dropped for an unusable
+  // score cannot leave the two lists out of step — which would date every
+  // later point with the sitting before it.
+  const scored = rows.filter((r) => Number.isFinite(Number(r.answer_score)));
+  const percentages = scored.map((r) => Number(r.answer_score));
+  const dates = scored.map((r) => r.created_at ?? null);
 
   const questions = rows.reduce((sum, r) => {
     const body = r.answer_body ?? {};
@@ -85,7 +102,7 @@ async function readChoiceSubject(supabase, userId, table) {
     return sum + (Number.isFinite(total) ? total : 0);
   }, 0);
 
-  return summarise(percentages, questions);
+  return summarise(percentages, questions, dates);
 }
 
 /**
@@ -101,23 +118,28 @@ async function readChoiceSubject(supabase, userId, table) {
 async function readWritingSubject(supabase, userId) {
   const { data, error } = await supabase
     .from(OPEN_QUESTION_ANSWERS)
-    .select("score")
+    .select("score, created_at")
     .eq("user_id", userId)
-    .not("score", "is", null);
+    .not("score", "is", null)
+    // Chronological, for the same reason as the choice subjects above.
+    .order("created_at", { ascending: true });
 
   if (error) throw error;
 
   const percentages = [];
+  const dates = [];
   for (const row of data ?? []) {
     const total = Number(row.score?.total);
     const max = Number(row.score?.max);
     // A zero or missing max cannot produce a percentage. Skipped rather than
-    // counted as 0%, for the same reason ungraded answers are skipped.
+    // counted as 0%, for the same reason ungraded answers are skipped — and the
+    // date is skipped with it, so the two lists stay aligned.
     if (!Number.isFinite(total) || !Number.isFinite(max) || max <= 0) continue;
     percentages.push((total / max) * 100);
+    dates.push(row.created_at ?? null);
   }
 
-  return summarise(percentages, percentages.length);
+  return summarise(percentages, percentages.length, dates);
 }
 
 /**

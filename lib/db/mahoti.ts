@@ -79,7 +79,8 @@ export type MahotiOption = {
   text: string;
 };
 
-export type MahotiSource = {
+/** A question the generator built: grounded in one section of the notebook. */
+export type MahotiGeneratedSource = {
   law_id: number;
   law_name: string;
   section_number: string;
@@ -87,6 +88,32 @@ export type MahotiSource = {
    *  against `question_notebook` before the row was ever written. */
   source_quote: string;
 };
+
+/**
+ * A question taken verbatim from a real Bar paper and embedded in a generated
+ * one by scripts/mahoti/embed-real-questions.mjs.
+ *
+ * It carries no `source_quote` and cannot: it was not built from the notebook,
+ * and a quotation in that field is one the loader verified against the
+ * notebook's text. What it has instead is the provision the Bar's own answer
+ * key cites, as prose. `law_id` is present only once a human has matched that
+ * prose to a law in the corpus.
+ */
+export type MahotiRealExamSource = {
+  origin: "real_exam";
+  /** The sitting, as a date — "2024-02-12". */
+  paper: string;
+  /** Its number in that sitting's paper, which is not its number here. */
+  number: number;
+  citation: string | null;
+  law_id?: number;
+  law_name?: string;
+};
+
+export type MahotiSource = MahotiGeneratedSource | MahotiRealExamSource;
+
+const isRealExamSource = (source: MahotiSource): source is MahotiRealExamSource =>
+  "origin" in source && source.origin === "real_exam";
 
 /**
  * One question as the study screen sees it. `correct_answer` is deliberately
@@ -368,11 +395,18 @@ function toChoices(
 }
 
 function toReferences(sources: MahotiSource[]): string[] {
-  return sources.map((source) =>
-    source.source_quote
+  return sources.map((source) => {
+    // An embedded real question has no section number and no verified quote, so
+    // the generated spelling would render "undefined, סעיף undefined". It cites
+    // the sitting it came from and the provision that sitting's key named.
+    if (isRealExamSource(source)) {
+      const sitting = `שאלה ${source.number} בבחינת ההסמכה מיום ${source.paper}`;
+      return source.citation ? `${sitting} — ${source.citation}` : sitting;
+    }
+    return source.source_quote
       ? `${source.law_name}, סעיף ${source.section_number} — "${source.source_quote}"`
-      : `${source.law_name}, סעיף ${source.section_number}`
-  );
+      : `${source.law_name}, סעיף ${source.section_number}`;
+  });
 }
 
 /**

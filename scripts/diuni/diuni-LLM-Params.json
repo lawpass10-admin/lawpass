@@ -31,7 +31,7 @@
     "variations_360": 4,
     "concepts_min": 3,
     "concepts_max": 8,
-    "fact_pattern_chars": { "min": 220, "max": 900 }
+    "fact_pattern_chars": { "min": 110, "max": 380 }
   },
 
   "selection": {
@@ -60,9 +60,9 @@
 
   "authoring": {
     "difficulty": "match_exemplars",
-    "fact_pattern_length": "match_exemplars",
+    "fact_pattern_length": "תבנית העובדות חייבת להיות קצרה: 2-4 שורות, כ-150 עד 320 תווים. זהו האורך של השאלות האמיתיות בבחינה — חציון של 240 תווים, ורבע מהן קצרות מ-130 תווים. כתוב רק את העובדות שההכרעה נשענת עליהן: מי עשה מה, באיזו ערכאה, ובאיזה שלב. כל פרט שאינו משנה את התשובה — רקע עסקי, תיאור הצדדים, השתלשלות שאינה נדרשת — יש למחוק. אל תגיע לאורך המרבי אם אפשר פחות.",
     "register": "SCOPE THIS TO THE FACT PATTERN ONLY. Write the scenario the way the Bar's own papers do — third person, plain procedural Hebrew, named parties (עו\"ד לוי, משה, החברה), concrete steps in the order they happened. State what each side did and what the court decided, and stop. Do not name the doctrine, do not signpost which rule applies, do not hint at the answer: identifying the governing rule IS the question. Everything else — the stem, the analysis, the explanation, the distractor analysis — stays in precise legal Hebrew.",
-    "extra_instructions": "The four options must be genuinely competitive: each wrong one should be the answer a candidate reaches by making ONE identifiable mistake — wrong forum, wrong stage of the proceeding, right rule applied to the wrong party, or a rule that exists but does not govern these facts. Never write a filler option that nobody would pick. WORDING: introduce every calendar date with בתאריך, never with ביום. Leave the fixed expression בו ביום alone."
+    "extra_instructions": "THE STEM IS SHORT TOO. In the real papers it is usually four words — \"מה הדין?\", \"האם צדק בית המשפט? מדוע?\", \"במעמד מי יתקיים הדיון?\" — a median of 8 characters against 35 in ours. Ask the question and stop; do not restate the facts in it. The four options must be genuinely competitive: each wrong one should be the answer a candidate reaches by making ONE identifiable mistake — wrong forum, wrong stage of the proceeding, right rule applied to the wrong party, or a rule that exists but does not govern these facts. Never write a filler option that nobody would pick. WORDING: introduce every calendar date with בתאריך, never with ביום. Leave the fixed expression בו ביום alone."
   },
 
   "validation": {
@@ -81,7 +81,7 @@
     "structure.answer_distribution.mode": "rotate | none. rotate walks `sequence` so the correct answer lands on a different letter each question — left to itself the model favours one letter, and on a 40-question paper a candidate who always guesses it would score far above chance. The rotation continues across runs (it counts what is already in generated/), so a second batch does not restart at the first letter",
     "structure.answer_distribution.sequence": "the cycle. ['א','ב','ג','ד'] spreads evenly; repeat a letter to weight it",
     "structure.variations_360": "how many Q&A cards חשיבה 360° carries. The panel parses whatever it is given; 4 is the current product decision",
-    "structure.fact_pattern_chars": "guard rails, not targets — the generator rejects outside this range",
+    "structure.fact_pattern_chars": "guard rails, not targets — the generator rejects outside this range. Calibrated 2026-09-23 against the 106 real questions in diuni_real_questions: theirs run 20-629 chars, median 240, p25 129, p75 321, while the generated ones were running median 710 and mean 699 — near enough three times as long, which is what made a generated paper read differently from a real one. Was min 220 / max 900, and the max was never enforced at all (the schema checked only the minimum), so 'match_exemplars' in prose was the only thing asking for brevity and it was not enough",
     "selection.order": "balanced | random | newest | oldest. balanced spreads the batch across judgment_area_id and, weighted higher, the docket category — random over the whole table LOOKS spread and is not: it drew 7 of 11 judgments from תק (small claims), a category that is 22% of the pool, and every small-claims judgment ends with the same appeal-rights paragraph, which is what made 7 of 13 questions ask how to appeal. Counts are seeded from drafts already written so a second batch continues the spread",
     "grounding.mix": "how a batch splits between the two kinds of source. The counts are worked out for the batch and then SHUFFLED, so the ratio is guaranteed while which question is which is not — pure per-question randomness would let a run of ten come out all one kind. Set { verdict: 1, law: 0 } for verdicts only",
     "grounding.law.min_section_chars": "skip statutory sections too short to build a question from. A one-line definition has nothing to test",

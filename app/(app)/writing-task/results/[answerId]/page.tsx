@@ -1,5 +1,7 @@
 import Link from "next/link";
 
+import { ExamPageNav } from "@/app/(app)/_components/exam-page-nav";
+
 import { requireActiveSubscription } from "@/lib/auth/subscription-gate";
 
 import { AnswerFeedback } from "./_components/answer-feedback";
@@ -31,29 +33,33 @@ export default async function WritingTaskResultsPage({
 
   return (
     <div className="mx-auto w-full max-w-[1100px] space-y-6">
-      <nav
-        aria-label="breadcrumbs"
-        className="flex items-center gap-2 font-heebo"
-        style={{ fontSize: 13, color: "var(--color-ink-muted)" }}
-      >
-        <Link
-          href="/dashboard"
-          className="font-semibold transition-colors hover:underline"
-          style={{ color: "var(--color-gold-deep)" }}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <nav
+          aria-label="breadcrumbs"
+          className="flex items-center gap-2 font-heebo"
+          style={{ fontSize: 13, color: "var(--color-ink-muted)" }}
         >
-          דשבורד
-        </Link>
-        <span aria-hidden>›</span>
-        <Link
-          href="/writing-task"
-          className="font-semibold transition-colors hover:underline"
-          style={{ color: "var(--color-gold-deep)" }}
-        >
-          מטלת כתיבה
-        </Link>
-        <span aria-hidden>›</span>
-        <span>חוות דעת</span>
-      </nav>
+          <Link
+            href="/dashboard"
+            className="font-semibold transition-colors hover:underline"
+            style={{ color: "var(--color-gold-deep)" }}
+          >
+            דשבורד
+          </Link>
+          <span aria-hidden>›</span>
+          <Link
+            href="/writing-task"
+            className="font-semibold transition-colors hover:underline"
+            style={{ color: "var(--color-gold-deep)" }}
+          >
+            מטלת כתיבה
+          </Link>
+          <span aria-hidden>›</span>
+          <span>חוות דעת</span>
+        </nav>
+
+        <ExamPageNav backHref="/writing-task" backLabel="חזרה לרשימת המטלות" />
+      </div>
 
       <AnswerFeedback answerId={answerId} />
     </div>

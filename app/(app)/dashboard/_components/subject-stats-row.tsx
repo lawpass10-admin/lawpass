@@ -1,19 +1,19 @@
 import Link from "next/link";
 
+import { ScoreTrendChart } from "@/app/(app)/dashboard/_components/score-trend-chart";
 import type { SubjectStat } from "@/lib/dashboard/subject-stat";
-import { cn } from "@/lib/utils";
 
 /**
  * The three subject squares at the top of the personal dashboard.
  *
- * One card per study surface — דין מהותי, דין דיוני, מטלת כתיבה — each showing
- * how many QUESTIONS the candidate has answered in it and the average, lowest
- * and highest they have scored.
+ * One card per study surface — דין מהותי, דין דיוני, מטלת כתיבה — each charting
+ * the candidate's score in every exam they have sat in it, dated.
  *
- * WHY QUESTIONS AND NOT SITTINGS. A candidate who has opened four papers and
- * finished none has done less work than one who finished two, and a count of
- * papers says the opposite. The sitting count is still there, small, under the
- * question count, so both readings are available.
+ * THE CARD LEADS WITH A TREND, NOT A TOTAL. It used to headline the number of
+ * questions answered, which says how much ground was covered but not whether it
+ * is working; "am I improving" is the question a candidate opens this page with,
+ * and only a series answers it. The questions-and-sittings count is still here,
+ * as the caption under the chart, so the volume reading is not lost.
  *
  * Presentational only — the fetch lives in `subject-stats-row-async.tsx`, the
  * same split every other card on this page uses so the row can stream behind
@@ -29,8 +29,20 @@ export function SubjectStatsRow({ subjects }: { subjects: SubjectStat[] }) {
   );
 }
 
+/**
+ * One hue per subject, so the three lines are told apart by the card they sit in
+ * AND by their colour. Navy and gold are the palette's own two; the writing task
+ * takes the strong green already used for a high score, which no line competes
+ * with because each card holds exactly one.
+ */
+const LINE_COLOR: Record<SubjectStat["key"], string> = {
+  mahoti: "var(--color-navy-ink)",
+  diuni: "var(--color-gold-deep)",
+  writing: "var(--color-status-strong)",
+};
+
 function SubjectCard({ subject }: { subject: SubjectStat }) {
-  const { label, href, questions, attempts, average, lowest, highest } = subject;
+  const { key, label, href, questions, attempts, exams } = subject;
   const untouched = questions === 0;
 
   return (
@@ -54,51 +66,46 @@ function SubjectCard({ subject }: { subject: SubjectStat }) {
           {label}
         </h3>
 
-        {/* The headline is the work done, not the score. A candidate opens this
-            card to see how much ground they have covered; the three figures
-            below qualify it. */}
-        <div
-          className="font-heebo font-extrabold tabular-nums"
-          style={{
-            fontSize: 40,
-            lineHeight: 1,
-            letterSpacing: "-0.01em",
-            color: "var(--color-navy-ink)",
-            textAlign: "center",
-            marginTop: 10,
-          }}
-        >
-          {questions}
+        {/* The headline: one point per exam, in the order they were sat.
+            A subject with no scored exam yet keeps the same height as the other
+            two — an empty box the size of the chart — so the row does not go
+            ragged before a candidate has started. */}
+        <div style={{ marginTop: 8 }}>
+          {exams.length > 0 ? (
+            <ScoreTrendChart exams={exams} color={LINE_COLOR[key]} label={label} />
+          ) : (
+            <div
+              className="flex items-center justify-center rounded-lg border border-dashed"
+              style={{
+                height: 150,
+                borderColor: "var(--color-line)",
+                fontSize: 12.5,
+                color: "var(--color-ink-muted)",
+              }}
+            >
+              עדיין אין מבחנים בנושא זה
+            </div>
+          )}
         </div>
+
+        {/* The volume reading the headline used to carry. */}
         <div
           style={{
             fontSize: 12.5,
             color: "var(--color-ink-muted)",
             textAlign: "center",
-            marginTop: 4,
+            marginTop: 6,
           }}
         >
           {untouched
             ? "עדיין לא תרגלת בנושא זה"
-            : `שאלות שענית · ${attempts} ${attempts === 1 ? "מבחן" : "מבחנים"}`}
+            : `${questions} שאלות שענית · ${attempts} ${attempts === 1 ? "מבחן" : "מבחנים"}`}
         </div>
 
-        {/* Lowest, average, highest — in that order so the average sits in the
-            middle, between the two extremes it lies between. The average is the
-            figure a candidate actually reads, so it is the larger and heavier of
-            the three; the extremes flank it in red and green and are deliberately
-            quieter.
-
-            Rendered even when empty, so the three cards keep one height and the
-            row does not go ragged when a subject has not been started. */}
-        <div
-          className="mt-3.5 grid grid-cols-3 gap-1 border-t pt-3"
-          style={{ borderColor: "var(--color-line)" }}
-        >
-          <Figure label="הנמוך" value={lowest} tone="low" />
-          <Figure label="ממוצע" value={average} tone="average" emphasis />
-          <Figure label="הגבוה" value={highest} tone="high" />
-        </div>
+        {/* The lowest / average / highest figures that used to sit here are
+            gone. The chart above now prints every score the three of them
+            summarised, so they said the same thing three times, less precisely.
+            The server still returns them (SubjectStat) — nothing reads them. */}
 
         <span
           aria-hidden
@@ -107,75 +114,5 @@ function SubjectCard({ subject }: { subject: SubjectStat }) {
         />
       </article>
     </Link>
-  );
-}
-
-/**
- * Colour per figure: the worst sitting reads red, the best green, the average
- * neutral — it is a summary, not a verdict.
- *
- * Both come from the palette rather than from raw hex, so they follow the theme
- * into dark mode. `--color-destructive` is used for the low figure rather than
- * `--color-status-weak`, which is the burnt orange (#C2410C) this design system
- * reserves for warnings — it does not read as red beside the green.
- */
-const FIGURE_COLOR: Record<"low" | "average" | "high", string> = {
-  low: "var(--color-destructive)",
-  average: "var(--color-navy-ink)",
-  high: "var(--color-status-strong)",
-};
-
-/**
- * One of the three score figures.
- *
- * A null score renders "—", never "0%". The candidate has not scored zero in a
- * subject they have never sat, and a dashboard that says they have is telling
- * them something false about their own progress.
- *
- * A null also drops the red/green: an empty figure is muted whatever slot it is
- * in. Colouring a dash would say "your worst is bad" about a subject with no
- * scores in it at all.
- */
-function Figure({
-  label,
-  value,
-  tone,
-  emphasis = false,
-}: {
-  label: string;
-  value: number | null;
-  tone: "low" | "average" | "high";
-  emphasis?: boolean;
-}) {
-  const empty = value === null;
-
-  return (
-    <div style={{ textAlign: "center" }}>
-      <div
-        className={cn(
-          "font-heebo tabular-nums",
-          emphasis ? "font-extrabold" : "font-semibold",
-        )}
-        style={{
-          // The average carries the card, so it is a step larger than the two
-          // extremes flanking it.
-          fontSize: emphasis ? 21 : 16,
-          color: empty ? "var(--color-ink-muted)" : FIGURE_COLOR[tone],
-          lineHeight: 1.1,
-        }}
-      >
-        {empty ? "—" : `${value}%`}
-      </div>
-      <div
-        style={{
-          fontSize: 11.5,
-          color: "var(--color-ink-muted)",
-          marginTop: 2,
-          fontWeight: emphasis ? 600 : 400,
-        }}
-      >
-        {label}
-      </div>
-    </div>
   );
 }

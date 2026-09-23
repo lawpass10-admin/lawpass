@@ -14,6 +14,12 @@ function stubSupabase(byTable) {
         select: () => chain,
         eq: () => chain,
         not: () => chain,
+        // The readers order by created_at, so the rows arrive oldest first and
+        // their position is the exam number the dashboard chart plots. The stub
+        // hands back what the fixture already lists in order rather than
+        // sorting, so a fixture written out of order would show up as a failing
+        // expectation instead of being quietly fixed here.
+        order: () => chain,
         then: (resolve) => resolve({ data: rows, error: null }),
       };
       return chain;
@@ -36,6 +42,35 @@ test("average, lowest and highest come off the scores", () => {
   assert.equal(s.average, 75);
   assert.equal(s.lowest, 50);
   assert.equal(s.highest, 100);
+});
+
+test("the exam series keeps each score with its own date, in order", () => {
+  const dates = ["2026-01-01T00:00:00Z", "2026-02-01T00:00:00Z", "2026-03-01T00:00:00Z"];
+  const s = summarise([50, 75, 100], 120, dates);
+
+  assert.deepEqual(
+    s.exams,
+    [
+      { score: 50, date: dates[0] },
+      { score: 75, date: dates[1] },
+      { score: 100, date: dates[2] },
+    ],
+    "position in the series is the exam number the chart labels"
+  );
+});
+
+test("an exam series without dates is still well formed", () => {
+  // The chart prints no date under a point that has none, rather than guessing.
+  assert.deepEqual(summarise([60], 1).exams, [{ score: 60, date: null }]);
+  assert.deepEqual(summarise([], 0).exams, []);
+});
+
+test("a writing row skipped for an unusable score does not shift the dates", () => {
+  // The reader drops score and date together; this is the invariant that
+  // protects — one dropped row must not date every later point with the
+  // sitting before it.
+  const s = summarise([80, 90], 2, ["2026-05-01T00:00:00Z", "2026-07-01T00:00:00Z"]);
+  assert.equal(s.exams[1].date, "2026-07-01T00:00:00Z");
 });
 
 test("average is rounded to one decimal, like answer_score", () => {

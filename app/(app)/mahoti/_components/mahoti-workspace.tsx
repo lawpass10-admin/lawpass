@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { useRef, useState } from "react";
 import { toast } from "sonner";
 
+import { CheckAnsweredButton } from "@/app/(app)/_components/check-answered-button";
 import styles from "@/app/(app)/_components/fit-to-box/question-fit.module.css";
 import { useFitToBox, type FitBounds } from "@/app/(app)/_components/fit-to-box/use-fit-to-box";
 import { NoCopyText } from "@/app/(app)/_components/no-copy-text";
@@ -161,7 +162,16 @@ export function MahotiWorkspace({ set }: { set: MahotiSet }) {
       <ExamTimerBar
         frozen={allAnswered || attempt !== null}
         onStartedChange={setExamStarted}
-      />
+      >
+        <CheckAnsweredButton
+          reviewRoute="/mahoti/review"
+          setId={set.questionId}
+          given={set.questions.map((question, i) => ({
+            number: question.number,
+            letter: answers[i] ?? null,
+          }))}
+        />
+      </ExamTimerBar>
 
       {/* Not sticky here (see the `sticky` prop's note in the strip): inside
           a fixed-height column a sticky strip lifts off and covers the two

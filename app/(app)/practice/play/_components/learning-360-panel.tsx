@@ -7,7 +7,6 @@ import {
   Gavel,
   Layers,
   Scale,
-  Sparkles,
   TriangleAlert,
   Zap,
 } from "lucide-react";
@@ -172,42 +171,10 @@ export function Learning360Panel({
         </p>
       </Section>
 
-      {/* 4. Distractor analysis table */}
+      {/* 4. Distractor analysis — the option itself, then its explanation
+             behind a reveal. */}
       <Section icon={<Layers className="size-3.5" />} title="ניתוח מסיחים">
-        <div className="space-y-2.5">
-          {question.choices.map((c) => (
-            <div
-              key={c.letter}
-              className="grid grid-cols-[auto_auto_1fr] items-start gap-3 rounded-md bg-muted/40 p-3 text-sm leading-relaxed"
-            >
-              <span
-                className={cn(
-                  "font-semibold",
-                  c.is_correct ? "text-emerald-700" : "text-muted-foreground"
-                )}
-              >
-                {c.letter}
-              </span>
-              <span
-                className={cn(
-                  "rounded px-2 py-0.5 text-[11px] font-semibold text-white",
-                  c.is_correct ? "bg-emerald-500" : "bg-destructive"
-                )}
-              >
-                {c.is_correct ? "נכון" : "שגוי"}
-              </span>
-              {c.distractor_analysis ? (
-                <span dir="auto" className="text-foreground/80">
-                  {c.distractor_analysis}
-                </span>
-              ) : (
-                <span dir="ltr" className="text-muted-foreground">
-                  —
-                </span>
-              )}
-            </div>
-          ))}
-        </div>
+        <DistractorAnalysis choices={question.choices} />
       </Section>
 
       {/* 5. Common pitfall — Slice 12 wraps the body in a soft red
@@ -246,33 +213,12 @@ export function Learning360Panel({
         </p>
       </Section>
 
-      {/* 8. Concepts & skills (tag chips). Slice 12 relocated this
-          section to sit immediately above "רפרנסים" so the reader
-          ends with the lookup-style tail (concepts + sources) after
-          the narrative-style body (analysis, explanation, pitfall,
-          variations, summary). */}
-      <Section
-        icon={<Sparkles className="size-3.5" />}
-        title="מושגים ומיומנויות"
-      >
-        {question.concepts_and_skills.length > 0 ? (
-          <ul className="flex flex-wrap gap-1.5">
-            {question.concepts_and_skills.map((concept, i) => (
-              <li
-                key={`${i}-${concept}`}
-                dir="auto"
-                className="rounded-full bg-primary/10 px-3 py-1 text-xs font-medium text-primary"
-              >
-                {concept}
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <span className="text-muted-foreground">—</span>
-        )}
-      </Section>
+      {/* 8. "מושגים ומיומנויות" — the chip list of concepts_and_skills — was
+          removed on PM request. The field is still generated and still on every
+          row (the generators require it); nothing renders it, so putting the
+          section back is this block alone. */}
 
-      {/* 9. References — Slice 55 carve-out. The legal citations are
+      {/* 9. Legal sources — Slice 55 carve-out. The legal citations are
           the one piece of 360° content users legitimately want to
           paste into outside notes. We re-enable selection and let the
           native copy proceed for THIS subtree only; everything else
@@ -289,7 +235,7 @@ export function Learning360Panel({
               four React synthetic events so they never bubble to the
               root handlers — the browser's default copy behaviour then
               runs unimpeded. */}
-      <Section icon={<Gavel className="size-3.5" />} title="רפרנסים">
+      <Section icon={<Gavel className="size-3.5" />} title="מקורות משפטיים">
         {question.references_list.length > 0 ? (
           <ul
             className="list-disc space-y-1 ps-5 text-foreground/80 marker:text-muted-foreground select-text [-webkit-touch-callout:default]"
@@ -308,6 +254,96 @@ export function Learning360Panel({
           <span className="text-muted-foreground">—</span>
         )}
       </Section>
+    </div>
+  );
+}
+
+/**
+ * "ניתוח מסיחים" — one card per option: the option AS IT WAS OFFERED, then its
+ * explanation behind a "ראה הסבר" button.
+ *
+ * It used to print the explanation inline, with no sign of the option it was
+ * about: a candidate read "שגויה: היא מצטטת את רישת סעיף 8 בלבד" without the
+ * answer that did the citing, and had to scroll back to the question to know
+ * which distractor was being taken apart.
+ *
+ * The reveal is the same gesture as חשיבה 360° below, deliberately: recalling
+ * why an option is wrong before being told is the exercise, and an explanation
+ * already on screen answers it for you. Each card opens on its own, and the
+ * correct answer reveals the same way, since "why this one is right" is worth
+ * the same beat of thought.
+ */
+function DistractorAnalysis({ choices }: { choices: Choice[] }) {
+  const [revealed, setRevealed] = useState<Set<string>>(() => new Set());
+
+  function toggle(letter: string): void {
+    setRevealed((prev) => {
+      const next = new Set(prev);
+      if (next.has(letter)) next.delete(letter);
+      else next.add(letter);
+      return next;
+    });
+  }
+
+  return (
+    <div className="flex flex-col gap-2.5">
+      {choices.map((c) => {
+        const isOpen = revealed.has(c.letter);
+        return (
+          <article
+            key={c.letter}
+            dir="rtl"
+            className={cn(
+              "rounded-md border-s-[3px] bg-muted/40 p-3 text-sm leading-relaxed",
+              c.is_correct ? "border-emerald-500" : "border-destructive/60"
+            )}
+          >
+            <div className="flex items-start gap-3">
+              <span
+                className={cn(
+                  "font-semibold",
+                  c.is_correct ? "text-emerald-700" : "text-muted-foreground"
+                )}
+              >
+                {c.letter}
+              </span>
+              <span
+                className={cn(
+                  "shrink-0 rounded px-2 py-0.5 text-[11px] font-semibold text-white",
+                  c.is_correct ? "bg-emerald-500" : "bg-destructive"
+                )}
+              >
+                {c.is_correct ? "נכון" : "שגוי"}
+              </span>
+              {/* The option's own wording — what the candidate actually chose
+                  between. */}
+              <p dir="auto" className="flex-1 whitespace-pre-wrap text-foreground/90">
+                {c.choice_text}
+              </p>
+              {c.distractor_analysis ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => toggle(c.letter)}
+                  aria-expanded={isOpen}
+                  className="shrink-0"
+                >
+                  {isOpen ? "הסתר הסבר" : "ראה הסבר"}
+                </Button>
+              ) : null}
+            </div>
+            {c.distractor_analysis && isOpen ? (
+              <p
+                dir="auto"
+                className="mt-3 whitespace-pre-wrap border-t border-border pt-3 text-foreground/85"
+              >
+                {c.distractor_analysis}
+              </p>
+            ) : null}
+          </article>
+        );
+      })}
     </div>
   );
 }

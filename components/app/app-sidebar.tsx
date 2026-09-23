@@ -104,7 +104,7 @@ type LibraryItem = {
 //   { href: "/mistakes", label: "שאלות שטעיתי בהן", Icon: XCircle, countKey: "mistakes" },
 //   { href: "/notes", label: "הערות שלי", Icon: Pencil, countKey: "notes" },
 const NAV_LIBRARY: LibraryItem[] = [
-  { href: "/exam-archive", label: "ארכיון המבחנים שלי", Icon: Archive },
+  { href: "/exam-archive", label: "משוב מפורט על מבחנים שעשיתי", Icon: Archive },
 ];
 
 function isPathActive(pathname: string, href: string): boolean {
@@ -369,6 +369,10 @@ export function AppSidebar({
           slot to the bottom but small-screen Safari sometimes clips
           the last few px when the URL bar collapses. */}
       <SidebarFooter className="pb-4">
+        {/* The feedback button lived here briefly. It moved to
+            (app)/_components/feedback-launcher.tsx, mounted by the app shell:
+            the sidebar does not render on the focus routes (/exam, /mahoti,
+            /diuni), so a row here reaches every page EXCEPT the sittings. */}
         {subscription && <SubscriptionCard subscription={subscription} />}
         <UserAreaDropdown
           fullName={profileFullName}

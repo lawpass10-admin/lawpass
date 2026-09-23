@@ -1,5 +1,4 @@
-import Link from "next/link";
-
+import { ExamPageNav } from "@/app/(app)/_components/exam-page-nav";
 import { requireActiveSubscription } from "@/lib/auth/subscription-gate";
 import { getMahotiSet } from "@/lib/db/mahoti";
 
@@ -82,25 +81,20 @@ function PageHead({
 
   return (
     <header
-      className="flex shrink-0 items-baseline gap-2 font-heebo leading-none"
+      className="flex shrink-0 flex-wrap items-center justify-between gap-2 font-heebo leading-none"
       title={summary}
     >
-      {/* A plain <Link>: <AppShell> decides focus mode from `usePathname()`,
-          so the navy sidebar comes back on this soft navigation. It used to
-          need a hard <a> — see ReviewFooter in review/page.tsx. */}
-      <Link
-        href="/dashboard"
-        className="text-[11px] text-muted-foreground hover:underline"
-      >
-        דשבורד
-      </Link>
-      <span aria-hidden className="text-[11px] text-muted-foreground">
-        ›
-      </span>
-      <h1 className="text-[13px] font-bold">{title}</h1>
-      <span className="text-[11px] text-muted-foreground">
-        {questionCount > 0 ? `${questionCount} שאלות · ${lawCount} חוקים` : ""}
-      </span>
+      <div className="flex items-baseline gap-2">
+        <h1 className="text-[13px] font-bold">{title}</h1>
+        <span className="text-[11px] text-muted-foreground">
+          {questionCount > 0 ? `${questionCount} שאלות · ${lawCount} חוקים` : ""}
+        </span>
+      </div>
+
+      {/* Replaces the 11px "דשבורד" breadcrumb that used to be the only way off
+          this screen — the sidebar is hidden here (focus mode), so the way out
+          has to be a control rather than a word. */}
+      <ExamPageNav backHref="/mahoti-start" backLabel="חזרה לבחירת מבחן" />
     </header>
   );
 }

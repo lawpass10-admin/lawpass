@@ -59,6 +59,9 @@
 //   --title=TEXT      exam title stored in questions.exam     (default "דיון מהותי")
 //   --set-id=UUID     reuse an existing notebook row
 //   --notebook-only   build + store the notebook, then stop
+//   --embed-real=N    after generating, replace N of the generated questions
+//                     with real Bar questions from the same notebook's laws
+//                     (default 7; --embed-real=0 to skip)
 //   --inspect         describe the corpus and exit
 //   --estimate        price the run before making it, then exit
 //   --dry-run         do everything except write to Supabase
@@ -103,6 +106,7 @@ const KNOWN_FLAGS = new Set([
   "title",
   "set-id",
   "notebook-only",
+  "embed-real",
   "inspect",
   "estimate",
   "dry-run",
@@ -139,6 +143,30 @@ function intArg(value, fallback, { min = 1, max = Number.MAX_SAFE_INTEGER, name 
 }
 
 const args = parseArgs(process.argv.slice(2));
+
+// --help was an accepted flag that nothing ever read, so `--help` sampled a
+// notebook, wrote a row and began a paid generation run. Anything that reads
+// like "tell me about yourself" has to be inert: this file's default action
+// costs money and leaves a row behind.
+if (args.help === "true") {
+  console.log(
+    [
+      "generate-mahoti-set.mjs — build a דין מהותי paper from the mahoti_laws corpus.",
+      "",
+      "  node scripts/mahoti/generate-mahoti-set.mjs --questions=40 --laws=25",
+      "  node scripts/mahoti/generate-mahoti-set.mjs --estimate      # price it, write nothing",
+      "  node scripts/mahoti/generate-mahoti-set.mjs --dry-run       # run it, store nothing",
+      "  node scripts/mahoti/generate-mahoti-set.mjs --notebook-only # notebook, then stop",
+      "",
+      `Flags: ${[...KNOWN_FLAGS].sort().map((f) => `--${f}`).join(" ")}`,
+      "",
+      "The header comment of this file documents each one.",
+      "",
+      "NOTE: running it with no flags is a real, billable generation run.",
+    ].join("\n")
+  );
+  process.exit(0);
+}
 
 const QUESTION_COUNT = intArg(args.questions, 40, { max: 200, name: "questions" });
 const LAW_COUNT = intArg(args.laws, 25, { max: 200, name: "laws" });
@@ -218,6 +246,24 @@ const EFFORT = args.effort ?? "high";
 const TITLE = args.title ?? "דיון מהותי";
 const SET_ID = args["set-id"] ?? null;
 const NOTEBOOK_ONLY = args["notebook-only"] === "true";
+/**
+ * How many of the finished paper's questions are replaced by REAL Bar questions.
+ *
+ * Part of the recipe, not an afterthought. A paper of forty questions that a
+ * model wrote is an imitation of the exam; a paper where seven of them are the
+ * Bar's own is partly the exam. The swap keeps the paper at forty and keeps
+ * every number where it was.
+ *
+ * The questions it draws from are constrained to THIS notebook's laws — see
+ * embed-real-questions.mjs. That is the whole reason this runs here rather than
+ * being left to a human to remember: the notebook is known at this moment, and
+ * a paper assembled from the wrong laws is invisible once it is written.
+ *
+ * Costs nothing in model calls: it draws only questions that already carry a
+ * review. If too few do, it stops and prints the command that writes them,
+ * leaving the generated paper intact and complete.
+ */
+const EMBED_REAL = intArg(args["embed-real"], 7, { min: 0, max: 40, name: "embed-real" });
 const INSPECT = args.inspect === "true";
 const ESTIMATE = args.estimate === "true";
 const DRY_RUN = args["dry-run"] === "true";
@@ -371,6 +417,51 @@ async function fetchCorpus() {
   if (error) throw new Error(`failed to read mahoti_laws: ${error.message}`);
   if (!data?.length) throw new Error("mahoti_laws is empty — nothing to build a notebook from.");
   return data;
+}
+
+/**
+ * The order the notebook's table of contents lists instruments in: Basic Laws,
+ * then statutes, ordinances, orders, professional rules, and regulations last.
+ * It is the hierarchy of Israeli legislation — primary before subordinate — so
+ * the contents read the way a law library is shelved rather than the way the
+ * alphabet happens to fall.
+ *
+ * MATCHED ON THE NAME, because that is all a law row carries; the corpus has no
+ * instrument column. Each pattern is anchored, so it describes what the name
+ * OPENS with rather than a word occurring anywhere in it.
+ *
+ * The Basic Law test requires the colon form — "חוק-יסוד:" with a hyphen, a
+ * maqaf or a space. Without it "חוק יסודות המשפט, תש״ם–1980" reads as
+ * "חוק יסוד" + more and is filed among the Basic Laws, which it is not: it is an
+ * ordinary statute, and the corpus holds both.
+ *
+ * An unrecognised instrument sorts LAST, after תקנות. That is deliberate: it
+ * shows up at the foot of the contents as something to give a rank to, rather
+ * than being silently folded in among the statutes.
+ *
+ * `(?![א-ת])` and not `\b`: JavaScript's word boundary is defined on Latin word
+ * characters, so it never matches between a Hebrew letter and a space and every
+ * pattern here would fail. What these need is "the word ENDS here", which is a
+ * lookahead for anything that is not another Hebrew letter — it keeps
+ * "חוק החוזים" a statute while "חוקה" is not one.
+ */
+const INSTRUMENT_RANK = [
+  [/^חוק[\s־-]?יסוד\s*:/, 0], // חוק-יסוד: הכנסת
+  [/^חוק(?![א-ת])/, 1], // חוק החוזים (חלק כללי)
+  [/^פקוד[הת](?![א-ת])/, 2], // פקודת הנזיקין
+  [/^צו(ו?ים)?(?![א-ת])/, 3], // צו בית הדין לעבודה
+  [/^כלל(י|ים)(?![א-ת])/, 4], // כללי לשכת עורכי הדין
+  [/^תקנ(ות|ה)(?![א-ת])/, 5], // תקנות סדר הדין האזרחי
+];
+
+const UNRANKED_INSTRUMENT = INSTRUMENT_RANK.length;
+
+function instrumentRank(lawName) {
+  const name = String(lawName ?? "").trim();
+  for (const [pattern, rank] of INSTRUMENT_RANK) {
+    if (pattern.test(name)) return rank;
+  }
+  return UNRANKED_INSTRUMENT;
 }
 
 /** ~3,000 characters to an A4 page of Hebrew body text. A round figure, and
@@ -650,9 +741,14 @@ function buildNotebook(corpus) {
       sections: perLaw[i],
     }))
     .filter((law) => law.section_count > 0)
-    // Hebrew-alphabetical inside the notebook, so the table of contents reads
-    // like a book even though the sample itself was random.
-    .sort((a, b) => a.law_name.localeCompare(b.law_name, "he"));
+    // By instrument first, then Hebrew-alphabetical inside each — see
+    // INSTRUMENT_RANK. The sample itself is random; the table of contents is
+    // not, and reads down the hierarchy the way a law library is shelved.
+    .sort(
+      (a, b) =>
+        instrumentRank(a.law_name) - instrumentRank(b.law_name) ||
+        a.law_name.localeCompare(b.law_name, "he")
+    );
 
   const pages = Math.max(1, Math.round(used / CHARS_PER_A4_PAGE));
 
@@ -1724,7 +1820,53 @@ async function main() {
     `${storedBatches} batch${storedBatches === 1 ? "" : "es"} loaded to ` +
       `mahoti_questions row ${questionId}.`
   );
+
+  if (EMBED_REAL > 0) {
+    await embedRealQuestions(questionId, EMBED_REAL);
+  }
+
   console.log(`Open it at: /mahoti?set=${questionId}`);
+}
+
+/**
+ * Hand the finished paper to scripts/mahoti/embed-real-questions.mjs.
+ *
+ * A SUBPROCESS RATHER THAN AN IMPORT, deliberately. That script owns the rules
+ * this must not diverge from — draw only from the paper's own notebook, only
+ * questions that carry a review, never the same one twice, back the paper up
+ * before touching it, and verify every question still lines up with its review
+ * afterwards. Calling it is how those stay in one place; re-implementing the
+ * call here is how two copies drift.
+ *
+ * A FAILURE HERE DOES NOT FAIL THE RUN. The generated paper is written, whole
+ * and usable, before this starts. If the pool cannot supply the questions, the
+ * right outcome is a forty-question generated paper plus the command that
+ * finishes the job — not an exception that makes a completed generation look
+ * like a failed one.
+ */
+async function embedRealQuestions(questionId, count) {
+  const { execFileSync } = await import("node:child_process");
+  const { fileURLToPath } = await import("node:url");
+  const { dirname, join } = await import("node:path");
+  const script = join(dirname(fileURLToPath(import.meta.url)), "embed-real-questions.mjs");
+
+  console.log(`\nEmbedding ${count} real Bar question(s) from this notebook's laws…`);
+  try {
+    const out = execFileSync(
+      process.execPath,
+      [script, `--set=${questionId}`, `--count=${count}`, "--commit"],
+      { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }
+    );
+    process.stdout.write(out);
+  } catch (error) {
+    process.stdout.write(error.stdout ?? "");
+    process.stderr.write(error.stderr ?? "");
+    console.warn(
+      `\nThe paper is complete and stored; only the real-question swap did not run.\n` +
+        `Re-run it on its own when the pool is ready:\n` +
+        `  node scripts/mahoti/embed-real-questions.mjs --set=${questionId} --count=${count} --commit`
+    );
+  }
 }
 
 /** Rejection reasons collapse to a count per kind — forty lines of

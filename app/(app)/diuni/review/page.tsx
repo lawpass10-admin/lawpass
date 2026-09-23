@@ -1,6 +1,7 @@
 import { ChevronLeft, LayoutDashboard } from "lucide-react";
 import Link from "next/link";
 
+import { ExamPageNav } from "@/app/(app)/_components/exam-page-nav";
 import { Learning360Panel } from "@/app/(app)/practice/play/_components/learning-360-panel";
 import { Button } from "@/components/ui/button";
 import { requireActiveSubscription } from "@/lib/auth/subscription-gate";
@@ -42,11 +43,16 @@ const LETTERS: Letter[] = ["א", "ב", "ג", "ד"];
 export default async function DiuniReviewPage({
   searchParams,
 }: {
-  searchParams: Promise<{ answers?: string; set?: string; attempt?: string }>;
+  searchParams: Promise<{
+    answers?: string;
+    set?: string;
+    attempt?: string;
+    given?: string;
+  }>;
 }) {
   await requireActiveSubscription();
 
-  const { answers, set, attempt: attemptId } = await searchParams;
+  const { answers, set, attempt: attemptId, given: givenParam } = await searchParams;
 
   // RLS scopes this to the caller's own sittings, so someone else's id reads
   // as null and lands on the unmarked review — see getDiuniAttempt.
@@ -70,6 +76,13 @@ export default async function DiuniReviewPage({
     );
   }
 
+  // `?given=` — a mid-sitting check, from "בדוק שאלות" on the exam itself. It
+  // carries only the questions answered so far, as number:letter pairs, and the
+  // review then shows ONLY those: a candidate checking their work at question 12
+  // must not be shown the other 28 with their answers. Keyed by number like the
+  // attempt path, not by position, because it is a partial list.
+  const midSitting = parseGiven(givenParam);
+
   // A filed sitting is matched to the review by question NUMBER, which is what
   // makes it immune to the positional drift the `?answers=` path can suffer.
   // The fallback still fills the array by position, from the URL.
@@ -79,7 +92,14 @@ export default async function DiuniReviewPage({
   const positional = parseAnswers(answers, review.items.length);
   const given: (Letter | null)[] = attempt
     ? review.items.map((item) => byNumber.get(item.number) ?? null)
-    : positional;
+    : midSitting
+      ? review.items.map((item) => midSitting.get(item.number) ?? null)
+      : positional;
+
+  // Only the answered ones on the mid-sitting path; the whole paper otherwise.
+  const shown = review.items
+    .map((item, i) => ({ item, given: given[i] }))
+    .filter((row) => !midSitting || row.given !== null);
 
   const scored = given.filter((letter) => letter !== null).length;
   // The stored score is READ, never recomputed: it is what the table holds and
@@ -92,7 +112,10 @@ export default async function DiuniReviewPage({
         given[i] === item.correctChoice.letter ? total + 1 : total,
       0
     );
-  const total = attempt?.total ?? review.items.length;
+  // On a mid-sitting check the denominator is what was ANSWERED, not the whole
+  // paper: "3 מתוך 5" for five answered questions, never "3 מתוך 40", which
+  // would read as a score on an exam the candidate has not finished.
+  const total = midSitting ? shown.length : (attempt?.total ?? review.items.length);
   const percent =
     attempt?.score ??
     (total > 0 ? Math.round((correct / total) * 1000) / 10 : 0);
@@ -100,25 +123,43 @@ export default async function DiuniReviewPage({
   return (
     <div className="mx-auto w-full max-w-3xl space-y-6 py-2">
       <header className="space-y-2">
-        <nav
-          aria-label="breadcrumbs"
-          className="flex items-center gap-2 font-heebo"
-          style={{ fontSize: 13, color: "var(--color-ink-muted)" }}
-        >
-          <Link
-            href={`/diuni?set=${encodeURIComponent(review.questionId)}`}
-            className="hover:underline"
+        {/* The way out, at the TOP as well as in the footer: the footer's
+            "חזרה לתפריט ראשי" sits below the whole review, which on a 40-question
+            paper is a long way to scroll to leave. */}
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <nav
+            aria-label="breadcrumbs"
+            className="flex items-center gap-2 font-heebo"
+            style={{ fontSize: 13, color: "var(--color-ink-muted)" }}
           >
-            דין דיוני
-          </Link>
-          <span aria-hidden>›</span>
-          <span>בדיקה</span>
-        </nav>
-        <h1 className="text-3xl font-bold">בדיקת השאלות</h1>
+            <Link
+              href={`/diuni?set=${encodeURIComponent(review.questionId)}`}
+              className="hover:underline"
+            >
+              דין דיוני
+            </Link>
+            <span aria-hidden>›</span>
+            <span>בדיקה</span>
+          </nav>
+
+          <ExamPageNav
+            backHref={`/diuni?set=${encodeURIComponent(review.questionId)}`}
+            backLabel="חזרה למבחן"
+          />
+        </div>
+        <h1 className="text-3xl font-bold">
+          {midSitting ? "בדיקת השאלות שענית" : "בדיקת השאלות"}
+        </h1>
         {/* A filed sitting always gets its score line, even one submitted
             entirely blank — 0 מתוך 40 is a result, and hiding it would make a
             recorded attempt look like a page nobody sat. */}
-        {attempt || scored > 0 ? (
+        {midSitting ? (
+          <p className="text-sm text-muted-foreground">
+            {shown.length === 0
+              ? "עדיין לא ענית על שאלות במבחן הזה."
+              : `${correct} מתוך ${total} תשובות נכונות (${percent}%) · המבחן עצמו עדיין לא הוגש`}
+          </p>
+        ) : attempt || scored > 0 ? (
           <p className="text-sm text-muted-foreground">
             {attempt ? `ניסיון ${attempt.attempts} · ` : ""}
             {correct} מתוך {total} תשובות נכונות ({percent}%)
@@ -130,11 +171,11 @@ export default async function DiuniReviewPage({
         )}
       </header>
 
-      {review.items.map((item, i) => (
+      {shown.map((row) => (
         <QuestionReview
-          key={item.number}
-          item={item}
-          givenLetter={given[i]}
+          key={row.item.number}
+          item={row.item}
+          givenLetter={row.given}
         />
       ))}
 
@@ -190,6 +231,27 @@ function ReviewFooter({ nextSetId }: { nextSetId: string | null }) {
 
 /** "א-ב-ג" -> ["א","ב","ג", …nulls]. Anything unrecognised becomes null,
  *  so a hand-edited URL cannot throw the page. */
+/**
+ * "12:א,13:ג,27:ד" -> Map(12 -> "א", …), or null when the parameter is absent.
+ *
+ * Null and an EMPTY map mean different things and both occur: absent is "review
+ * the whole paper", empty is "a mid-sitting check with nothing answered yet",
+ * which shows no questions rather than all of them. A malformed pair is dropped
+ * rather than failing the page — the parameter comes from a URL.
+ */
+function parseGiven(raw: string | undefined): Map<number, Letter> | null {
+  if (raw === undefined) return null;
+  const map = new Map<number, Letter>();
+  for (const pair of raw.split(",")) {
+    const [rawNumber, rawLetter] = pair.split(":");
+    const number = Number(rawNumber);
+    const letter = rawLetter?.trim() as Letter | undefined;
+    if (!Number.isInteger(number) || !letter || !LETTERS.includes(letter)) continue;
+    map.set(number, letter);
+  }
+  return map;
+}
+
 function parseAnswers(raw: string | undefined, count: number): (Letter | null)[] {
   const parts = (raw ?? "").split("-");
   return Array.from({ length: count }, (_, i) => {

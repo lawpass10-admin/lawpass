@@ -18,7 +18,25 @@ export type SubjectStat = {
   attempts: number;
   /** Questions actually answered — not papers opened, not questions skipped. */
   questions: number;
+  /**
+   * Still produced by the server, and no longer drawn: the card's three
+   * summary figures were replaced by the chart itself, which shows every score
+   * rather than three of them.
+   */
   average: number | null;
   lowest: number | null;
   highest: number | null;
+  /**
+   * Every scored sitting, OLDEST FIRST — the series the card's chart plots, one
+   * point per exam. An index in this array is the exam's number on the x-axis
+   * ("מבחן 3" is `exams[2]`), which is why the server orders its reads by
+   * created_at rather than leaving the row order to the database.
+   *
+   * `date` is the sitting's `created_at`, printed under its point. Null where a
+   * row carries none, which the chart leaves unlabelled rather than guessing.
+   *
+   * Empty for a subject with no scored sitting; never null, so the chart can
+   * branch on length alone.
+   */
+  exams: { score: number; date: string | null }[];
 };

@@ -128,7 +128,14 @@ const Variation = z.object({
 });
 
 const QuestionSchema = z.object({
-  fact_pattern: z.string().min(params.structure.fact_pattern_chars.min),
+  // BOTH ends enforced. Only the minimum was checked, so "keep it short" lived
+  // in prose alone and the output ran to a median of 710 characters against the
+  // real paper's 240. A cap is what makes brevity a rule rather than a request;
+  // the range itself is calibrated in the params file.
+  fact_pattern: z
+    .string()
+    .min(params.structure.fact_pattern_chars.min)
+    .max(params.structure.fact_pattern_chars.max),
   stem: z.string().min(5),
   options: z
     .array(

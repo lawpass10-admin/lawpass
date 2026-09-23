@@ -6,6 +6,7 @@ import { AppSidebar } from "@/components/app/app-sidebar";
 import { MobileTopBar } from "@/components/app/mobile-top-bar";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 
+import { FeedbackLauncher } from "./feedback-launcher";
 import { QaFloatingWidget } from "./qa-floating-widget";
 
 /**
@@ -68,6 +69,11 @@ export function AppShell({
         <main id="main-content" className="page-fade-in flex-1 p-6">
           {children}
         </main>
+        {/* On both branches, so a student sitting a clocked exam — the place
+            they are most likely to hit something worth telling us about — has
+            the same launcher as everywhere else. Fixed-position, so JSX
+            placement is irrelevant; it mirrors the QA widget's convention. */}
+        <FeedbackLauncher />
         <QaFloatingWidget isQaTester={isQaTester} />
       </>
     );
@@ -83,6 +89,7 @@ export function AppShell({
           {children}
         </main>
       </SidebarInset>
+      <FeedbackLauncher />
       <QaFloatingWidget isQaTester={isQaTester} />
     </SidebarProvider>
   );
