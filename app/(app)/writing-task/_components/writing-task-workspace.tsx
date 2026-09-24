@@ -15,9 +15,12 @@ import {
   type OpenQuestionQuote,
 } from "@/lib/api/open-questions";
 
+import type { OpenQuestionTemplate } from "@/lib/db/open-question-templates";
+
 import { clearStoredExam, readStoredExam, writeStoredExam } from "./exam-storage";
 import { HandwritingDialog } from "./handwriting-dialog";
 import { SourceText } from "./source-text";
+import { TemplatePanel } from "./template-panel";
 
 /**
  * The question, then the answer sheet.
@@ -77,7 +80,13 @@ const EXAM_WARN_SECONDS = 5 * 60;
 /** Red from here down. */
 const EXAM_DANGER_SECONDS = 60;
 
-export function WritingTaskWorkspace({ questionId }: { questionId: string }) {
+export function WritingTaskWorkspace({
+  questionId,
+  templates,
+}: {
+  questionId: string;
+  templates: OpenQuestionTemplate[];
+}) {
   const router = useRouter();
   const [question, setQuestion] = useState<OpenQuestionDetail | null>(null);
   const [loading, setLoading] = useState(true);
@@ -384,8 +393,17 @@ export function WritingTaskWorkspace({ questionId }: { questionId: string }) {
         </p>
       </header>
 
+      {/* The paper beside its skeleton, and the answer sheet under both.
+          COLUMN ORDER IS SET EXPLICITLY, not by source order. The page is RTL,
+          so grid column 1 is the RIGHT-hand one: the template takes column 1
+          and the paper column 2, which puts the question on the LEFT and the
+          template on the RIGHT as asked. Source order stays paper-first so a
+          screen reader and a narrow screen both meet the question before the
+          skeleton for it — on mobile the grid collapses to one column and that
+          order is the one that shows. */}
+      <div className="grid gap-6 lg:grid-cols-2 lg:items-stretch">
       {/* The paper */}
-      <Card>
+      <Card className="lg:col-start-2 lg:row-start-1">
         <CardContent className="space-y-6 px-4 py-6 md:px-8">
           {question.fact_pattern ? (
             <Section heading="העובדות">
@@ -415,7 +433,13 @@ export function WritingTaskWorkspace({ questionId }: { questionId: string }) {
         </CardContent>
       </Card>
 
-      {/* The answer sheet */}
+        {/* The skeleton */}
+        <div className="lg:col-start-1 lg:row-start-1 lg:min-h-0">
+          <TemplatePanel templates={templates} />
+        </div>
+      </div>
+
+      {/* The answer sheet, under both panes and the full width of the page */}
       <Card>
         <CardContent className="space-y-3 px-4 py-6 md:px-8">
           <div className="flex flex-wrap items-baseline justify-between gap-2">

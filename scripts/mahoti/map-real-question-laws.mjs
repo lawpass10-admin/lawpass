@@ -32,7 +32,7 @@ import dotenv from "dotenv";
 import pg from "pg";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { buildLawIndex, lawsInCitation, sectionsInCitation } from "./law-matching.mjs";
+import { buildLawIndex, matchCitation } from "./law-matching.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const appRoot = join(here, "..", "..");
@@ -71,14 +71,15 @@ try {
   const multi = [];
   let sectionless = 0;
 
+  let spacedFallback = 0;
   for (const row of rows) {
-    const hits = lawsInCitation(row.source_citation, index);
+    const { hits, cited, spaced } = matchCitation(row.source_citation, index);
     if (hits.length === 0) {
       missed.push(row);
       continue;
     }
     if (hits.length > 1) multi.push({ row, hits });
-    const cited = sectionsInCitation(row.source_citation, hits);
+    if (spaced) spacedFallback++;
     if (cited[0].sections.length === 0) sectionless++;
     matched.push({ row, lead: hits[0], hits, cited });
   }
@@ -88,6 +89,7 @@ try {
   console.log(`  left unclassified        : ${missed.length}`);
   console.log(`  citation named >1 law    : ${multi.length} (the leading one is recorded)`);
   console.log(`  no section pinned to the leading law : ${sectionless}`);
+  console.log(`  resolved only with spaces removed    : ${spacedFallback}`);
 
   if (onlyUnmatched || missed.length > 0) {
     console.log(`\nunclassified (${missed.length}):`);

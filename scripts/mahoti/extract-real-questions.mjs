@@ -41,7 +41,7 @@
 // subprocess prints one JSON document; nothing else.
 
 import { execFileSync } from "node:child_process";
-import { existsSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -55,6 +55,32 @@ const here = dirname(fileURLToPath(import.meta.url));
 // פתרון, and a pooled question without a correct answer is not a question a
 // candidate could sit. Add it here once the key turns up.
 const SITTINGS = [
+  {
+    paper: "2020-08-27",
+    label: "קיץ 2020",
+    exam: "bar_exams_august_2020_part_3_exam_paper.pdf",
+    key: "bar_exams_august_2020_part_3_solution_and_reference.pdf",
+  },
+  {
+    paper: "2020-12-23",
+    label: "חורף 2020",
+    exam: "bar_exams_december_2020_part_3_exam_paper.pdf",
+    key: "bar_exams_december_2020_part_3_solution_and_reference.pdf",
+  },
+  {
+    paper: "2021-06-29",
+    label: "קיץ 2021",
+    exam: "bar_exams_summer_2021_part_3_exam_paper.pdf",
+    key: "bar_exams_summer_2021_part_3_solution_and_reference.pdf",
+  },
+  {
+    paper: "2021-12-28",
+    label: "חורף 2021",
+    exam: "bar_exams_winter_2021_part_3_exam_paper.pdf",
+    // Its פתרון is a scan with no text layer, so the key lives in
+    // keys-transcribed.json instead. That file records how it was read.
+    transcribedKey: true,
+  },
   {
     paper: "2022-06-28",
     label: "קיץ 2022",
@@ -112,17 +138,110 @@ HE = 'ה'
 # reconstructs from glyph gaps sometimes lands between the marker and its dot
 # ("ג . מכיוון"), and a marker regex that refuses that reads a whole paper as
 # having no options at all.
-Q_RE = re.compile(r'^(\d{1,2})\s*(?:\.(?=\S)|[.)]?\s{1,})')
-OPT_RE = re.compile(r'^([א-ה])(?:\s*[.)]\s*|\s{2,})')
+LEAD_DIGITS = re.compile(r'^(\d{1,4})')
+SEP_AFTER_NUM = re.compile(r'^[.)]?\s*')
+# The letter may be glued to its text ("א.מכיוון"), spaced from it ("א  לגבות"),
+# carry a stray gap before the dot ("ג . מכיוון"), or sit ALONE on its line with
+# the text on the next — the קיץ 2020 layout.
+OPT_RE = re.compile(r'^([א-ה])(?:\s*[.)]\s*|\s{2,}|\s*$)')
 # A line that introduces a passage several following questions share.
-INTRO_RE = re.compile(r'^(?:ענו|ענה|קראו|קרא).*שאלות')
-END_RE = re.compile(r'^[-–—\s]*בהצלחה[-–—\s]*$')
+INTRO_RE = re.compile(r'^(?:ענו|ענה|קראו|קרא|השיבו|השב).*שאלות')
+END_RE = re.compile(r'^[-–—\s]*ב\s*ה\s*צ\s*ל\s*ח\s*ה[!.\s\-–—]*$')
 GROUP_N_RE = re.compile(r'(\d+)\s+ה?שאלות')
+GROUP_RANGE_RE = re.compile(r'שאלות\s*(\d+)\s*[-–—]\s*(\d+)')
+GROUP_WORDS = {'שתי': 2, 'שתיים': 2, 'שלוש': 3, 'שלושה': 3,
+               'ארבע': 4, 'ארבעה': 4, 'חמש': 5, 'חמישה': 5}
 DROP_RE = [re.compile(r'^\d+\s*/\s*\d+$'),
-           re.compile(r'^לשכת עורכי'),
+           # The running header ONLY. Requiring the date word too is what stops
+           # it eating a question whose own text opens with the same words.
+           re.compile(r'^לשכת עורכי.{0,12}בישראל.*תאריך'),
            re.compile(r'^חלק ג.{0,4}דין מהותי'),
            re.compile(r'^\d+$')]
 STEM_RE = re.compile(r'([^.?!\n]*[?:])\s*$')
+
+
+def group_size(intro):
+    """How many questions a group header covers.
+
+      "והשיבו על 2 השאלות הבאות"   -> the digit before שאלות
+      "השיבו לשאלות 12-15:"        -> the range after it
+      "השיבו על שלוש השאלות הבאות" -> a Hebrew number word
+    """
+    m = GROUP_RANGE_RE.search(intro)
+    if m:
+        a, b = int(m.group(1)), int(m.group(2))
+        if 1 <= abs(b - a) + 1 <= 10:
+            return abs(b - a) + 1
+    m = GROUP_N_RE.search(intro)
+    if m and 1 <= int(m.group(1)) <= 10:
+        return int(m.group(1))
+    for word, n in GROUP_WORDS.items():
+        if word in intro:
+            return n
+    return 1
+
+
+def marker(line, expected):
+    """Is 'line' the start of question 'expected'? -> the text after the marker.
+
+    Four layouts, all real:
+
+      "28. נגד נדב"  a dot and a space
+      "28נגד נדב"    the number glued to the word
+      "28."          the number alone, its question starting on the next line
+      "628 חברי"     FUSED: question 28 whose own text opens with "6 חברי כנסת"
+
+    The last is not a typo. The number sits at the right edge of an RTL line and
+    the sentence's first digit sits beside it, so the two land in one
+    left-to-right run and come back as one number. Splitting on 'expected'
+    resolves it, and only on 'expected'.
+    """
+    m = LEAD_DIGITS.match(line)
+    if not m:
+        return None
+    digits, rest = m.group(1), line[m.end():]
+    want = str(expected)
+
+    if digits == want:
+        # "25.3.2014." is a date and "12.5" a number; neither is a marker.
+        if rest[:1] == '.' and rest[1:2].isdigit():
+            return None
+        tail = SEP_AFTER_NUM.sub('', rest, count=1)
+        if tail:
+            return tail
+        return '' if rest.strip() else None
+    if len(digits) > len(want) and digits.endswith(want):
+        # marker second: the leading digits are the question's own text
+        return (digits[: len(digits) - len(want)] + rest).strip()
+    # NO startswith branch. "12.הוראות כלליות" would read as question 1 with the
+    # text "2.הוראות…", which is how pages of exam instructions get adopted as
+    # question 1. A longer run that merely BEGINS with the number we want is a
+    # different number.
+    return None
+
+
+def starts_question(lines, i, expected, unmarked):
+    """Does question 'expected' begin at lines[i]? -> its first line's text.
+
+    Normally a numbered marker. But a group header can swallow the first
+    question's number — the חורף 2020 paper prints "השיבו לשאלות 12-15:" and
+    then question 12 with no marker — so a line directly after such a header
+    starts that question too. That fallback applies ONLY to a number with no
+    marker anywhere in the paper: without the guard it fires on
+    "קראו את הקטע... (6-5):", whose range mentions 5, and swallows the shared
+    passage into question 5.
+
+    Used for BOTH finding a question and finding where it ends. Using it for
+    only the first is how question 11 came to swallow the rest of a paper.
+    """
+    text = marker(lines[i][0], expected)
+    if text is not None:
+        return text
+    if i > 0 and expected in unmarked:
+        prev = lines[i - 1][0]
+        if INTRO_RE.match(prev) and re.search(r'(?<!\d)' + str(expected) + r'(?!\d)', prev):
+            return lines[i][0]
+    return None
 # A key row: the number, then the answer letter with its geresh. A question the
 # Bar struck after the sitting has no letter — some keys print אבגד there and
 # some print only נפסלה — and both spellings must still register as a ROW, or
@@ -130,6 +249,11 @@ STEM_RE = re.compile(r'([^.?!\n]*[?:])\s*$')
 # a reason the output never states.
 ENTRY_RE = re.compile(r"^(\d{1,2})\s*\.?\s*(?:([א-ד])\s*['׳’]"
                       r"|(אבגד|נפסלה|בוטלה))\s*(.*)$")
+# The קיץ 2021 key prints the letter with no geresh at all — "1 א סעיפים…".
+# Tried only as a FALLBACK, because without the geresh a citation opening on a
+# lettered section ("4א לחוק…") has the same shape as an entry, and in a key
+# that does use the geresh the strict form is the one that means it.
+ENTRY_BARE_RE = re.compile(r"^(\d{1,2})\s*\.?\s+([א-ד])(?=\s|$)\s*(.*)$")
 ANNULLED_RE = re.compile(r'נפסלה|בוטלה')
 
 
@@ -216,19 +340,36 @@ def parse_questions(lines):
     front matter in the 2024/2025 papers, which are numbered 1., 2., 3. too and
     whose sub-items are lettered א. through ז."""
     questions, i, expected, pending = [], 0, 1, []
+    force_next = False
+    # Numbers that never appear as a marker: only these may be recovered from a
+    # group header.
+    unmarked = {n for n in range(1, 61)
+                if not any(marker(t, n) is not None for t, _ in lines)}
     while i < len(lines):
-        m = Q_RE.match(lines[i][0])
-        if not m or int(m.group(1)) != expected:
+        head_text = starts_question(lines, i, expected, unmarked)
+        if head_text is None and force_next:
+            # The previous question's block ended at a fresh א…ד group with no
+            # number in front of it — question 31 of the קיץ 2020 paper is
+            # printed without one. The block boundary is the evidence; take it.
+            head_text = lines[i][0]
+        force_next = False
+        if head_text is None:
             pending.append(lines[i])
             i += 1
             continue
 
-        start, j = i, i + 1
-        while j < len(lines):
-            m2 = Q_RE.match(lines[j][0])
-            if m2 and int(m2.group(1)) == expected + 1:
-                break
+        start = i
+        j = i + 1
+        while j < len(lines) and starts_question(lines, j, expected + 1, unmarked) is None:
             j += 1
+        if j >= len(lines):
+            # The next question's number never made it into the text layer.
+            # Fall back to the one after it and let the second-group cut below
+            # separate the two. Only as a fallback: used eagerly, a line like
+            # "25.3.2014." ends the block two questions early.
+            j = i + 1
+            while j < len(lines) and starts_question(lines, j, expected + 2, unmarked) is None:
+                j += 1
         block = lines[start:j]
 
         idx = {}
@@ -245,17 +386,51 @@ def parse_questions(lines):
             i += 1
             continue
 
+        # A second complete א…ד group inside this block is the next question,
+        # arriving without a number of its own. Cut there rather than folding it
+        # into this question's last option.
+        second = None
+        for k in range(idx[LETTERS[3]] + 1, len(block)):
+            om = OPT_RE.match(block[k][0])
+            if om and om.group(1) == LETTERS[0]:
+                second = k
+                break
+        if second is not None:
+            head_start = second
+            while head_start - 1 > idx[LETTERS[3]] and not OPT_RE.match(block[head_start - 1][0]):
+                head_start -= 1
+            block = block[:head_start]
+            j = start + head_start
+            force_next = True
+
         # Text trailing option ד already introduces the NEXT question's passage.
         tail = []
         for k in range(idx[LETTERS[3]] + 1, len(block)):
             if INTRO_RE.match(block[k][0]) or END_RE.match(block[k][0]):
-                tail = block[k:]
-                block = block[:k]
+                # The passage a group header introduces can be printed ABOVE the
+                # header, which puts it after this question's last option. Walk
+                # back: the option's own wrapped lines run until one ENDS a
+                # sentence; whatever follows belongs to the next group. Start
+                # after the option's first line OF TEXT — when the marker sits
+                # alone ("ד."), that line ends in a full stop and would
+                # otherwise read as the end of the option.
+                first = idx[LETTERS[3]]
+                if not OPT_RE.sub('', block[first][0], count=1).strip():
+                    first += 1
+                cut = k
+                m = first + 1
+                while m < k:
+                    if block[m - 1][0].rstrip().endswith(('.', '?', '!', ':', '"')):
+                        cut = m
+                        break
+                    m += 1
+                tail = block[cut:]
+                block = block[:cut]
                 break
         tail = [t for t in tail if not END_RE.match(t[0])]
 
         head = block[:idx[LETTERS[0]]]
-        head[0] = (Q_RE.sub('', head[0][0], count=1).strip(), head[0][1])
+        head[0] = (head_text, head[0][1])
         text = join(head)
 
         opts = []
@@ -275,7 +450,10 @@ def parse_questions(lines):
 
         questions.append({
             "number": expected,
-            "shared_passage": join(pending) if pending and INTRO_RE.match(pending[0][0]) else "",
+            # The header is not always the FIRST pending line: when the passage
+            # is printed above it, the passage comes first. Any pending line
+            # being a header is what makes this a preamble rather than noise.
+            "shared_passage": join(pending) if any(INTRO_RE.match(t) for t, _ in pending) else "",
             "linked_numbers": [],
             "fact_pattern": facts,
             "stem": stem,
@@ -293,8 +471,11 @@ def parse_questions(lines):
     groups = []
     for pos, q in enumerate(questions):
         if q["shared_passage"]:
-            m = GROUP_N_RE.search(q["shared_passage"].splitlines()[0])
-            groups.append((pos, q["shared_passage"], int(m.group(1)) if m else 1))
+            # Size comes from the header line itself, wherever it sits — not
+            # from the whole passage, which may quote numbers of its own.
+            header = next((ln for ln in q["shared_passage"].splitlines() if INTRO_RE.match(ln)),
+                          q["shared_passage"].splitlines()[0])
+            groups.append((pos, q["shared_passage"], group_size(header)))
     for pos, passage, size in groups:
         grp = questions[pos:pos + size]
         nums = [g["number"] for g in grp]
@@ -360,6 +541,17 @@ def parse_key(path):
                 else:
                     parts.append(t)
             if number is None:
+                # No geresh anywhere in this row — try the bare spelling.
+                parts = []
+                for _, t in rows:
+                    m = ENTRY_BARE_RE.match(t)
+                    if m and number is None:
+                        number, letter = int(m.group(1)), m.group(2)
+                        if m.group(3).strip():
+                            parts.append(m.group(3).strip())
+                    else:
+                        parts.append(t)
+            if number is None:
                 continue
             source = re.sub(r'\s+', ' ', ' '.join(parts)).strip()
             # A question the Bar struck after the sitting prints אבגד and
@@ -384,10 +576,13 @@ for s in sittings:
             sys.stderr.write(s['paper'] + ' ' + label + ': no נ after glyph repair\n')
             sys.exit(3)
     questions = parse_questions(q_lines)
-    key = parse_key(s['key'])
-    if not any(v['letter'] for v in key.values()):
-        sys.stderr.write(s['paper'] + ' key: no answer letters found\n')
-        sys.exit(3)
+    if s.get('key'):
+        key = parse_key(s['key'])
+        if not any(v['letter'] for v in key.values()):
+            sys.stderr.write(s['paper'] + ' key: no answer letters found\n')
+            sys.exit(3)
+    else:
+        key = {}   # transcribed key; merged on the JS side
     out.append({'paper': s['paper'], 'label': s['label'],
                 'questions': questions,
                 'key': {str(k): v for k, v in key.items()}})
@@ -396,8 +591,8 @@ sys.stdout.buffer.write(json.dumps(out, ensure_ascii=False).encode('utf-8'))
 
 const jobs = SITTINGS.map((s) => {
   const exam = join(bank, s.exam);
-  const key = join(bank, s.key);
-  for (const [what, path] of [["paper", exam], ["key", key]]) {
+  const key = s.transcribedKey ? null : join(bank, s.key);
+  for (const [what, path] of [["paper", exam], ...(key ? [["key", key]] : [])]) {
     if (!existsSync(path)) {
       console.error(`${s.paper}: ${what} not found — ${path}`);
       process.exit(1);
@@ -415,7 +610,22 @@ const extracted = JSON.parse(
 const questions = [];
 const papers = [];
 
+const TRANSCRIBED = JSON.parse(
+  readFileSync(join(here, "keys-transcribed.json"), "utf8")
+).papers;
+
 for (const sitting of extracted) {
+  // A sitting whose key was transcribed has an empty key from Python; fill it
+  // from the JSON so everything downstream sees one shape.
+  if (Object.keys(sitting.key).length === 0 && TRANSCRIBED[sitting.paper]) {
+    const t = TRANSCRIBED[sitting.paper];
+    sitting.key = Object.fromEntries(
+      [...t.answers].map((letter, k) => [
+        String(k + 1),
+        { letter, source: t.citations[String(k + 1)] ?? null },
+      ])
+    );
+  }
   let annulled = 0;
   let incomplete = 0;
   const kept = [];

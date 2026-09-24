@@ -22,9 +22,24 @@ import { QaFloatingWidget } from "./qa-floating-widget";
  */
 const FOCUS_ROUTES = ["/exam", "/mahoti", "/diuni"];
 
+/**
+ * Focus routes that a prefix cannot express.
+ *
+ * /writing-task/<id> is the paper itself, and it is a split screen for the same
+ * reason /mahoti is: the question on one side, the writing skeleton on the
+ * other, with the answer sheet under both. It needs the width the rail takes.
+ *
+ * A prefix would be wrong here. /writing-task is the task LIST and
+ * /writing-task/results/<id> is the marked answer; both are ordinary pages that
+ * keep the sidebar. Only the single-segment id below is the paper.
+ */
+const FOCUS_ROUTE_PATTERNS = [/^\/writing-task\/(?!results(?:\/|$))[^/]+$/];
+
 function isFocusRoute(pathname: string): boolean {
-  return FOCUS_ROUTES.some(
-    (route) => pathname === route || pathname.startsWith(`${route}/`)
+  return (
+    FOCUS_ROUTES.some(
+      (route) => pathname === route || pathname.startsWith(`${route}/`)
+    ) || FOCUS_ROUTE_PATTERNS.some((re) => re.test(pathname))
   );
 }
 

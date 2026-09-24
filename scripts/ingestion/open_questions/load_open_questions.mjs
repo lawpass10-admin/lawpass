@@ -7,6 +7,8 @@
 //   answers          the whole answer bundle   (text, pages, source pdf)
 //   subject          copied from question.subject, so it is queryable as a column
 //   type             'source' — these came off real exam papers, not the model
+//   legal_area       resolved from the subject (legal_area.mjs); decides which
+//                    writing skeletons the study screen offers
 //   generation_meta  left NULL; it describes model output, and none of this is
 //
 // SAFE BY DEFAULT: without --commit this connects, validates, reports exactly
@@ -25,6 +27,7 @@ import dotenv from 'dotenv';
 import { readFileSync, existsSync, readdirSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { legalAreaFor } from './legal_area.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const appRoot = join(here, '..', '..', '..');
@@ -169,15 +172,20 @@ try {
       continue;
     }
 
+    // Which writing skeletons this task will be offered. Resolved here rather
+    // than left to the read path, so an unmapped subject is a warning now
+    // instead of a pane full of general templates later.
+    const legalArea = await legalAreaFor(client, row.question.subject, warnings, externalId);
+
     const res = await client.query(
-      `INSERT INTO public.open_questions (question, answers, subject, type)
-       VALUES ($1::jsonb, $2::jsonb, $3, 'source')
+      `INSERT INTO public.open_questions (question, answers, subject, type, legal_area)
+       VALUES ($1::jsonb, $2::jsonb, $3, 'source', $4)
        RETURNING open_question_id`,
-      [JSON.stringify(row.question), JSON.stringify(row.answer), row.question.subject]
+      [JSON.stringify(row.question), JSON.stringify(row.answer), row.question.subject, legalArea]
     );
     console.log(
       `  ${commit ? 'insert' : 'would  '} ${externalId.padEnd(12)} ` +
-      `subject=${String(row.question.subject).slice(0, 40)}`
+      `area=${legalArea ?? '—'}  subject=${String(row.question.subject).slice(0, 40)}`
     );
     inserted++;
     void res;

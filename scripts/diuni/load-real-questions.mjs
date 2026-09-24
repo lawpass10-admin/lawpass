@@ -59,7 +59,10 @@ questions.forEach((q, i) => {
 
   if (!q.paper) problems.push(`${where}: no paper`);
   if (!Number.isInteger(q.number)) problems.push(`${where}: number is not an integer`);
-  if (!String(q.fact_pattern ?? "").trim()) problems.push(`${where}: empty fact_pattern`);
+  // fact_pattern is NOT required: a knowledge question — "?מה כלול בחלקו השני
+  // של כתב הגנה" — has a stem and no facts, and never had any. See
+  // 20260924000001. The stem still is: a question without one is what a failed
+  // extraction leaves behind.
   if (!String(q.stem ?? "").trim()) problems.push(`${where}: empty stem`);
   if (options.length !== 4) problems.push(`${where}: ${options.length} options, expected 4`);
   for (const letter of LETTERS) {
@@ -74,7 +77,9 @@ questions.forEach((q, i) => {
   rows.push({
     paper: q.paper,
     number: q.number,
-    fact_pattern: q.fact_pattern,
+    // "" and undefined both mean "this question has no facts"; the column
+    // takes NULL for that, not an empty string that renders as a blank block.
+    fact_pattern: String(q.fact_pattern ?? "").trim() || null,
     stem: q.stem,
     options,
     correct_answer: q.correct_answer,

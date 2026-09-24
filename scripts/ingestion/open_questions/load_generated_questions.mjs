@@ -46,6 +46,7 @@ import dotenv from 'dotenv';
 import { readFileSync, existsSync } from 'node:fs';
 import { join, dirname, basename, isAbsolute, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { legalAreaFor } from './legal_area.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const appRoot = join(here, '..', '..', '..');
@@ -265,18 +266,23 @@ try {
     }
 
     const subject = await subjectFor(client, row, warnings);
+    // Which writing skeletons this task will be offered. Resolved here rather
+    // than left to the read path, so an unmapped subject is a warning now
+    // instead of a pane full of general templates later.
+    const legalArea = await legalAreaFor(client, subject, warnings, row.file);
     const question = row.bank ? { ...row.question, subject, quotes: row.bank } : row.question;
 
     await client.query(
-      `INSERT INTO public.open_questions (question, answers, subject, type, generation_meta)
-       VALUES ($1::jsonb, $2::jsonb, $3, 'new', $4::jsonb)`,
-      [JSON.stringify(question), JSON.stringify(row.answer), subject, JSON.stringify(row.meta)]
+      `INSERT INTO public.open_questions (question, answers, subject, type, legal_area, generation_meta)
+       VALUES ($1::jsonb, $2::jsonb, $3, 'new', $4, $5::jsonb)`,
+      [JSON.stringify(question), JSON.stringify(row.answer), subject, legalArea, JSON.stringify(row.meta)]
     );
 
     console.log(
       `  ${commit ? 'insert' : 'would  '} ${externalId.padEnd(14)} ` +
       `type=new  quotes=${row.bank ? row.bank.length : 'not attached'}  ` +
-      `model=${row.meta.model ?? '?'}  subject=${String(subject).slice(0, 40)}`
+      `model=${row.meta.model ?? '?'}  area=${legalArea ?? '—'}  ` +
+      `subject=${String(subject).slice(0, 34)}`
     );
     inserted++;
   }

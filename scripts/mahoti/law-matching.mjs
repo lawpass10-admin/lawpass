@@ -111,6 +111,34 @@ const SECTION_NUMBER = /\d+[א-ת]*/g;
  * Returns [{ law_id, law_name, sections: string[] }], sections possibly empty
  * when the key named a law without pinning a section to it.
  */
+/**
+ * Resolve a citation to laws and their sections, tolerating a key whose text
+ * layer injects spaces INSIDE words.
+ *
+ * The קיץ 2020 פתרון prints "לחו ק העו נ שי ן" for לחוק העונשין — the glyph
+ * spacing in that one PDF is wide enough that the space reconstruction fires
+ * between letters. Matching normally resolved 15 of its 40 rows. So when the
+ * ordinary pass finds nothing, both sides are compared again with ALL spaces
+ * removed; a law's name stays distinctive without them.
+ *
+ * The fallback runs only on a total miss, so it can never override a match the
+ * ordinary pass already made, and section parsing is redone on the same text
+ * the laws were found in — mixing the two would read positions off a string the
+ * hits do not come from.
+ */
+export function matchCitation(citation, index) {
+  let hits = lawsInCitation(citation, index);
+  if (hits.length > 0) {
+    return { hits, cited: sectionsInCitation(citation, hits), spaced: false };
+  }
+  const squeeze = (t) => t.replace(/\s+/g, "");
+  const tight = index.map((l) => ({ ...l, core: squeeze(l.core) }));
+  const flat = squeeze(normaliseLawText(citation));
+  hits = lawsInCitation(flat, tight);
+  if (hits.length === 0) return { hits: [], cited: [], spaced: false };
+  return { hits, cited: sectionsInCitation(flat, hits), spaced: true };
+}
+
 export function sectionsInCitation(citation, lawHits) {
   const n = normaliseLawText(citation);
   const out = [];
