@@ -206,6 +206,45 @@ type SummaryRow = {
  * one candidate's custom exam out of everyone else's list, and a row without
  * `questions` is an intermediate state rather than a paper.
  */
+/**
+ * The candidate's OWN custom-built papers, newest first.
+ *
+ * The mirror of listMyCustomMahotiSets — see the note there. `listDiuniSets`
+ * excludes these on purpose, which until now left a custom exam reachable
+ * only by the `?set=` URL the builder redirected to.
+ *
+ * THE `built_for` FILTER IS THE AUTHORIZATION: this read uses the
+ * service-role client because the table is admin-only under RLS, so there is
+ * no policy underneath to scope the rows.
+ */
+export async function listMyCustomDiuniSets(
+  userId: string,
+  limit: number = DIUNI_PICKER_LIMIT
+): Promise<DiuniSetSummary[]> {
+  if (!userId) return [];
+  const supabase = createAdminClient();
+
+  const { data, error } = await supabase
+    .from(TABLE)
+    .select("question_id, created_at, exam:questions->exam")
+    .eq("built_for", userId)
+    .not("questions", "is", null)
+    .order("created_at", { ascending: false })
+    .limit(limit)
+    .returns<SummaryRow[]>();
+
+  if (error) {
+    throw new Error(`failed to list custom ${TABLE}: ${error.message}`);
+  }
+
+  return (data ?? []).map((row) => ({
+    questionId: row.question_id,
+    createdAt: row.created_at,
+    title: row.exam?.title ?? "שאלון מותאם אישית",
+    questionCount: row.exam?.question_count ?? null,
+  }));
+}
+
 export async function listDiuniSets(
   limit: number = DIUNI_PICKER_LIMIT
 ): Promise<DiuniSetSummary[]> {

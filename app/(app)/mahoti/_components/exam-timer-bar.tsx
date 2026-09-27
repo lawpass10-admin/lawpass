@@ -1,9 +1,10 @@
 "use client";
 
 import { Clock, Pause, Play } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
+import { loadClock, saveClock, type SittingKind } from "@/lib/sittings/progress";
 import { TIMER_PHASE_CLASSES_LIGHT, getTimerPhase } from "@/lib/timer-phase";
 import { cn } from "@/lib/utils";
 
@@ -35,17 +36,26 @@ function formatMinSec(total: number): string {
  * is the source of truth, and pausing converts it back into a plain
  * remaining-seconds figure.
  *
- * Nothing here is persisted: this screen has no exam session behind it, so a
- * reload starts over. That is a deliberate limit of the study tool, not a
- * scoring surface — /exam remains the timed, server-authoritative one.
+ * Given `sitting`, the clock survives a reload. What is stored is the
+ * DEADLINE, not the remaining seconds: a stored count would be handed back
+ * intact after a reload and quietly gift the candidate the time they were
+ * away. An absolute deadline keeps elapsing while the page is gone, so
+ * reloading costs exactly the seconds it took — see lib/sittings/progress.ts.
+ * Without the prop the bar behaves exactly as before and persists nothing.
  */
 export function ExamTimerBar({
   frozen = false,
   totalSeconds = MAHOTI_TOTAL_SECONDS,
   onStartedChange,
+  sitting,
   children,
 }: {
   frozen?: boolean;
+  /**
+   * Which paper this clock belongs to. Supplying it turns on crash recovery;
+   * omitting it leaves the bar stateless across reloads.
+   */
+  sitting?: { kind: SittingKind; setId: string };
   /**
    * Extra controls for the bar, rendered beside the clock. /mahoti and /diuni
    * put "בדוק שאלות" here: the bar is the one row of controls on these screens,
@@ -74,6 +84,62 @@ export function ExamTimerBar({
   const [started, setStarted] = useState(false);
   // Absolute deadline while running; null while paused or not started.
   const deadlineRef = useRef<number | null>(null);
+  // Restore runs once, and until it has, nothing may be written back — an
+  // early save would overwrite a real sitting with this component's initial
+  // "not started, full clock" state.
+  const restored = useRef(false);
+
+  // Written only on the transitions (start, pause, resume, freeze, expiry),
+  // never on the 250ms tick: while the clock runs the deadline is a constant,
+  // so re-storing it four times a second would say nothing new.
+  const persist = useCallback(
+    (next: { started: boolean; deadlineAt: number | null; remaining: number }) => {
+      if (!sitting || !restored.current) return;
+      saveClock(sitting.kind, sitting.setId, next);
+    },
+    [sitting]
+  );
+
+  // Restored in a microtask, matching the window-token read in
+  // exam/play/_components/exam-question.tsx: it keeps the setState out of the
+  // effect body (react-hooks/set-state-in-effect) and defers the change past
+  // the hydration tick, so the server's full clock and the client's first
+  // render still agree.
+  useEffect(() => {
+    queueMicrotask(() => {
+      if (!sitting) {
+        restored.current = true;
+        return;
+      }
+      const stored = loadClock(sitting.kind, sitting.setId);
+      restored.current = true;
+      if (!stored || !stored.started) return;
+
+      if (stored.deadlineAt !== null) {
+        // It was running when the page went away, so the clock has been
+        // draining in absentia. What is left may well be nothing.
+        const left = Math.max(
+          0,
+          Math.round((stored.deadlineAt - Date.now()) / 1000)
+        );
+        setRemaining(left);
+        setStarted(true);
+        if (left > 0) {
+          deadlineRef.current = stored.deadlineAt;
+          setRunning(true);
+        }
+      } else {
+        // Paused when it was stored: a pause is not charged, so the remaining
+        // figure is taken at face value and the candidate resumes it by hand.
+        setRemaining(stored.remaining);
+        setStarted(true);
+      }
+      onStartedChange?.(true);
+    });
+    // Mount-only: re-running this would fight the live clock. `sitting` is a
+    // literal from the parent and would otherwise retrigger every render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // `frozen` goes true when the last question is answered. The clock stops
   // where it is — the elapsed time is the candidate's result and must not
@@ -82,13 +148,19 @@ export function ExamTimerBar({
     if (!frozen) return;
     queueMicrotask(() => {
       const deadline = deadlineRef.current;
-      if (deadline !== null) {
-        setRemaining(Math.max(0, Math.round((deadline - Date.now()) / 1000)));
-      }
+      const left =
+        deadline !== null
+          ? Math.max(0, Math.round((deadline - Date.now()) / 1000))
+          : remaining;
+      if (deadline !== null) setRemaining(left);
       deadlineRef.current = null;
       setRunning(false);
+      persist({ started: true, deadlineAt: null, remaining: left });
     });
-  }, [frozen]);
+    // `remaining` is read only as the already-stopped fallback; adding it
+    // would re-run this every tick of the clock it is meant to stop.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [frozen, persist]);
 
   useEffect(() => {
     if (!running) return;
@@ -102,33 +174,45 @@ export function ExamTimerBar({
       if (left === 0) {
         setRunning(false);
         deadlineRef.current = null;
+        // Store the expiry too, so a reload after the clock ran out comes
+        // back finished rather than offering a fresh 160 minutes.
+        persist({ started: true, deadlineAt: null, remaining: 0 });
       }
     }, 250);
     return () => clearInterval(id);
-  }, [running]);
+  }, [running, persist]);
 
   function handleStart(): void {
     // Also the restart path once the clock has run out.
     const seconds = remaining > 0 ? remaining : totalSeconds;
+    const deadlineAt = Date.now() + seconds * 1000;
     setRemaining(seconds);
-    deadlineRef.current = Date.now() + seconds * 1000;
+    deadlineRef.current = deadlineAt;
     setStarted(true);
     setRunning(true);
+    persist({ started: true, deadlineAt, remaining: seconds });
     onStartedChange?.(true);
   }
 
   function handlePauseToggle(): void {
     if (running) {
       const deadline = deadlineRef.current;
-      if (deadline !== null) {
-        setRemaining(Math.max(0, Math.round((deadline - Date.now()) / 1000)));
-      }
+      const left =
+        deadline !== null
+          ? Math.max(0, Math.round((deadline - Date.now()) / 1000))
+          : remaining;
+      if (deadline !== null) setRemaining(left);
       deadlineRef.current = null;
       setRunning(false);
+      // Deadline cleared: a paused clock is a plain remaining figure, and
+      // storing it that way is what stops the pause being charged.
+      persist({ started: true, deadlineAt: null, remaining: left });
       return;
     }
-    deadlineRef.current = Date.now() + remaining * 1000;
+    const deadlineAt = Date.now() + remaining * 1000;
+    deadlineRef.current = deadlineAt;
     setRunning(true);
+    persist({ started: true, deadlineAt, remaining });
   }
 
   const phase = getTimerPhase(remaining, {

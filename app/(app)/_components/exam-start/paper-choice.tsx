@@ -22,11 +22,18 @@ export function PaperChoice({
   examRoute,
   listLabel,
   emptyLabel,
+  heading = "בחירת המבחן",
 }: {
   sets: PickerSet[];
   examRoute: "/diuni" | "/mahoti";
   listLabel: string;
   emptyLabel: string;
+  /**
+   * Overridden by the custom-papers section below the authored one, which
+   * would otherwise render a second identical "בחירת המבחן" and leave the
+   * candidate with two headings that do not say which list is which.
+   */
+  heading?: string;
 }) {
   const router = useRouter();
   const [selected, setSelected] = useState<string | null>(sets[0]?.questionId ?? null);
@@ -37,7 +44,7 @@ export function PaperChoice({
       style={{ borderColor: "var(--color-line)", background: "var(--card)" }}
     >
       <h2 className="font-heebo font-bold" style={{ fontSize: 18, color: "var(--color-navy-ink)" }}>
-        בחירת המבחן
+        {heading}
       </h2>
 
       {sets.length === 0 ? (

@@ -8,7 +8,7 @@ import type { ArchiveEntry, ExamArchive } from "@/lib/db/exam-archive";
 import { cn } from "@/lib/utils";
 
 /**
- * The three subject tabs, and the candidate's filed exams under each.
+ * The subject tabs, and the candidate's filed exams under each.
  *
  * The tab bar is the dashboard's (app/(app)/dashboard/_components/
  * subject-tabs.tsx): same order, same labels, same segmented control and the
@@ -39,6 +39,15 @@ const TABS: { key: TabKey; label: string; empty: string; tint?: string }[] = [
     empty: "עדיין לא הגשת מטלת כתיבה.",
     tint: "#E8EEF8",
   },
+  // The timed simulation was missing from this page until 2026-09-27, while
+  // the heading above promised "כל המבחנים שהגשת". It is a fourth kind of
+  // sitting, not a fourth subject, so it sits last rather than beside the
+  // three papers.
+  {
+    key: "simulation",
+    label: "סימולציה",
+    empty: "עדיין לא סיימת סימולציית בחינה.",
+  },
 ];
 
 export function ArchiveTabs({ archive }: { archive: ExamArchive }) {
@@ -51,7 +60,7 @@ export function ArchiveTabs({ archive }: { archive: ExamArchive }) {
       <div
         role="tablist"
         aria-label="נושא"
-        className="grid w-full grid-cols-3 gap-1 rounded-xl p-1"
+        className="grid w-full grid-cols-2 gap-1 rounded-xl p-1 sm:grid-cols-4"
         style={{ background: "var(--muted, #f2f4f7)", border: "1px solid var(--color-line)" }}
       >
         {TABS.map((tab) => {

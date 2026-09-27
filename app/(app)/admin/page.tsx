@@ -1,3 +1,4 @@
+import { requireAdmin } from "@/lib/auth/admin-gate";
 import { createClient } from "@/lib/supabase/server";
 import {
   getAdminStats,
@@ -40,6 +41,12 @@ export default async function AdminHomePage({
     track?: string | string[];
   }>;
 }) {
+  // Every other page under /admin re-runs the gate rather than leaning on the
+  // layout: Next's Router Cache can replay a layout segment across same-group
+  // navigations, and the page and layout render concurrently, so the layout's
+  // redirect is not what keeps this page's admin queries from running. This
+  // one was the only page missing the call.
+  await requireAdmin();
   const supabase = await createClient();
   const params = await searchParams;
   const yearRaw = typeof params.year === "string" ? params.year : undefined;

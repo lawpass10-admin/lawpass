@@ -78,6 +78,8 @@ export type ExamSessionRow = {
   question_list: ExamQuestionListItem[];
   total_duration_seconds: number;
   time_used_seconds: number;
+  /** Every COMPLETED pause, summed. See exam_elapsed_seconds in SQL. */
+  total_paused_seconds: number;
   status: ExamSessionStatus;
   questions_answered: number;
   questions_correct: number;
@@ -195,7 +197,7 @@ export function bucketAndShuffleExamPool(
 
 const EXAM_SESSION_SELECT =
   "id, user_id, question_list, total_duration_seconds, time_used_seconds, " +
-  "status, questions_answered, questions_correct, final_score, passed, " +
+  "total_paused_seconds, status, questions_answered, questions_correct, final_score, passed, " +
   "active_window_token, started_at, paused_at, completed_at, " +
   "last_activity_at, mode";
 
@@ -239,6 +241,7 @@ function mapExamSession(data: Record<string, unknown>): ExamSessionRow {
     question_list: parseQuestionList(data.question_list),
     total_duration_seconds: data.total_duration_seconds as number,
     time_used_seconds: data.time_used_seconds as number,
+    total_paused_seconds: (data.total_paused_seconds as number | null) ?? 0,
     status,
     questions_answered: data.questions_answered as number,
     questions_correct: data.questions_correct as number,

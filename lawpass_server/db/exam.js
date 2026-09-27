@@ -76,7 +76,7 @@ function bucketAndShuffleExamPool(
 
 const EXAM_SESSION_SELECT =
   "id, user_id, question_list, total_duration_seconds, time_used_seconds, " +
-  "status, questions_answered, questions_correct, final_score, passed, " +
+  "total_paused_seconds, status, questions_answered, questions_correct, final_score, passed, " +
   "active_window_token, started_at, paused_at, completed_at, " +
   "last_activity_at, mode";
 
@@ -116,6 +116,7 @@ function mapExamSession(data) {
     question_list: parseQuestionList(data.question_list),
     total_duration_seconds: data.total_duration_seconds,
     time_used_seconds: data.time_used_seconds,
+    total_paused_seconds: data.total_paused_seconds ?? 0,
     status: data.status,
     questions_answered: data.questions_answered,
     questions_correct: data.questions_correct,

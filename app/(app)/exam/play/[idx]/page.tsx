@@ -114,6 +114,9 @@ export default async function ExamPlayPage({
           active_window_token: session.active_window_token,
           total_duration_seconds: session.total_duration_seconds,
           time_used_seconds: session.time_used_seconds,
+          total_paused_seconds: session.total_paused_seconds,
+          started_at: session.started_at,
+          paused_at: session.paused_at,
           status: session.status,
           question_list: session.question_list,
         }}

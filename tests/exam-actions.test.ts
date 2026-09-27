@@ -109,6 +109,7 @@ function buildSession(overrides: Partial<ExamSessionRow> = {}): ExamSessionRow {
     ],
     total_duration_seconds: 6000,
     time_used_seconds: 10,
+    total_paused_seconds: 0,
     status: "active",
     questions_answered: 0,
     questions_correct: 0,

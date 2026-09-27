@@ -275,6 +275,53 @@ type SummaryRow = {
  * a notebook-only row is an intermediate state, and offering it would open a
  * paper with nothing in it.
  */
+/**
+ * The candidate's OWN custom-built papers, newest first.
+ *
+ * `listMahotiSets` excludes these on purpose — a paper someone built for
+ * themselves does not belong in everyone's picker. The consequence, until
+ * this existed, was that a custom exam was reachable only by the `?set=` URL
+ * the builder happened to redirect to: navigate away and it was gone, with
+ * nothing anywhere listing it.
+ *
+ * THE `built_for` FILTER IS THE AUTHORIZATION. This read goes through the
+ * service-role client, like every other read in this file, because the table
+ * is admin-only under RLS — so there is no policy underneath to scope the
+ * rows. Widening or dropping that filter would hand one candidate another's
+ * papers.
+ */
+export async function listMyCustomMahotiSets(
+  userId: string,
+  limit: number = MAHOTI_PICKER_LIMIT
+): Promise<MahotiSetSummary[]> {
+  if (!userId) return [];
+  const supabase = createAdminClient();
+
+  const { data, error } = await supabase
+    .from(TABLE)
+    .select(
+      "question_id, created_at, exam:questions->exam, notebook_meta:question_notebook->notebook"
+    )
+    .eq("built_for", userId)
+    .not("questions", "is", null)
+    .not("question_notebook", "is", null)
+    .order("created_at", { ascending: false })
+    .limit(limit)
+    .returns<SummaryRow[]>();
+
+  if (error) {
+    throw new Error(`failed to list custom ${TABLE}: ${error.message}`);
+  }
+
+  return (data ?? []).map((row) => ({
+    questionId: row.question_id,
+    createdAt: row.created_at,
+    title: row.exam?.title ?? "שאלון מותאם אישית",
+    questionCount: row.exam?.question_count ?? null,
+    lawCount: row.notebook_meta?.law_count ?? null,
+  }));
+}
+
 export async function listMahotiSets(
   limit: number = MAHOTI_PICKER_LIMIT
 ): Promise<MahotiSetSummary[]> {

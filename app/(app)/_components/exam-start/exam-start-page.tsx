@@ -24,6 +24,7 @@ export function ExamStartPage({
   preamble,
   instructions,
   sets,
+  customSets = [],
   examRoute,
   listLabel,
   emptyLabel,
@@ -35,6 +36,14 @@ export function ExamStartPage({
   preamble: string;
   instructions: string[];
   sets: PickerSet[];
+  /**
+   * Papers this candidate built for themselves. Listed separately from the
+   * authored ones because `listMahotiSets`/`listDiuniSets` deliberately
+   * exclude them — without this section a custom exam was reachable only by
+   * the URL the builder redirected to, and was lost the moment you navigated
+   * away. Empty by default, and the section is omitted when empty.
+   */
+  customSets?: PickerSet[];
   /** Where the chosen paper opens, as `<examRoute>?set=<id>`. */
   examRoute: "/diuni" | "/mahoti";
   listLabel: string;
@@ -100,6 +109,16 @@ export function ExamStartPage({
       </article>
 
       <PaperChoice sets={sets} examRoute={examRoute} listLabel={listLabel} emptyLabel={emptyLabel} />
+
+      {customSets.length > 0 ? (
+        <PaperChoice
+          sets={customSets}
+          examRoute={examRoute}
+          heading="השאלונים שבניתי"
+          listLabel="השאלונים שבניתי"
+          emptyLabel=""
+        />
+      ) : null}
     </div>
   );
 }

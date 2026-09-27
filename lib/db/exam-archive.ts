@@ -39,6 +39,8 @@ export type ExamArchive = {
   mahoti: ArchiveEntry[];
   diuni: ArchiveEntry[];
   writing: ArchiveEntry[];
+  /** The 40-question timed simulation at /exam. */
+  simulation: ArchiveEntry[];
 };
 
 /**
@@ -167,12 +169,82 @@ async function listWriting(): Promise<ArchiveEntry[]> {
   });
 }
 
+/** What each sampling pool is called on screen, matching the /exam intro. */
+const SIMULATION_MODE_LABELS: Record<string, string> = {
+  procedural: "דיוני בלבד",
+  substantive: "מהותי בלבד",
+  combined: "משולב",
+};
+
+type ExamSessionArchiveRow = {
+  id: string;
+  mode: string | null;
+  final_score: number | null;
+  completed_at: string | null;
+  created_at?: string | null;
+};
+
+/**
+ * Completed runs of the timed simulation.
+ *
+ * THE ONE READ IN THIS FILE THAT FILTERS BY USER ID, and deliberately so.
+ * Everywhere else RLS is the whole authorization story, but `exam_sessions`
+ * carries a second policy — `admins_view_exam_sessions` grants an admin
+ * SELECT over every row. Without the filter an admin opening their own
+ * archive would be handed the entire cohort's sittings. The filter is scoped
+ * to the signed-in caller's id, so it narrows, never widens.
+ *
+ * Only completed sittings appear: an abandoned or still-running one has no
+ * result to show, and a live one belongs in the player, not the archive.
+ */
+async function listSimulations(): Promise<ArchiveEntry[]> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return [];
+
+  const { data, error, count } = await supabase
+    .from("exam_sessions")
+    .select("id, mode, final_score, completed_at", { count: "exact" })
+    .eq("user_id", user.id)
+    .eq("status", "completed")
+    .order("completed_at", { ascending: false })
+    .limit(PER_SUBJECT)
+    .returns<ExamSessionArchiveRow[]>();
+
+  if (error) throw new Error(`failed to read exam_sessions: ${error.message}`);
+  const rows = data ?? [];
+  const total = count ?? rows.length;
+
+  return rows.map((row, index) => {
+    const label = SIMULATION_MODE_LABELS[row.mode ?? ""] ?? null;
+    return {
+      answerId: row.id,
+      title: label
+        ? `סימולציה (${label}) — מבחן ${total - index}`
+        : `סימולציה — מבחן ${total - index}`,
+      // The simulation has no per-paper re-sit counter the way a fixed paper
+      // does — each run samples its own questions, so the sitting number IS
+      // its position in this list.
+      attempt: total - index,
+      createdAt: row.completed_at ?? "",
+      // Marked out of 40, the same total the intro screen promises. A row
+      // that somehow completed without a score says so rather than showing
+      // "0 / 40", which would read as having got everything wrong.
+      result: row.final_score === null ? "—" : `${row.final_score} / 40`,
+      href: `/exam/results/${encodeURIComponent(row.id)}`,
+    };
+  });
+}
+
 /** Every sitting the signed-in candidate has filed, newest first, per subject. */
 export async function getMyExamArchive(): Promise<ExamArchive> {
-  const [mahoti, diuni, writing] = await Promise.all([
+  const [mahoti, diuni, writing, simulation] = await Promise.all([
     listMcq("mahoti_answers", "/mahoti/review", "דין מהותי"),
     listMcq("diuni_answers", "/diuni/review", "דין דיוני"),
     listWriting(),
+    listSimulations(),
   ]);
-  return { mahoti, diuni, writing };
+  return { mahoti, diuni, writing, simulation };
 }

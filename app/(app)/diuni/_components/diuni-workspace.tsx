@@ -8,7 +8,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
 import { CheckAnsweredButton } from "@/app/(app)/_components/check-answered-button";
@@ -24,9 +24,15 @@ import {
   DIUNI_TOTAL_SECONDS,
   ExamTimerBar,
 } from "@/app/(app)/mahoti/_components/exam-timer-bar";
+import { NavigationGuard } from "@/components/app/navigation-guard";
 import { Button } from "@/components/ui/button";
 import { submitDiuniAttempt, type DiuniAttempt } from "@/lib/api/diuni";
 import type { DiuniLetter, DiuniSet } from "@/lib/db/diuni";
+import {
+  clearSitting,
+  loadAnswers,
+  saveAnswers,
+} from "@/lib/sittings/progress";
 import { cn } from "@/lib/utils";
 
 /**
@@ -68,8 +74,13 @@ const FIT: FitBounds = { maxPx: 17, minPx: 11, answersMinPx: 10 };
 export function DiuniWorkspace({ set }: { set: DiuniSet }) {
   const router = useRouter();
   const [position, setPosition] = useState(0);
-  // Position -> chosen letter.
+  // Position -> chosen letter. Kept in localStorage as well, so a reload or a
+  // crash does not throw away a 100-minute sitting — see
+  // lib/sittings/progress.ts. The server still learns nothing until submit.
   const [answers, setAnswers] = useState<Record<number, DiuniLetter>>({});
+  // Nothing may be written back before the restore has run, or the empty
+  // initial state would overwrite a real sitting on mount.
+  const restored = useRef(false);
   // Flipped by the timer bar's "התחל בחינה". Until then the choices are inert:
   // answering a timed paper while the clock reads a full 100:00 is not a run of
   // the sitting. Browsing stays open — only committing an answer waits.
@@ -79,6 +90,25 @@ export function DiuniWorkspace({ set }: { set: DiuniSet }) {
   const [attempt, setAttempt] = useState<DiuniAttempt | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const fitRef = useRef<HTMLDivElement | null>(null);
+
+  // Restore in a microtask, matching the window-token read in
+  // exam/play/_components/exam-question.tsx: it keeps the setState out of the
+  // effect body (react-hooks/set-state-in-effect) and defers the change past
+  // the hydration tick, so the server's empty sheet and the client's first
+  // render still agree.
+  useEffect(() => {
+    queueMicrotask(() => {
+      const stored = loadAnswers("diuni", set.questionId);
+      restored.current = true;
+      if (stored) setAnswers(stored as Record<number, DiuniLetter>);
+    });
+  }, [set.questionId]);
+
+  useEffect(() => {
+    if (!restored.current) return;
+    saveAnswers("diuni", set.questionId, answers);
+  }, [answers, set.questionId]);
+
   useFitToBox(fitRef, position, FIT);
 
   const total = set.questions.length;
@@ -144,6 +174,11 @@ export function DiuniWorkspace({ set }: { set: DiuniSet }) {
       return;
     }
 
+    // Filed, so the recovery copy has done its job. Left behind it would
+    // offer to resume a paper that has already been marked — and the next
+    // sitting of this same paper must start from an empty sheet.
+    clearSitting("diuni", set.questionId);
+
     // `submitting` is deliberately left true: the navigation is in flight and
     // re-enabling the button would offer a second filing of the same sitting.
     setAttempt(result.data);
@@ -152,6 +187,17 @@ export function DiuniWorkspace({ set }: { set: DiuniSet }) {
 
   return (
     <div className="flex h-full min-h-0 flex-col gap-2">
+      {/* Nothing about a sitting in progress is on the server — the letters
+          and the clock live in this component's state, so leaving the page
+          discards a 100-minute paper with no way to recover it. Until the
+          sitting is filed, every exit therefore asks first. Disarms on its
+          own once `attempt` is set: after marking there is nothing left to
+          lose, and the candidate must be free to open the solution. */}
+      <NavigationGuard
+        active={examStarted && attempt === null}
+        title="לצאת מהמבחן?"
+        description="המבחן בעיצומו והתשובות שסימנת עדיין לא נשלחו לבדיקה. יציאה מהדף תמחק אותן ואת הזמן שנותר, ולא ניתן יהיה לשחזר אותם."
+      />
       {/* 100 minutes — the length of חלק ב' of the real paper. Also frozen once
           the sitting is filed: a clock still running after the paper has been
           marked is counting nothing. */}
@@ -159,6 +205,7 @@ export function DiuniWorkspace({ set }: { set: DiuniSet }) {
         totalSeconds={DIUNI_TOTAL_SECONDS}
         frozen={allAnswered || attempt !== null}
         onStartedChange={setExamStarted}
+        sitting={{ kind: "diuni", setId: set.questionId }}
       >
         <CheckAnsweredButton
           reviewRoute="/diuni/review"

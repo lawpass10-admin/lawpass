@@ -7,7 +7,7 @@ import {
   INSTRUCTIONS_PREAMBLE,
 } from "@/app/(app)/_components/exam-start/exam-start-page";
 import { requireActiveSubscription } from "@/lib/auth/subscription-gate";
-import { listMahotiSets } from "@/lib/db/mahoti";
+import { listMahotiSets, listMyCustomMahotiSets } from "@/lib/db/mahoti";
 
 /**
  * /mahoti-start — the instructions for חלק ג' of the paper, then the choice of
@@ -20,8 +20,11 @@ import { listMahotiSets } from "@/lib/db/mahoti";
  * Five instructions, the same five as /diuni-start apart from the duration.
  */
 export default async function MahotiStartPage() {
-  await requireActiveSubscription();
-  const sets = await listMahotiSets();
+  const { user } = await requireActiveSubscription();
+  const [sets, customSets] = await Promise.all([
+    listMahotiSets(),
+    listMyCustomMahotiSets(user.id),
+  ]);
 
   return (
     <ExamStartPage
@@ -36,6 +39,7 @@ export default async function MahotiStartPage() {
         INSTRUCTION_INVIGILATORS,
       ]}
       sets={sets}
+      customSets={customSets}
       examRoute="/mahoti"
       listLabel="מבחני דין מהותי"
       emptyLabel="אין עדיין מבחני דין מהותי זמינים."

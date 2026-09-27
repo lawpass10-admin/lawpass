@@ -7,7 +7,7 @@ import {
   INSTRUCTIONS_PREAMBLE,
 } from "@/app/(app)/_components/exam-start/exam-start-page";
 import { requireActiveSubscription } from "@/lib/auth/subscription-gate";
-import { listDiuniSets } from "@/lib/db/diuni";
+import { listDiuniSets, listMyCustomDiuniSets } from "@/lib/db/diuni";
 
 /**
  * /diuni-start — the instructions for חלק ב' of the paper, then the choice of
@@ -20,8 +20,11 @@ import { listDiuniSets } from "@/lib/db/diuni";
  * that prefix without a special case in the shell.
  */
 export default async function DiuniStartPage() {
-  await requireActiveSubscription();
-  const sets = await listDiuniSets();
+  const { user } = await requireActiveSubscription();
+  const [sets, customSets] = await Promise.all([
+    listDiuniSets(),
+    listMyCustomDiuniSets(user.id),
+  ]);
 
   return (
     <ExamStartPage
@@ -39,6 +42,7 @@ export default async function DiuniStartPage() {
         // it describes the physical exam hall, with no counterpart on this screen.
       ]}
       sets={sets}
+      customSets={customSets}
       examRoute="/diuni"
       listLabel="מבחני דין דיוני"
       emptyLabel="אין עדיין מבחני דין דיוני זמינים."

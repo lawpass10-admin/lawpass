@@ -22,6 +22,7 @@ import type {
   ExamQuestionListItem,
   ExamSessionStatus,
 } from "@/lib/db/exam";
+import { examRemainingSeconds } from "@/lib/exam/remaining";
 import { examPlayUrl } from "@/lib/urls";
 import { cn } from "@/lib/utils";
 
@@ -41,6 +42,9 @@ type SessionProps = {
   active_window_token: string;
   total_duration_seconds: number;
   time_used_seconds: number;
+  total_paused_seconds: number;
+  started_at: string;
+  paused_at: string | null;
   status: ExamSessionStatus;
   question_list: ExamQuestionListItem[];
 };
@@ -148,10 +152,12 @@ export function ExamQuestion({
   // -------------------------------------------------------------------------
   // Local timer (visual only)
   // -------------------------------------------------------------------------
-  const initialRemaining = Math.max(
-    0,
-    session.total_duration_seconds - session.time_used_seconds
-  );
+  // Derived from started_at, NOT from the stored time_used_seconds. That
+  // column is only refreshed when an RPC fires, so reading it here meant the
+  // clock came back as it stood at the last answer and the candidate kept
+  // the time since — about 106 seconds per reload, and repeatable. See
+  // lib/exam/remaining.ts.
+  const initialRemaining = examRemainingSeconds(session);
   const [remainingSeconds, setRemainingSeconds] = useState(initialRemaining);
   const [paused, setPaused] = useState(session.status === "paused");
 
