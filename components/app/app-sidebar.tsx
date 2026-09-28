@@ -3,6 +3,7 @@
 import {
   Archive,
   BookOpen,
+  ChevronDown,
   FileText,
   Gavel,
   Gauge,
@@ -33,6 +34,9 @@ import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
+  SidebarMenuSub,
+  SidebarMenuSubButton,
+  SidebarMenuSubItem,
   useSidebar,
 } from "@/components/ui/sidebar";
 import { cn } from "@/lib/utils";
@@ -76,11 +80,33 @@ type LearningItem = {
   label: string;
   Icon: React.ComponentType<{ strokeWidth?: number }>;
   activeFor?: string[];
+  /**
+   * Rows that open a short list instead of navigating.
+   *
+   * מטלת כתיבה is two different activities that happen to share a subject:
+   * drilling a task, and reading the material first. Putting both behind one
+   * row keeps the top level at four entries — the point of a sidebar is that it
+   * can be taken in at a glance — while making the choice explicit rather than
+   * hiding the study material behind a tab inside the practice page.
+   *
+   * The parent row still has an `href`, so clicking it goes somewhere sensible
+   * for anyone who ignores the sub-list.
+   */
+  children?: { href: string; label: string }[];
 };
 
 const NAV_LEARNING: LearningItem[] = [
   { href: "/dashboard", label: "סטטיסטיקה אישית ותרגול מותאם", Icon: Gauge },
-  { href: "/writing-task", label: "מטלת כתיבה", Icon: FileText },
+  {
+    href: "/writing-task",
+    label: "מטלת כתיבה",
+    Icon: FileText,
+    activeFor: ["/study-material"],
+    children: [
+      { href: "/writing-task", label: "תרגול מטלת כתיבה" },
+      { href: "/study-material", label: "חומר ללימוד" },
+    ],
+  },
   { href: "/mahoti-start", label: "דין מהותי", Icon: BookOpen, activeFor: ["/mahoti"] },
   { href: "/diuni-start", label: "דין דיוני", Icon: Gavel, activeFor: ["/diuni"] },
 ];
@@ -124,6 +150,19 @@ function isPathActive(pathname: string, href: string): boolean {
  *
  * Icons inherit `currentColor` and track the text color automatically.
  */
+/**
+ * A sub-row. Quieter than a top-level row on purpose: it is a choice WITHIN a
+ * section, so it borrows the row's palette at lower contrast rather than
+ * competing with it. The gold left border is what the sidebar already uses to
+ * mean "you are here", reused one level down.
+ */
+const NAV_SUB_BUTTON_CLS = cn(
+  "text-start text-[13px] font-medium",
+  "text-white/60 hover:bg-white/10 hover:text-white",
+  "data-[active=true]:bg-white/[0.14] data-[active=true]:font-semibold data-[active=true]:text-white",
+  "data-[active=true]:border-s-2 data-[active=true]:border-s-[var(--color-gold,#C9A227)]"
+);
+
 const NAV_BUTTON_CLS = cn(
   "relative text-start text-sm",
   "[&_svg:not([class*='size-'])]:size-5",
@@ -256,6 +295,22 @@ export function AppSidebar({
   // navigation, so isActive tracks the current route correctly.
   const pathname = usePathname() ?? "";
 
+  // Which expandable row the user opened by hand. null means "follow the
+  // route", which is what makes the list open on its own when you are already
+  // inside that section.
+  // Rows the user has opened or closed BY HAND, keyed by href.
+  //
+  // Three states, not two: no entry means "follow the route" — the list opens
+  // on its own while you are inside that section — and an entry means the user
+  // has said otherwise and their choice stands.
+  //
+  // It was a single `openRow` string, so `expanded` was `active || openRow ===
+  // href`. That made the row impossible to CLOSE while you were on one of its
+  // pages: clicking cleared openRow, `active` was still true, and it sprang
+  // straight back open. An explicit choice has to outrank the default, which
+  // needs somewhere to record "closed" as distinct from "not chosen".
+  const [openOverride, setOpenOverride] = React.useState<Record<string, boolean>>({});
+
   return (
     <Sidebar side="right" collapsible="icon">
       <SidebarHeaderArea />
@@ -272,18 +327,63 @@ export function AppSidebar({
                 isPathActive(pathname, href)
               );
               const { Icon } = item;
+              // A row with children opens its list when it is the section you
+              // are in, or when you asked for it. Both, because a candidate who
+              // navigates straight to /study-material by link should still see
+              // where they are in the tree.
+              const expanded = item.children ? (openOverride[item.href] ?? active) : false;
               return (
                 <SidebarMenuItem key={item.href} className="relative">
+                  {/* An expandable row passes its handler as a PROP, not on an
+                      element handed to `render`. SidebarMenuButton feeds
+                      `render` through useRender, which did not carry the
+                      element's own onClick across — the row rendered as a
+                      <button>, clicked, and nothing happened. Without `render`
+                      it defaults to a button anyway, and props arrive intact. */}
                   <SidebarMenuButton
-                    render={<Link href={item.href} />}
+                    {...(item.children
+                      ? {
+                          type: "button" as const,
+                          "aria-expanded": expanded,
+                          onClick: () =>
+                            setOpenOverride((prev) => ({ ...prev, [item.href]: !expanded })),
+                        }
+                      : { render: <Link href={item.href} /> })}
                     isActive={active}
                     className={NAV_BUTTON_CLS}
                   >
                     <Icon strokeWidth={1.5} />
                     <span>{item.label}</span>
+                    {item.children ? (
+                      <ChevronDown
+                        strokeWidth={1.5}
+                        className={cn(
+                          "ms-auto size-4 transition-transform duration-200",
+                          expanded && "rotate-180"
+                        )}
+                      />
+                    ) : null}
                   </SidebarMenuButton>
                   {active ? <ActiveDot /> : null}
                   {active ? <ActiveBar /> : null}
+                  {item.children && expanded ? (
+                    <SidebarMenuSub className="mt-1 gap-0.5">
+                      {item.children.map((child) => {
+                        const childActive = isPathActive(pathname, child.href);
+                        return (
+                          <SidebarMenuSubItem key={child.href}>
+                            <SidebarMenuSubButton
+                              render={<Link href={child.href} />}
+                              isActive={childActive}
+                              className={NAV_SUB_BUTTON_CLS}
+                            >
+                              <span>{child.label}</span>
+                            </SidebarMenuSubButton>
+                          </SidebarMenuSubItem>
+                        );
+                      })}
+                    </SidebarMenuSub>
+                  ) : null}
                 </SidebarMenuItem>
               );
             })}

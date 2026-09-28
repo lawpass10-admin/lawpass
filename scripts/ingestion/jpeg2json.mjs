@@ -41,13 +41,22 @@
 // nothing in one and is right to; the mode is what says which to look for.
 
 import { readFileSync, writeFileSync, existsSync, readdirSync, statSync, mkdirSync } from "node:fs";
-import { join, basename, extname, resolve } from "node:path";
-import { pathToFileURL } from "node:url";
+import { join, basename, extname, dirname } from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import dotenv from "dotenv";
 
-dotenv.config({ path: resolve("../.env.local") });
-dotenv.config({ path: resolve(".env.local") });
-dotenv.config({ path: resolve(".env") });
+// Resolved from THIS FILE's location, not the shell's cwd.
+//
+// These were cwd-relative, and `../.env.local` from the app folder is the stray
+// duplicate repo one level up — a file from August with different Supabase
+// credentials in it. Because dotenv never overwrites an already-set variable
+// and imported modules evaluate before the importing module's body, any script
+// that imports this one inherited those stale credentials and authenticated as
+// the wrong user. Anchoring to the script's own directory removes the cwd from
+// the question entirely.
+const appRoot = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
+dotenv.config({ path: join(appRoot, ".env.local") });
+dotenv.config({ path: join(appRoot, ".env") });
 
 const argv = process.argv.slice(2);
 const flagOf = (n) => {

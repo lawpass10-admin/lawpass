@@ -1,0 +1,178 @@
+{
+  "version": "1.2.0",
+  "name": "LLM-text-converting",
+  "purpose": "The contract for turning an extracted source document into LawPass's own independently-authored text. Versioned so that any change to how conversion behaves is a visible change to this file.",
+  "disclaimer": "These rules reduce risk; they are not legal advice and they are not a guarantee. Copyright turns on facts and jurisdiction. For anything commercial or central to the product, have a lawyer familiar with Israeli copyright review the output before publication.",
+  "principle": "Copyright protects expression, not facts or ideas. The pipeline is built so that the protected layer of a source is never available to the model, rather than trusting the model to avoid imitating something it can see.",
+  "rules": [
+    {
+      "id": "R1",
+      "name": "Extract core concepts only",
+      "statement": "Take raw facts, ideas and data points. Ignore the source's sentence structure, stylistic flow and unique phrasing.",
+      "enforced_by": "mechanical",
+      "how": "Only fields listed in pipeline.send_to_model are read out of the source JSON. Fields in pipeline.withhold_from_model are never placed in a prompt, so the model cannot mirror wording it never received."
+    },
+    {
+      "id": "R2",
+      "name": "Enforce structural transformation",
+      "statement": "Reorganise the material under a different organising principle. Do not follow the source's order or grouping.",
+      "enforced_by": "mechanical+instruction",
+      "how": "pipeline.reorganise_by names an axis different from the source's own. Source ordering is discarded before the prompt is built, and the check `order_differs` fails the run if the output sequence matches the input sequence."
+    },
+    {
+      "id": "R3",
+      "name": "Ban verbatim translation and mimicry",
+      "statement": "Do not reuse the source's vocabulary, idioms or distinctive turns of phrase.",
+      "enforced_by": "mechanical+check",
+      "how": "The source's prose is withheld (R1). As a backstop, checks.max_shared_ngram compares the output against the source text that the operator holds locally; any shared run of n+ words is reported as a finding."
+    },
+    {
+      "id": "R4",
+      "name": "Apply a distinct tone and voice",
+      "statement": "Write from a different stylistic perspective than the source.",
+      "enforced_by": "instruction",
+      "how": "pipeline.voice states the target register explicitly and is inserted into the prompt."
+    },
+    {
+      "id": "R5",
+      "name": "Isolate unprotectable facts",
+      "statement": "Build only on objective facts, dates, numbers and general concepts.",
+      "enforced_by": "mechanical",
+      "how": "For a usage guide the unprotectable core is the pair (incorrect form, correct form) — a fact about Hebrew. The explanation of why is authored expression and is regenerated, never carried across."
+    },
+    {
+      "id": "R6",
+      "name": "Prevent substantial similarity",
+      "statement": "The result must read as an independent work that happens to share a subject, not as a substitute for the source.",
+      "enforced_by": "check+human",
+      "how": "checks.* are run automatically and reported. The final judgement is the operator's: `would a reasonable reader accept this instead of the original?`"
+    },
+    {
+      "id": "R7",
+      "name": "Attribution does not cure infringement",
+      "statement": "Citing a source does not make copying lawful. Attribution is a plagiarism norm, not a copyright defence.",
+      "enforced_by": "policy",
+      "how": "Output carries no claim that citing the source licenses the content. Where a specific phrase genuinely must be quoted, it is short, in quotation marks and attributed — see quoting."
+    },
+    {
+      "id": "R8",
+      "name": "Add independent value",
+      "statement": "Original analysis and framing that are not in the source are what make the work independently authored rather than a rewrite.",
+      "enforced_by": "instruction",
+      "how": "v1.1 removed the worked example and exam note; v1.2 restores a SHORT example (<=10 words) and leaves the exam note out. What carries R8 is the structure — grouping by cause, the headings, why_this_group — plus one original clause per item. Measured: v1.1 without examples scored a 3-word longest shared run against the source, better than v1.0's 4, so brevity did not push the texts together. checks.max_shared_ngram stays blocking and covers the example too."
+    }
+  ],
+  "quoting": {
+    "allowed": false,
+    "note": "This pipeline produces no quotations. If a run ever needs one, it must be short, wrapped in quotation marks, attributed inline, and recorded in the run's changes file."
+  },
+  "pipeline": {
+    "source_kind": "usage_guide",
+    "description": "A table of incorrect/correct usage pairs with explanations, as produced by scripts/ingestion/docx2json.mjs --mode=document.",
+    "send_to_model": [
+      "tables[].rows[].שגוי",
+      "tables[].rows[].תקין"
+    ],
+    "withhold_from_model": [
+      "tables[].rows[].למה",
+      "sections[].heading",
+      "sections[].paragraphs"
+    ],
+    "withhold_rationale": "The wrong/right pair is the fact. The 'why' column, the section headings and the introduction are the source author's expression — the exact layer that must not be reproduced — so they are dropped before any prompt is built.",
+    "reorganise_by": "cause_of_error",
+    "reorganise_note": "The source groups by part of speech (prepositions, copula, word-form, dates). Grouping instead by WHY writers make the mistake — foreign-language calque, an added letter, Aramaic morphology, condition confused with degree, an unnecessary copula — is a different organising principle, not a reshuffle of the same one.",
+    "voice": "Second-person coaching for a bar-exam candidate: direct, practical, focused on what to write under exam conditions. The source is a neutral third-person reference table.",
+    "add_own": [
+      "the grouping itself: which cause each error belongs to",
+      "the group headings and the one-line reason the group exists",
+      "one short clause per item showing the preferred form actually in use"
+    ],
+    "model": "claude-opus-5",
+    "max_tokens": 24000,
+    "max_tokens_note": "Thinking tokens are billed and budgeted as output, so this ceiling covers reasoning plus the document. 16000 truncated an 18-item guide mid-JSON. Streaming is used, so a large ceiling costs nothing when it is not needed — you are billed for what is produced.",
+    "brevity": {
+      "reason_max_words": 28,
+      "why_this_group_max_words": 25,
+      "intro_max_words": 45,
+      "_note": "A candidate scanning a table reads the pair and moves on; the explanation is there for the one they stop at. Long prose in a table cell is read by nobody and paid for by every run. v1.2 restores the example at 10 words against v1.0's median of 12 and max of 18 — and, more to the point, excludes what the long ones actually were: docket headers and party lists, which show no usage at all.",
+      "example_max_words": 10
+    },
+    "effort": "medium",
+    "effort_note": "Thinking is billed as output and dominated the bill — 14,205 output tokens for ~3,500 tokens of visible Hebrew at effort 'high'. These are short factual explanations of settled grammar, not a reasoning problem, so 'medium' is where the quality stops paying for itself. Raise it back to 'high' if the explanations come out thin."
+  },
+  "output_schema": {
+    "doc": {
+      "title": "string — LawPass's own title, not the source's",
+      "intro": "string — written for this product, in the target voice",
+      "groups": [
+        {
+          "id": "string — slug of the cause",
+          "heading": "string",
+          "why_this_group": "string — what these errors have in common",
+          "items": [
+            {
+              "id": "string",
+              "avoid": "string — the incorrect form (fact, carried across)",
+              "use": "string — the correct form (fact, carried across)",
+              "reason": "string — newly authored, ONE short sentence",
+              "example": "string — newly authored, one short clause using the preferred form"
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "checks": [
+    {
+      "id": "max_shared_ngram",
+      "n": 6,
+      "applies_to": "reason, example, intro, why_this_group",
+      "fails_run": true,
+      "note": "Any run of 6+ consecutive words shared with the source's prose is reported, EXCEPT runs made mostly of the fact pairs themselves — those are identical on both sides by design and are the subject, not the expression. A window counts only when at least half its words are ordinary prose. Run locally against the source the operator already holds; the source is never sent anywhere. With the examples removed (v1.1) there is less original prose to dilute shared phrasing, so this check matters more than it did.",
+      "ignores_fact_words": true
+    },
+    {
+      "id": "facts_preserved",
+      "fails_run": true,
+      "note": "Every (incorrect, correct) pair in the source must survive into the output. Losing one is a content bug, not a compliance win."
+    },
+    {
+      "id": "order_differs",
+      "fails_run": false,
+      "note": "The output item order must not reproduce the source order (R2)."
+    },
+    {
+      "id": "no_source_headings",
+      "fails_run": true,
+      "note": "None of the source's section headings may appear as an output heading."
+    }
+  ],
+  "change_tracking": {
+    "written_to": "<output>.changes.json",
+    "records": [
+      "the contract version used",
+      "model and settings",
+      "every fact pair carried across, with the group it was moved into",
+      "which source fields were withheld",
+      "the result of every check",
+      "a timestamp"
+    ],
+    "note": "The changes file records the source only by its unprotectable fact pairs, so it can live in the repo without carrying the source's expression into it."
+  },
+  "pricing": {
+    "_note": "Anthropic first-party rates, USD per million tokens. Update when Anthropic's pricing page changes; the run records which rate it used.",
+    "_source": "https://www.anthropic.com/pricing",
+    "claude-opus-5": {
+      "input_per_mtok": 5.0,
+      "output_per_mtok": 25.0
+    },
+    "claude-sonnet-5": {
+      "input_per_mtok": 2.0,
+      "output_per_mtok": 10.0
+    },
+    "claude-haiku-4-5": {
+      "input_per_mtok": 1.0,
+      "output_per_mtok": 5.0
+    }
+  }
+}
