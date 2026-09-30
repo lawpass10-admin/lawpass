@@ -62,6 +62,135 @@ batches.
    for the command and apply via the pooler:
        DIRECT_URL='' node scripts/apply-sql.mjs supabase/migrations/<file>.sql
 
+## Converters — getting source material into JSON
+
+Three siblings, one per kind of source. Each one's header says what it is for
+and where it fails; this is only the map.
+
+| script | source | runs | writes |
+| --- | --- | --- | --- |
+| `docx2json.mjs` | .docx, .doc, .rtf, .odt, .pptx, .xlsx | locally (`@firecrawl/anydoc`) | one JSON per document |
+| `pdf2json.mjs` | a PDF **with a text layer** | locally (`@firecrawl/pdf-inspector`) | one JSON per **page** + `index.json` |
+| `jpeg2json.mjs` | photographs and scans | uploads for OCR (Firecrawl or Claude) | one JSON per document |
+
+Use the .docx whenever the same material exists in both forms — on this corpus
+it reads at ~55% Hebrew against 0.9% from hosted OCR of a photograph of it.
+
+`pdf2json.mjs` is the page-by-page one, for a long document that gets read and
+corrected a page at a time:
+
+```bash
+# With no path: the booklet wired into the top of the script (TEST_PDF /
+# TEST_OUT), so a test run is one flag.
+node scripts/ingestion/pdf2json.mjs --pages=5
+
+# Look first: type, page count, and whether the fonts are readable.
+node scripts/ingestion/pdf2json.mjs book.pdf --inspect
+
+# Test run — the first three pages only.
+node scripts/ingestion/pdf2json.mjs book.pdf --out=json/ --pages=3
+
+# A window further in, then the whole thing.
+node scripts/ingestion/pdf2json.mjs book.pdf --out=json/ --from=40 --pages=10
+node scripts/ingestion/pdf2json.mjs book.pdf --out=json/
+
+# A SCANNED booklet: --ocr reads each scanned page (Claude by default).
+node scripts/ingestion/pdf2json.mjs --pages=3 --ocr
+
+# Check the result by eye: page-09.html, the scan beside what was read off it.
+# Converts nothing and uploads nothing — it is built from the JSON already there.
+node scripts/ingestion/pdf2json.mjs --only=9 --html
+```
+
+**Scans.** Without `--ocr` a page with no text layer is written `needs_ocr:
+true` and empty — nothing is uploaded. With `--ocr` those pages, and only
+those, are read one page per request, so the text lands in the right page's
+JSON. Each page records which engine read it in `text_source`.
+
+**Four engines, measured on `חוברת מיקוד בניסוח משפטי` (page 9 unless noted):**
+
+| `--ocr=` | per page | Hebrew | Latin junk words | verdict |
+| --- | --- | --- | --- | --- |
+| `claude` (default) | 36s | 74.4% | 0 | use this |
+| `firecrawl` | 4.3s | 71.2% | 29 distinct | 8× faster, not usable here |
+| `hybrid` | 29–77s | 77.3% | 0 | same quality, measured **slower** |
+| `mistral` | **blocked** | — | — | key works, OCR endpoint 429s |
+
+> **Not yet measurable (2026-09-30).** The key authenticates — `GET /v1/models`
+> returns 200 and lists `mistral-ocr-4-1`, `-4`, `-3`, `-2512` and
+> `mistral-ocr-latest` — but every `POST /v1/ocr` comes back `429 Rate limit
+> exceeded` (code 1300) in under half a second, unchanged after 30s and 60s
+> waits and with no `retry-after` header. That is an entitlement gate, not
+> throughput: the workspace needs activating/billing at console.mistral.ai
+> before the comparison can run. The engine is written, the request shape is
+> verified against the API's own validator, and it retries a 429 three times
+> before reporting this.
+
+`mistral` is shaped differently from the other three and is the one worth
+trying next for speed. Its endpoint takes a **document** — up to 1000 pages —
+and returns per-page markdown from a single request, so a batch is one round
+trip rather than one per page, and `--concurrency` does not apply to it.
+Published price is $4 per 1000 pages. The model defaults to `mistral-ocr-4-1`
+— pinned rather than `mistral-ocr-latest` so a comparison says which model it
+measured — and `--mistral-model=` takes any of the ids the API lists.
+
+The API reference's `{type: "file", file_content}` document variant does **not**
+work: the endpoint 422s naming `document_url` as the expected type. A base64 PDF
+goes in `document_url` as a data URI, which is what this sends.
+
+It sends a **sub-document** containing exactly the pages wanted, not the whole
+booklet with a `pages` parameter: the API's docs say page numbers start at 0
+while the example response shows `index: 1`, and mapping text onto the wrong
+page is a silent error that surfaces much later. Copying the pages into a fresh
+PDF makes position the mapping, and keeps a three-page test run to a three-page
+upload.
+
+Firecrawl Parse is an order of magnitude faster and wrong in ways that are easy
+to miss: across an 8-page sample it returned nonsense for two pages (one was
+invented Chinese arithmetic, one 12k characters of fabricated table), and on the
+pages it did read it substituted Latin for Hebrew words (`ONN` for `אתם`, `Od`
+for `גם`, `Pos` for `לטיעון`) and swapped final letters (`המסמכיס`). Claude got
+all of those right. The page is sent to Claude as a PDF document block — no
+rasterisation — so nothing is lost between the scan and the model.
+
+`hybrid` was built to test the obvious idea: let Firecrawl do 80% of the work
+cheaply, then have Claude fix it. It does work — it returns find/replace pairs
+rather than a whole page, applies them first-match-only, and falls back to a
+full re-read when the draft is fabricated rather than merely wrong. But it is
+**slower**: 4 pages took 77s against 54s for plain Claude, because the saving was
+supposed to come from output tokens and the real cost is the model reading the
+whole scan to find the errors — which it must do either way, on top of a second
+network round trip and a larger input. Keep it for reference; don't reach for it.
+
+Transcription is not deterministic — the same page read twice differs by a word
+or two. `--effort` (default `high`) is the knob: at `medium`, page 9 came back
+with `טעונתיכם` for `טענותיכם` and `בודקת` for `מורה`; at `high` both were right
+and the page took 38.2s against 36.9s. Reading this material less carefully buys
+nothing, so `high` is the default. It still needs a human check — that is what
+the `--html` sheets are for.
+
+**Throughput is the lever, not the engine.** Per page Claude is 8× slower; per
+document that mostly disappears, because each page is an independent request.
+8 pages at `--concurrency=8` took **34s wall-clock — 4.3s per page**, which is
+hosted OCR's latency at Claude's accuracy. 62 pages lands around 4½ minutes.
+Lower the default only if you hit a 429.
+
+Whichever engine runs, the text is stored as plain text: emphasis markup the
+booklet is full of (`**bold**`, `<u>underline</u>`) is stripped, since it is
+typography rather than content and only gets in the way of reading, diffing and
+loading the JSON. Markdown headings, lists and tables are kept — those are
+structure.
+
+Every page's Hebrew share is still measured whichever engine ran, a page that
+comes back barely Hebrew writes itself a warning, and `pages_to_review` in
+`index.json` lists them. Redo exactly those with `--only=2,6 --ocr --force`. A
+page that fails the same way twice is failing deterministically — retrying it is
+not the fix.
+
+A broken ToUnicode map cannot be repaired here either, but it is detected
+(`encoding_warnings` in `index.json`) and points at `hebrew_pdf_to_json.py
+--glyph-boxes`, which can.
+
 ## Per-batch example (2024 winter substantive)
 
 ```bash

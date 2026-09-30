@@ -27,6 +27,18 @@ export type SubjectStat = {
   lowest: number | null;
   highest: number | null;
   /**
+   * The mark every sitting was scored out of, when they all share one — 20 for
+   * the writing task (4 לשון + 4 ארגון + 12 תוכן).
+   *
+   * Set only where a points scale exists and is the SAME for every sitting: the
+   * card then plots `exams[].points` against it, so a candidate reads the number
+   * the exam gave them (15.5) rather than a percentage of it (77.5%). Null for
+   * the two multiple-choice subjects, which have no points, and null the moment
+   * two sittings were marked out of different totals — one axis cannot honestly
+   * carry both. The chart falls back to the percentage in that case.
+   */
+  pointsMax: number | null;
+  /**
    * Every scored sitting, OLDEST FIRST — the series the card's chart plots, one
    * point per exam. An index in this array is the exam's number on the x-axis
    * ("מבחן 3" is `exams[2]`), which is why the server orders its reads by
@@ -38,5 +50,10 @@ export type SubjectStat = {
    * Empty for a subject with no scored sitting; never null, so the chart can
    * branch on length alone.
    */
-  exams: { score: number; date: string | null }[];
+  exams: {
+    score: number;
+    date: string | null;
+    /** Points awarded, out of `pointsMax`. Null where the subject has none. */
+    points: number | null;
+  }[];
 };

@@ -417,6 +417,13 @@ export type MahotiReviewItem = {
   stem: string;
   correctChoice: Choice;
   question: Question360;
+  /**
+   * The law this question was built from — the same subject the server stamps
+   * onto a marked answer (lawpass_server/db/mahoti.js#getAnswerKey), resolved
+   * the same way, so a mid-sitting check and a filed sitting group a paper into
+   * the same rows. Null for a question whose source carries no law name.
+   */
+  topic: string | null;
 };
 
 export type MahotiReview = {
@@ -511,6 +518,7 @@ export async function getMahotiReview(
       fact_pattern: question.fact_pattern ?? "",
       stem: question.stem ?? "",
       correctChoice,
+      topic: (question.sources ?? [])[0]?.law_name ?? null,
       question: {
         choices,
         legal_topic_analysis: review?.legal_topic_analysis ?? "",
@@ -545,6 +553,13 @@ export type MahotiGivenAnswer = {
   /** The key AT THE TIME OF MARKING — snapshot, not looked up again. */
   correct_letter: MahotiLetter | null;
   is_correct: boolean;
+  /**
+   * The law the question was built from, stamped on at marking time so the
+   * per-subject table can be recomputed from the row alone — see
+   * `breakdownByTopic`. Optional because sittings filed before the server
+   * started carrying it have entries without one; they group under "ללא סיווג".
+   */
+  topic?: string | null;
 };
 
 /**

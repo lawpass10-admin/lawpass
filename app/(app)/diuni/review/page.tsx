@@ -3,6 +3,7 @@ import Link from "next/link";
 
 import { ExamPageNav } from "@/app/(app)/_components/exam-page-nav";
 import { Learning360Panel } from "@/app/(app)/practice/play/_components/learning-360-panel";
+import { ScoreSummary } from "@/components/app/score-summary";
 import { Button } from "@/components/ui/button";
 import { requireActiveSubscription } from "@/lib/auth/subscription-gate";
 import {
@@ -11,6 +12,7 @@ import {
   getNextDiuniSetId,
   type DiuniReviewItem,
 } from "@/lib/db/diuni";
+import { breakdownByTopic } from "@/lib/scoring/topic-breakdown";
 import { cn } from "@/lib/utils";
 
 type Letter = "א" | "ב" | "ג" | "ד";
@@ -120,6 +122,24 @@ export default async function DiuniReviewPage({
     attempt?.score ??
     (total > 0 ? Math.round((correct / total) * 1000) / 10 : 0);
 
+  // The per-subject rollup for a mid-sitting check, grouped by the same
+  // function that groups a filed sitting (`breakdownByTopic`) over the same
+  // subjects the server stamps onto a marked answer — so checking at question
+  // 12 and filing at question 40 cannot read as two different measures.
+  //
+  // Over the questions SHOWN, which on this path are the ones answered so far:
+  // a subject the candidate has not reached yet has no row rather than a 0%
+  // one, which would look like a subject they are failing.
+  const midSittingByTopic =
+    midSitting && shown.length > 0
+      ? breakdownByTopic(
+          shown.map((row) => ({
+            topic: row.item.topic,
+            is_correct: row.given === row.item.correctChoice.letter,
+          }))
+        )
+      : [];
+
   return (
     <div className="mx-auto w-full max-w-3xl space-y-6 py-2">
       <header className="space-y-2">
@@ -150,15 +170,19 @@ export default async function DiuniReviewPage({
         <h1 className="text-3xl font-bold">
           {midSitting ? "בדיקת השאלות שענית" : "בדיקת השאלות"}
         </h1>
-        {/* A filed sitting always gets its score line, even one submitted
+        {/* Mid-sitting the numbers are the panel's below, not a line here —
+            printing them twice would put the same score in two places, one of
+            them small and grey. Only the "nothing answered yet" case has no
+            panel to show, so it keeps its sentence.
+            A filed sitting always gets its score line, even one submitted
             entirely blank — 0 מתוך 40 is a result, and hiding it would make a
             recorded attempt look like a page nobody sat. */}
         {midSitting ? (
-          <p className="text-sm text-muted-foreground">
-            {shown.length === 0
-              ? "עדיין לא ענית על שאלות במבחן הזה."
-              : `${correct} מתוך ${total} תשובות נכונות (${percent}%) · המבחן עצמו עדיין לא הוגש`}
-          </p>
+          shown.length === 0 ? (
+            <p className="text-sm text-muted-foreground">
+              עדיין לא ענית על שאלות במבחן הזה.
+            </p>
+          ) : null
         ) : attempt || scored > 0 ? (
           <p className="text-sm text-muted-foreground">
             {attempt ? `ניסיון ${attempt.attempts} · ` : ""}
@@ -170,6 +194,24 @@ export default async function DiuniReviewPage({
           </p>
         )}
       </header>
+
+      {/* The statistics of the run so far, in the same panel a filed sitting
+          gets on /diuni/results: a candidate who checks their work at question
+          12 is owed the same reading of it — the score, the split, and which
+          subject is costing the marks — as one who finished the paper. The
+          score is out of what was ANSWERED, and "טרם נענו" says how much of the
+          paper is still to come, so nothing here reads as a result on a
+          finished exam. */}
+      {midSitting && shown.length > 0 ? (
+        <ScoreSummary
+          correct={correct}
+          total={total}
+          answered={total}
+          pending={review.items.length - shown.length}
+          caption={`נענו ${shown.length} מתוך ${review.items.length} שאלות · המבחן עצמו עדיין לא הוגש`}
+          byTopic={midSittingByTopic}
+        />
+      ) : null}
 
       {shown.map((row) => (
         <QuestionReview

@@ -40,9 +40,17 @@ const round1 = (n) => Math.round(n * 10) / 10;
  * showing them "0%" would read as a score they earned. The card renders a dash
  * for null.
  */
-function summarise(percentages, questions, dates = []) {
+function summarise(percentages, questions, dates = [], points = []) {
   if (percentages.length === 0) {
-    return { attempts: 0, questions, average: null, lowest: null, highest: null, exams: [] };
+    return {
+      attempts: 0,
+      questions,
+      average: null,
+      lowest: null,
+      highest: null,
+      pointsMax: null,
+      exams: [],
+    };
   }
   const sum = percentages.reduce((a, b) => a + b, 0);
   return {
@@ -58,11 +66,38 @@ function summarise(percentages, questions, dates = []) {
     // `dates` is optional and defaults to empty: a caller that has no dates to
     // hand (the unit tests) still gets a well-formed series, with null dates the
     // chart simply does not label.
+    // The mark the sittings were scored out of, when they all share one. The
+    // writing card draws its chart in points when this is set; see sharedMax.
+    pointsMax: sharedMax(points),
     exams: percentages.map((score, i) => ({
       score: round1(score),
       date: dates[i] ?? null,
+      // Raw points, alongside the percentage rather than instead of it: the
+      // percentage is what makes three subjects comparable, the points are what
+      // the exam itself hands back. Null for a subject that has no points.
+      points: points[i] ? round1(points[i].awarded) : null,
     })),
   };
+}
+
+/**
+ * The one mark every answer in a list was scored out of, or null.
+ *
+ * A writing task is marked out of 20 — 4 לשון + 4 ארגון + 12 תוכן, fixed by
+ * lawpass_server/lib/ai/generate-rubric.js — so a candidate's history normally
+ * shares one denominator, and the dashboard can print the number the exam
+ * actually gives back ("15.5") instead of a percentage of it ("77.5%").
+ *
+ * NULL THE MOMENT THE DENOMINATORS DIFFER, and that is the point of the check
+ * rather than an edge case: 15 out of 15 and 15 out of 20 are not the same
+ * result, and plotting both against one points axis would state that they were.
+ * The charts fall back to the percentage there, which stays comparable whatever
+ * each paper was worth.
+ */
+function sharedMax(points) {
+  if (points.length === 0) return null;
+  const first = points[0].max;
+  return points.every((p) => p.max === first) ? first : null;
 }
 
 /**
@@ -112,8 +147,10 @@ async function readChoiceSubject(supabase, userId, table) {
  * Only GRADED answers count. A submitted-but-unmarked task has `score IS NULL`
  * and would otherwise drag an average toward zero for work that has simply not
  * been read yet — the candidate would watch their average fall by handing work
- * in. The score itself is points out of points, converted to a percentage here
- * so the three cards share one scale.
+ * in. The score itself is points out of points. Both readings are returned: the
+ * percentage, which is the scale the three cards share, and the raw points,
+ * which is what this card actually draws — a written task is marked in points
+ * out of 20, and that is how a candidate reads their own result.
  */
 async function readWritingSubject(supabase, userId) {
   const { data, error } = await supabase
@@ -128,6 +165,7 @@ async function readWritingSubject(supabase, userId) {
 
   const percentages = [];
   const dates = [];
+  const points = [];
   for (const row of data ?? []) {
     const total = Number(row.score?.total);
     const max = Number(row.score?.max);
@@ -137,9 +175,10 @@ async function readWritingSubject(supabase, userId) {
     if (!Number.isFinite(total) || !Number.isFinite(max) || max <= 0) continue;
     percentages.push((total / max) * 100);
     dates.push(row.created_at ?? null);
+    points.push({ awarded: total, max });
   }
 
-  return summarise(percentages, percentages.length, dates);
+  return summarise(percentages, percentages.length, dates, points);
 }
 
 /**
@@ -181,6 +220,59 @@ const UNCLASSIFIED = "ללא סיווג";
 
 /** One decimal, matching how `answer_score` is stored. */
 const round1n = (n) => Math.round(n * 10) / 10;
+
+/**
+ * The three things a written answer is marked on, in the rubric's own order.
+ *
+ * Keys as `score.dimensions` stores them (lib/ai/grade-answer.js), names as the
+ * exam uses them (lib/ai/generate-rubric.js: תוכן 12, לשון 4, ארגון 4).
+ *
+ * ORDERED BY WEIGHT, NOT ALPHABETICALLY, and the order is kept rather than
+ * sorted away: a reader who knows the rubric expects תוכן first because it
+ * carries twelve of the twenty points. The maximum is read from the stored row
+ * rather than from this list — a rubric that was marked out of different totals
+ * must keep reporting what it actually used, not what today's generator would.
+ */
+const WRITING_DIMENSIONS = [
+  { key: "content", label: "תוכן" },
+  { key: "language", label: "לשון" },
+  { key: "organization", label: "ארגון" },
+];
+
+/**
+ * One marked answer as a row per rubric dimension — what the charts draw when a
+ * single מטלת כתיבה is picked from the list.
+ *
+ * ROWS CARRY THEIR OWN MAXIMUM, which is what makes this view different from
+ * every other one on the page. תוכן is out of 12 and לשון out of 4, so "3
+ * points" is a poor mark in one and a perfect one in the other; a row that did
+ * not say what it was out of would leave the chart drawing two different
+ * measurements as one. `percent` comes along for ordering and for the tooltip.
+ *
+ * Empty when the row predates dimension-level grading, which the charts show as
+ * their empty state rather than as a task scored zero on everything.
+ */
+function writingDimensionRows(score) {
+  const dimensions = score?.dimensions ?? {};
+  const rows = [];
+  for (const { key, label } of WRITING_DIMENSIONS) {
+    const awarded = Number(dimensions?.[key]?.awarded);
+    const max = Number(dimensions?.[key]?.max);
+    if (!Number.isFinite(awarded) || !Number.isFinite(max) || max <= 0) continue;
+    rows.push({
+      topic: label,
+      // A dimension is marked once per answer. Not a question count in any real
+      // sense, but the pie in this mode is drawn from `points`, and a sane
+      // number here keeps the row well-formed for anything reading the shape.
+      questions: 1,
+      correct: null,
+      percent: round1n((awarded / max) * 100),
+      points: round1n(awarded),
+      pointsMax: round1n(max),
+    });
+  }
+  return rows;
+}
 
 /**
  * Roll every answered question of a multiple-choice subject up by law.
@@ -279,7 +371,15 @@ async function readChoiceTopics(supabase, admin, userId, table, answerKeyFor) {
     });
   });
 
-  return { all: withPercent(overall), sittings: perSitting };
+  // `pointsMax` null and no `dimensions`: a multiple-choice question is right
+  // or wrong, so there is neither a points scale to draw nor a rubric to break
+  // a score into.
+  return {
+    all: withPercent(overall),
+    sittings: perSitting,
+    pointsMax: null,
+    dimensions: [],
+  };
 }
 
 /** Turn accumulated counts into ordered rows carrying their percentage. */
@@ -299,21 +399,38 @@ function withPercent(map) {
  * a topic's percentage is the mean of its answers' percentages rather than a
  * ratio of counts. Ungraded answers are excluded for the same reason they are
  * excluded from the card above: a task nobody has marked yet is not a zero.
+ *
+ * The mean of the raw points comes back beside it, with the mark they were all
+ * scored out of (`pointsMax`), because that is the reading the chart draws: a
+ * law a candidate averages 15.5 out of 20 in is the sentence the exam itself
+ * would write. See sharedMax for when that falls back to the percentage.
  */
 async function readWritingTopics(supabase, userId) {
   const { data, error } = await supabase
     .from(OPEN_QUESTION_ANSWERS)
-    .select("score, open_questions(subject)")
+    .select("answer_id, created_at, score, open_questions(subject)")
     .eq("user_id", userId)
-    .not("score", "is", null);
+    .not("score", "is", null)
+    // Chronological, so a task's position in `sittings` is the number the
+    // picker gives it — the same numbering the card's trend line uses, which is
+    // read from the same table in the same order.
+    .order("created_at", { ascending: true });
 
   if (error) throw error;
 
   const rows = new Map();
+  const points = [];
+  const sittings = [];
+  // The same three metrics, accumulated across every answer rather than read
+  // off one: what the candidate averages in תוכן, in לשון, in ארגון. It is
+  // the question the whole-history view is for — which of the three to work on
+  // next — and no single task can answer it.
+  const byDimension = new Map();
   for (const answer of data ?? []) {
     const total = Number(answer.score?.total);
     const max = Number(answer.score?.max);
     if (!Number.isFinite(total) || !Number.isFinite(max) || max <= 0) continue;
+    points.push({ awarded: total, max });
 
     // The embed is an object for a to-one relation, but PostgREST returns an
     // array shape in some versions; both are handled so a client upgrade does
@@ -322,27 +439,91 @@ async function readWritingTopics(supabase, userId) {
     const subject =
       (Array.isArray(embedded) ? embedded[0]?.subject : embedded?.subject) || UNCLASSIFIED;
 
-    const row = rows.get(subject) ?? { topic: subject, questions: 0, sum: 0 };
+    const row = rows.get(subject) ?? { topic: subject, questions: 0, sum: 0, pointsSum: 0 };
     row.questions += 1;
     row.sum += (total / max) * 100;
+    row.pointsSum += total;
     rows.set(subject, row);
+
+    const dimensionRows = writingDimensionRows(answer.score);
+
+    // One entry per marked answer, INCLUDING one whose rubric breakdown cannot
+    // be read. Skipping those would renumber every task after them, so the
+    // list would disagree with the trend line on the card above it; an entry
+    // with no rows shows the charts' empty state instead, which is the honest
+    // answer to "this one was marked before dimensions were stored".
+    sittings.push({
+      index: sittings.length + 1,
+      attemptOfPaper: null,
+      questionId: answer.answer_id ?? null,
+      score: round1n((total / max) * 100),
+      points: round1n(total),
+      pointsMax: round1n(max),
+      // The law the task was set on — the only name a candidate has for it.
+      // `open_questions` has no title column; `subject` is what the writing
+      // task screens show, so it is what the picker and the chart show too.
+      title: subject,
+      createdAt: answer.created_at ?? null,
+      rows: dimensionRows,
+    });
+
+    for (const dimension of dimensionRows) {
+      const acc = byDimension.get(dimension.topic) ?? {
+        topic: dimension.topic,
+        questions: 0,
+        pointsSum: 0,
+        percentSum: 0,
+        max: 0,
+      };
+      acc.questions += 1;
+      acc.pointsSum += dimension.points;
+      acc.percentSum += dimension.percent;
+      // The largest ceiling this metric was ever marked out of. They are the
+      // same number in every rubric the generator writes; taking the largest
+      // rather than the last means a mixed history draws its bars against a
+      // ceiling no answer exceeded, instead of one some of them did.
+      acc.max = Math.max(acc.max, dimension.pointsMax);
+      byDimension.set(dimension.topic, acc);
+    }
   }
 
-  // Same envelope as the two exam subjects so the client has one shape to read,
-  // with no sittings: a writing task is one answer marked on its own, not a
-  // paper sat end to end, so "מבחן ראשון" has nothing to point at.
+  // Same envelope as the two exam subjects, and now with sittings too: one per
+  // marked answer, so the tab's picker can show a single מטלה. What a chosen
+  // one draws is NOT what a chosen exam draws — a paper breaks down into the
+  // areas of law it covered, while a written answer breaks down into the three
+  // things it was marked on. Picking one law out of a single task would be a
+  // pie with one slice.
   return {
+    // Kept in the rubric's own order (תוכן first, as WRITING_DIMENSIONS lists
+    // them) rather than sorted by size: these three are a fixed structure the
+    // reader already knows, not a ranking that changed since last time.
+    dimensions: WRITING_DIMENSIONS.map(({ label }) => byDimension.get(label))
+      .filter(Boolean)
+      .map(({ topic, questions, pointsSum, percentSum, max }) => ({
+        topic,
+        questions,
+        correct: null,
+        // The mean of the RATIOS, not the ratio of the means — they differ the
+        // moment two answers were marked out of different ceilings, and it is
+        // the per-answer ratio that each of those answers actually earned.
+        percent: round1n(percentSum / questions),
+        points: round1n(pointsSum / questions),
+        pointsMax: max,
+      })),
     all: finalise(
-      [...rows.values()].map(({ topic, questions, sum }) => ({
+      [...rows.values()].map(({ topic, questions, sum, pointsSum }) => ({
         topic,
         questions,
         // No correct/incorrect split exists for a written answer; the chart
-        // reads `percent` and derives the remainder.
+        // reads `percent` (or `points`) and derives the remainder.
         correct: null,
         percent: questions > 0 ? round1n(sum / questions) : 0,
+        // The same average in the marks the answers were actually given.
+        points: questions > 0 ? round1n(pointsSum / questions) : 0,
       }))
     ),
-    sittings: [],
+    sittings,
+    pointsMax: sharedMax(points),
   };
 }
 

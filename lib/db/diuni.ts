@@ -313,6 +313,14 @@ export type DiuniReviewItem = {
   stem: string;
   correctChoice: Choice;
   question: Question360;
+  /**
+   * The subject this question belongs to — the law for a statute-grounded
+   * question, the judgment's area of practice for a judgment-grounded one.
+   * Resolved exactly as the server resolves it when marking a sitting
+   * (lawpass_server/db/diuni.js#topicOf), so a mid-sitting check and a filed
+   * sitting group the same paper into the same rows. Null rather than a guess.
+   */
+  topic: string | null;
 };
 
 export type DiuniReview = {
@@ -359,6 +367,71 @@ function toReferences(sources: DiuniSource[]): string[] {
 }
 
 /**
+ * The subject a question belongs to, for the per-subject table.
+ *
+ * TWO KINDS OF QUESTION, TWO KINDS OF SUBJECT. A statute-grounded question is
+ * about a named law, and that name is already on the question's own `sources`.
+ * A judgment-grounded one is not about a law at all — its subject is the area of
+ * practice the judgment sits in, which lives on `verdict_list` and reaches here
+ * through `areaByVerdict`.
+ *
+ * A port of `topicOf` in lawpass_server/db/diuni.js, which decides the same
+ * thing at marking time. The two must agree: a candidate who checks their work
+ * mid-sitting and then files the paper would otherwise be shown the same
+ * questions grouped two different ways.
+ */
+function topicOf(
+  question: StoredQuestion,
+  areaByVerdict: Map<string, string>
+): string | null {
+  const source = (question.sources ?? [])[0];
+  if (!source) return null;
+  if (source.kind === "law") return source.law_name ?? null;
+  return areaByVerdict.get(source.verdict_id) ?? null;
+}
+
+/**
+ * The judgment area behind every judgment-grounded question of a paper.
+ *
+ * One join for the whole paper, not one per question — and none at all for a
+ * paper built entirely from statutes, which carries no verdict ids to look up.
+ */
+async function getJudgmentAreas(
+  questions: StoredQuestion[]
+): Promise<Map<string, string>> {
+  const verdictIds = [
+    ...new Set(
+      questions
+        .map((q) => (q.sources ?? [])[0])
+        .filter(
+          (source): source is DiuniVerdictSource =>
+            !!source && source.kind !== "law" && !!source.verdict_id
+        )
+        .map((source) => source.verdict_id)
+    ),
+  ];
+
+  const areaByVerdict = new Map<string, string>();
+  if (verdictIds.length === 0) return areaByVerdict;
+
+  const supabase = createAdminClient();
+  const { data, error } = await supabase
+    .from("verdict_list")
+    .select("verdict_id, judgment_area")
+    .in("verdict_id", verdictIds)
+    .returns<{ verdict_id: string; judgment_area: string | null }[]>();
+
+  if (error) {
+    throw new Error(`failed to read verdict_list: ${error.message}`);
+  }
+
+  for (const row of data ?? []) {
+    if (row.judgment_area) areaByVerdict.set(row.verdict_id, row.judgment_area);
+  }
+  return areaByVerdict;
+}
+
+/**
  * The review for one generated paper — the same row `getDiuniSet` reads for the
  * same `questionId`, so the questions the candidate answered and the review
  * behind them line up.
@@ -400,6 +473,8 @@ export async function getDiuniReview(
     (data.question_review?.questions ?? []).map((r) => [r.number, r])
   );
 
+  const areaByVerdict = await getJudgmentAreas(data.questions.questions);
+
   const items: DiuniReviewItem[] = [];
   for (const question of data.questions.questions) {
     const review = reviews.get(question.number);
@@ -412,6 +487,7 @@ export async function getDiuniReview(
       fact_pattern: question.fact_pattern ?? "",
       stem: question.stem ?? "",
       correctChoice,
+      topic: topicOf(question, areaByVerdict),
       question: {
         choices,
         legal_topic_analysis: review?.legal_topic_analysis ?? "",
@@ -446,6 +522,13 @@ export type DiuniGivenAnswer = {
   /** The key AT THE TIME OF MARKING — snapshot, not looked up again. */
   correct_letter: DiuniLetter | null;
   is_correct: boolean;
+  /**
+   * The law or judgment area the question came from, stamped on at marking time
+   * so the per-subject table can be recomputed from the row alone — see
+   * `breakdownByTopic`. Optional because sittings filed before the server
+   * started carrying it have entries without one; they group under "ללא סיווג".
+   */
+  topic?: string | null;
 };
 
 export type DiuniAttempt = {

@@ -88,10 +88,6 @@ const rotate = Number(flagOf("rotate") ?? 0);
 // question parser correctly finds nothing in one. The OCR step is identical;
 // only the shape read out of the Markdown differs.
 const mode = flagOf("mode") ?? "questions";
-if (!["questions", "templates"].includes(mode)) {
-  console.error(`--mode must be 'questions' or 'templates' (got '${mode}')`);
-  process.exit(2);
-}
 // Who reads the pixels.
 //
 // 'firecrawl' is anydoc's hosted path and is right for a SCAN — a flat, square
@@ -105,16 +101,30 @@ if (!["questions", "templates"].includes(mode)) {
 // and it can be told what the page IS, which a generic OCR model cannot be.
 // It costs one call per page against Firecrawl's one per document.
 const ocrEngine = flagOf("ocr") ?? "firecrawl";
-if (!["firecrawl", "claude"].includes(ocrEngine)) {
-  console.error(`--ocr must be 'firecrawl' or 'claude' (got '${ocrEngine}')`);
-  process.exit(2);
-}
 const model = flagOf("model") ?? "claude-opus-5";
-if (![0, 90, 180, 270].includes(((rotate % 360) + 360) % 360)) {
-  console.error(`--rotate must be 0, 90, 180 or 270 (got ${rotate})`);
-  process.exit(2);
-}
 const inputs = argv.filter((a) => !a.startsWith("--"));
+
+/**
+ * Checked in main(), NOT at module scope, because this module is imported as a
+ * library — docx2json.mjs and pdf2json.mjs take `toLines` and `parse` from it.
+ * A `process.exit` here runs on IMPORT and judges the importing script's argv
+ * by this script's vocabulary: `docx2json.mjs --mode=document`, straight out of
+ * that script's own header, died right here without ever reaching a document.
+ */
+function validateFlags() {
+  if (!["questions", "templates"].includes(mode)) {
+    console.error(`--mode must be 'questions' or 'templates' (got '${mode}')`);
+    process.exit(2);
+  }
+  if (!["firecrawl", "claude"].includes(ocrEngine)) {
+    console.error(`--ocr must be 'firecrawl' or 'claude' (got '${ocrEngine}')`);
+    process.exit(2);
+  }
+  if (![0, 90, 180, 270].includes(((rotate % 360) + 360) % 360)) {
+    console.error(`--rotate must be 0, 90, 180 or 270 (got ${rotate})`);
+    process.exit(2);
+  }
+}
 
 // ---------------------------------------------------------------- collect
 
@@ -748,6 +758,8 @@ function parseTemplates(blocks) {
 export { jpegInfo, pdfFromJpegs, toLines, parse, toBlocks, parseTemplates, proofSheet };
 
 async function main() {
+  validateFlags();
+
   if (inputs.length === 0 || argv.includes("--help")) {
     console.log(
       "usage: node scripts/ingestion/jpeg2json.mjs <folder|file...> --out=<dir>\n" +

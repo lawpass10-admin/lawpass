@@ -3,7 +3,7 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 
-const { getSubjectStats, summarise } = require("./subject-stats");
+const { getSubjectStats, getTopicStats, summarise } = require("./subject-stats");
 
 /** A stub of the query builder chain the reader uses. */
 function stubSupabase(byTable) {
@@ -51,9 +51,9 @@ test("the exam series keeps each score with its own date, in order", () => {
   assert.deepEqual(
     s.exams,
     [
-      { score: 50, date: dates[0] },
-      { score: 75, date: dates[1] },
-      { score: 100, date: dates[2] },
+      { score: 50, date: dates[0], points: null },
+      { score: 75, date: dates[1], points: null },
+      { score: 100, date: dates[2], points: null },
     ],
     "position in the series is the exam number the chart labels"
   );
@@ -61,7 +61,9 @@ test("the exam series keeps each score with its own date, in order", () => {
 
 test("an exam series without dates is still well formed", () => {
   // The chart prints no date under a point that has none, rather than guessing.
-  assert.deepEqual(summarise([60], 1).exams, [{ score: 60, date: null }]);
+  // `points` null: a caller with no points to hand still gets the field, so the
+  // chart can branch on it rather than on whether the key exists.
+  assert.deepEqual(summarise([60], 1).exams, [{ score: 60, date: null, points: null }]);
   assert.deepEqual(summarise([], 0).exams, []);
 });
 
@@ -116,6 +118,46 @@ test("a writing task is one question, scored as points out of points", async () 
   assert.equal(writing.highest, 75);
 });
 
+test("a writing sitting carries its raw points and the mark they are out of", async () => {
+  const supabase = stubSupabase({
+    open_question_answers: [
+      { score: { total: 15.5, max: 20 } },
+      { score: { total: 10, max: 20 } },
+    ],
+  });
+
+  const [mahoti, , writing] = await getSubjectStats(supabase, "u1");
+  assert.equal(writing.pointsMax, 20, "the scale the dashboard draws the axis to");
+  assert.deepEqual(
+    writing.exams.map((e) => e.points),
+    [15.5, 10],
+    "the marks as awarded, not a percentage of them"
+  );
+  assert.deepEqual(
+    writing.exams.map((e) => e.score),
+    [77.5, 50],
+    "the percentage is still there beside them"
+  );
+  assert.equal(mahoti.pointsMax, null, "a multiple-choice subject has no points scale");
+});
+
+test("sittings marked out of different totals have no shared points scale", async () => {
+  const supabase = stubSupabase({
+    open_question_answers: [
+      { score: { total: 15, max: 20 } },
+      { score: { total: 15, max: 15 } },
+    ],
+  });
+
+  const [, , writing] = await getSubjectStats(supabase, "u1");
+  assert.equal(
+    writing.pointsMax,
+    null,
+    "15 of 20 and 15 of 15 cannot share an axis — the chart falls back to %"
+  );
+  assert.deepEqual(writing.exams.map((e) => e.score), [75, 100]);
+});
+
 test("an unscorable writing row is skipped, never counted as 0%", async () => {
   const supabase = stubSupabase({
     open_question_answers: [
@@ -129,6 +171,126 @@ test("an unscorable writing row is skipped, never counted as 0%", async () => {
   assert.equal(writing.questions, 1);
   assert.equal(writing.average, 90);
   assert.equal(writing.lowest, 90);
+});
+
+test("each marked writing task is one pickable sitting, broken down by rubric", async () => {
+  const supabase = stubSupabase({
+    open_question_answers: [
+      {
+        answer_id: "a1",
+        created_at: "2026-03-01T00:00:00Z",
+        score: {
+          total: 15.5,
+          max: 20,
+          dimensions: {
+            content: { awarded: 9.5, max: 12 },
+            language: { awarded: 3, max: 4 },
+            organization: { awarded: 3, max: 4 },
+          },
+        },
+        open_questions: { subject: "חוק החוזים" },
+      },
+    ],
+  });
+
+  const { writing } = await getTopicStats(supabase, supabase, "u1");
+  assert.equal(writing.sittings.length, 1);
+
+  const [task] = writing.sittings;
+  assert.equal(task.index, 1);
+  assert.equal(task.points, 15.5, "named in the picker by the mark it was given");
+  assert.equal(task.title, "חוק החוזים", "and by the law it was set on — its only name");
+  assert.equal(task.pointsMax, 20);
+  assert.deepEqual(
+    task.rows.map((r) => [r.topic, r.points, r.pointsMax]),
+    [
+      ["תוכן", 9.5, 12],
+      ["לשון", 3, 4],
+      ["ארגון", 3, 4],
+    ],
+    "the rubric's own order, each row carrying what it was marked out of"
+  );
+  assert.equal(task.rows[0].percent, 79.2, "the ratio, for ordering and the tooltip");
+});
+
+test("the whole writing history averages each rubric metric across every answer", async () => {
+  const supabase = stubSupabase({
+    open_question_answers: [
+      {
+        answer_id: "a1",
+        score: {
+          total: 15.5,
+          max: 20,
+          dimensions: {
+            content: { awarded: 9.5, max: 12 },
+            language: { awarded: 3, max: 4 },
+            organization: { awarded: 3, max: 4 },
+          },
+        },
+        open_questions: { subject: "חוק החוזים" },
+      },
+      {
+        answer_id: "a2",
+        score: {
+          total: 10.5,
+          max: 20,
+          dimensions: {
+            content: { awarded: 6.5, max: 12 },
+            language: { awarded: 2, max: 4 },
+            organization: { awarded: 2, max: 4 },
+          },
+        },
+        open_questions: { subject: "חוק השליחות" },
+      },
+    ],
+  });
+
+  const { writing, mahoti } = await getTopicStats(supabase, supabase, "u1");
+  assert.deepEqual(
+    writing.dimensions.map((r) => [r.topic, r.points, r.pointsMax, r.questions]),
+    [
+      ["תוכן", 8, 12, 2],
+      ["לשון", 2.5, 4, 2],
+      ["ארגון", 2.5, 4, 2],
+    ],
+    "the rubric's own order, each metric averaged over both answers"
+  );
+  assert.deepEqual(
+    writing.all.map((r) => r.topic),
+    ["חוק החוזים", "חוק השליחות"],
+    "the by-law rows are untouched — the pie still reads them"
+  );
+  assert.deepEqual(mahoti.dimensions, [], "a multiple-choice subject has no rubric");
+});
+
+test("a writing task marked before dimensions were stored keeps its place in the list", async () => {
+  const supabase = stubSupabase({
+    open_question_answers: [
+      { answer_id: "old", score: { total: 12, max: 20 } },
+      {
+        answer_id: "new",
+        score: {
+          total: 10,
+          max: 20,
+          dimensions: {
+            content: { awarded: 6, max: 12 },
+            language: { awarded: 2, max: 4 },
+            organization: { awarded: 2, max: 4 },
+          },
+        },
+      },
+    ],
+  });
+
+  const { writing } = await getTopicStats(supabase, supabase, "u1");
+  assert.deepEqual(
+    writing.sittings.map((s) => [s.index, s.rows.length]),
+    [
+      [1, 0],
+      [2, 3],
+    ],
+    "the unbreakable-down one is still מטלה ראשונה — dropping it would renumber the rest"
+  );
 });
 
 test("the three subjects come back in dashboard order", async () => {

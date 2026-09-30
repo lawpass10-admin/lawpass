@@ -42,7 +42,7 @@ const LINE_COLOR: Record<SubjectStat["key"], string> = {
 };
 
 function SubjectCard({ subject }: { subject: SubjectStat }) {
-  const { key, label, href, questions, attempts, exams } = subject;
+  const { key, label, href, questions, attempts, exams, pointsMax } = subject;
   const untouched = questions === 0;
 
   return (
@@ -72,7 +72,15 @@ function SubjectCard({ subject }: { subject: SubjectStat }) {
             ragged before a candidate has started. */}
         <div style={{ marginTop: 8 }}>
           {exams.length > 0 ? (
-            <ScoreTrendChart exams={exams} color={LINE_COLOR[key]} label={label} />
+            // `pointsMax` is what puts מטלת כתיבה on a 0-20 points axis while
+            // the two exam cards stay on percentages: the server sets it only
+            // where a points scale exists and every sitting shares it.
+            <ScoreTrendChart
+              exams={exams}
+              color={LINE_COLOR[key]}
+              label={label}
+              maxPoints={pointsMax}
+            />
           ) : (
             <div
               className="flex items-center justify-center rounded-lg border border-dashed"

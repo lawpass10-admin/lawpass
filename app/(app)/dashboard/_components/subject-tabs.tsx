@@ -26,12 +26,52 @@ import { cn } from "@/lib/utils";
  * the same measurement and produce a number that means nothing.
  */
 
+/**
+ * Hebrew ordinals for the two things that can be picked from the list.
+ *
+ * Written out rather than generated: Hebrew ordinals are irregular, and they
+ * are gendered — מבחן takes ראשון and מטלה takes ראשונה. Past ten both fall
+ * back to a numeral, which serves a candidate better than an invented word.
+ */
+const EXAM_NOUN = {
+  all: "כל המבחנים",
+  ordinals: [
+    "מבחן ראשון", "מבחן שני", "מבחן שלישי", "מבחן רביעי", "מבחן חמישי",
+    "מבחן שישי", "מבחן שביעי", "מבחן שמיני", "מבחן תשיעי", "מבחן עשירי",
+  ],
+};
+const TASK_NOUN = {
+  all: "כל המטלות",
+  ordinals: [
+    "מטלה ראשונה", "מטלה שנייה", "מטלה שלישית", "מטלה רביעית", "מטלה חמישית",
+    "מטלה שישית", "מטלה שביעית", "מטלה שמינית", "מטלה תשיעית", "מטלה עשירית",
+  ],
+};
+
 const TABS: {
   key: SubjectKey;
   label: string;
   empty: string;
   /** What the charts under this tab are grouped by. See TopicCharts. */
   dimension: string;
+  /**
+   * What they are grouped by once ONE sitting is picked, where that differs.
+   *
+   * It differs for מטלת כתיבה only, and the reason is the data rather than
+   * a preference: a single written task has exactly one law, so grouping it by
+   * law is a pie with one slice. What it does break down into is the three
+   * things it was marked on — תוכן, לשון, ארגון — which is also the
+   * breakdown the grade itself is built from.
+   */
+  sittingDimension?: string;
+  /**
+   * How one sitting is named in the picker.
+   *
+   * מבחן is masculine and מטלה is feminine, so they do not take the same
+   * ordinals — "מטלה ראשון" is simply wrong Hebrew. Each tab carries its
+   * own noun and ordinal list rather than one generated form.
+   */
+  sittingNoun: { all: string; ordinals: string[] };
   /**
    * A background for this tab AND for its two chart cards.
    *
@@ -50,12 +90,14 @@ const TABS: {
     key: "mahoti",
     label: "דין מהותי",
     dimension: "תחום התמחות",
+    sittingNoun: EXAM_NOUN,
     empty: "עדיין לא הגשת מבחן בדין מהותי — הגישו מבחן כדי לראות פילוח לפי תחום התמחות.",
   },
   {
     key: "diuni",
     label: "דין דיוני",
     dimension: "תחום התמחות",
+    sittingNoun: EXAM_NOUN,
     empty: "עדיין לא הגשת מבחן בדין דיוני — הגישו מבחן כדי לראות פילוח לפי תחום התמחות.",
     // --bg-soft is the palette's light grey, and it has a dark-mode value, so
     // the tint follows the theme instead of staying pale on a dark card.
@@ -66,6 +108,8 @@ const TABS: {
     label: "מטלת כתיבה",
     // A writing task's subject is one named statute, not a practice area.
     dimension: "חוק",
+    sittingDimension: "מדד הערכה",
+    sittingNoun: TASK_NOUN,
     empty: "עדיין לא נבדקה מטלת כתיבה — לאחר בדיקה יופיע כאן פילוח לפי נושא.",
     // A light blue, sitting clear of דיוני's grey. Written out rather than
     // taken from a token because the palette has no light blue — the nearest,
@@ -134,6 +178,8 @@ export function SubjectTabs({ topics }: { topics: TopicStatsBySubject }) {
         subject={topics[active]}
         empty={current.empty}
         dimension={current.dimension}
+        sittingDimension={current.sittingDimension}
+        sittingNoun={current.sittingNoun}
         surface={current.tint}
       />
 
@@ -173,20 +219,47 @@ function SubjectPanel({
   subject,
   empty,
   dimension,
+  sittingDimension,
+  sittingNoun,
   surface,
 }: {
   subject: SubjectTopics | undefined;
   empty: string;
   dimension: string;
+  sittingDimension?: string;
+  sittingNoun: { all: string; ordinals: string[] };
   surface?: string;
 }) {
   const sittings = subject?.sittings ?? [];
   const [selected, setSelected] = useState<number | "all">("all");
 
-  const rows =
-    selected === "all"
-      ? (subject?.all ?? [])
-      : (sittings.find((s) => s.index === selected)?.rows ?? []);
+  const picked = selected === "all" ? null : sittings.find((s) => s.index === selected);
+  const rows = selected === "all" ? (subject?.all ?? []) : (picked?.rows ?? []);
+
+  // The mark as it was stored on the answer, not as a sum of the rows below it:
+  // the two agree, and if they ever stopped agreeing the one on the answer is
+  // the one the candidate was given.
+  const total =
+    picked?.points !== undefined && picked?.pointsMax !== undefined
+      ? { points: picked.points, max: picked.pointsMax }
+      : null;
+
+  // One sitting of מטלת כתיבה is grouped by what it was marked on, not by
+  // its law — see `sittingDimension` on TABS.
+  const groupedBy = selected !== "all" && sittingDimension ? sittingDimension : dimension;
+
+  // ACROSS THE WHOLE HISTORY THE TWO CHARTS SPLIT UP. The pie keeps showing
+  // which laws the practice went into; the score chart switches to the three
+  // things every answer was marked on, averaged over all of them, because
+  // "תוכן is where I lose points" is what a candidate can act on and a law's
+  // average score is not. Only מטלת כתיבה has the rows for it.
+  const scoreRows = selected === "all" ? subject?.dimensions : undefined;
+
+  // The tab's own empty line says "you have not sat one yet", which is the
+  // wrong sentence for a sitting the candidate is looking AT. One with no rows
+  // was marked before its breakdown was stored — for מטלת כתיבה, before the
+  // per-dimension marks were kept.
+  const emptySitting = "אין פירוט זמין עבור הבחירה הזו.";
 
   return (
     <div className="space-y-3">
@@ -208,11 +281,24 @@ function SubjectPanel({
                 color: "var(--color-navy-ink)",
               }}
             >
-              <option value="all">כל המבחנים</option>
+              <option value="all">{sittingNoun.all}</option>
               {sittings.map((s) => (
                 <option key={s.index} value={s.index}>
-                  {ordinalExam(s.index)}
-                  {s.score !== null ? ` · ${s.score}%` : ""}
+                  {ordinalSitting(s.index, sittingNoun.ordinals)}
+                  {/* The task's own name between the two, TRIMMED: a law like
+                      "תקנות בתי המשפט (אגרות), התשס"ז-2007" is longer than the
+                      picker is wide, and a <select> sizes itself to its longest
+                      option — one task would set the width of the whole control.
+                      The full name is on the chart card. */}
+                  {s.title ? ` · ${trim(s.title, 34)}` : ""}
+                  {/* Named by the mark it was given, in the unit it was given
+                      in: a written task is marked in points out of 20, a paper
+                      scored as a percentage. */}
+                  {s.points !== undefined
+                    ? ` · ${s.points} נק'`
+                    : s.score !== null
+                      ? ` · ${s.score}%`
+                      : ""}
                 </option>
               ))}
             </select>
@@ -230,25 +316,35 @@ function SubjectPanel({
       <TopicCharts
         key={String(selected)}
         rows={rows}
-        emptyMessage={empty}
-        dimensionLabel={dimension}
+        emptyMessage={selected === "all" ? empty : emptySitting}
+        dimensionLabel={groupedBy}
+        scoreRows={scoreRows}
+        scoreDimensionLabel={sittingDimension}
+        scoreContext={picked?.title}
+        total={total}
         surface={surface}
+        // What draws מטלת כתיבה's score chart in points out of 20 while the
+        // two exam tabs stay on percentages. The server sends it only for a
+        // subject that is marked in points, so the tab does not decide this.
+        maxPoints={subject?.pointsMax ?? null}
       />
     </div>
   );
 }
 
+/** Long law names have to fit inside a <select>; the card shows them in full. */
+function trim(text: string, max: number): string {
+  const clean = text.replace(/\s+/g, " ").trim();
+  return clean.length > max ? `${clean.slice(0, max - 1)}…` : clean;
+}
+
 /**
- * "מבחן ראשון", "מבחן שני", … falling back to a numeral past ten.
+ * "מבחן ראשון" / "מטלה ראשונה", falling back to a numeral past ten.
  *
- * Hebrew ordinals are irregular enough that a generated form would be wrong,
- * and a candidate with eleven sittings is better served by "מבחן 11" than by an
- * invented word.
+ * The list comes from the tab (EXAM_NOUN / TASK_NOUN) because the two nouns are
+ * different genders. Past the tenth, "#11" — a candidate with eleven sittings is
+ * better served by a numeral than by an invented ordinal.
  */
-const ORDINALS = [
-  "ראשון", "שני", "שלישי", "רביעי", "חמישי",
-  "שישי", "שביעי", "שמיני", "תשיעי", "עשירי",
-];
-function ordinalExam(index: number): string {
-  return index <= ORDINALS.length ? `מבחן ${ORDINALS[index - 1]}` : `מבחן ${index}`;
+function ordinalSitting(index: number, ordinals: string[]): string {
+  return index <= ordinals.length ? ordinals[index - 1] : `#${index}`;
 }

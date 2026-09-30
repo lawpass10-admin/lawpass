@@ -45,11 +45,24 @@ const wantHtml = argv.includes("--html");
 const keepMd = argv.includes("--keep-md");
 const force = argv.includes("--force");
 const mode = flagOf("mode") ?? "document";
-if (!["document", "templates", "questions"].includes(mode)) {
-  console.error(`--mode must be 'document', 'templates' or 'questions' (got '${mode}')`);
-  process.exit(2);
-}
 const inputs = argv.filter((a) => !a.startsWith("--"));
+
+/**
+ * Checked in main(), NOT here, because this module is imported as a library —
+ * pdf2json.mjs takes `toStructure` and `asDocument` from it. A `process.exit`
+ * at module scope runs on IMPORT, judging the importing script's own argv by
+ * this script's vocabulary, and kills it before it starts. That is not
+ * hypothetical: this file reads `--mode=document`, jpeg2json.mjs (imported
+ * below) reads the same argv and accepts only 'questions' or 'templates', so
+ * `docx2json.mjs --mode=document` — the usage in the header — exited 2 inside
+ * an import without ever reaching a document.
+ */
+function validateFlags() {
+  if (!["document", "templates", "questions"].includes(mode)) {
+    console.error(`--mode must be 'document', 'templates' or 'questions' (got '${mode}')`);
+    process.exit(2);
+  }
+}
 
 // Everything anydoc converts locally. PDF is in the list because it often is
 // text, and when it is not the error says so precisely.
@@ -344,6 +357,8 @@ ${body}
 // ------------------------------------------------------------------ main
 
 async function main() {
+  validateFlags();
+
   if (inputs.length === 0 || argv.includes("--help")) {
     console.log(
       "usage: node scripts/ingestion/docx2json.mjs <folder|file...> --out=<dir>\n" +

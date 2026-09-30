@@ -23,6 +23,15 @@ import type { SubjectStat } from "@/lib/dashboard/subject-stat";
  *
  * ONE SERIES, SO NO LEGEND — the card's heading names it.
  *
+ * DRAWN IN THE UNIT THE SUBJECT IS MARKED IN. A writing task is scored in
+ * points out of 20, so that is what its card plots and labels — "15.5", the
+ * number on the marked answer itself. The two multiple-choice subjects have no
+ * points to show, so they stay on percentages. Which one is in play is decided
+ * by the data, not by the card: `maxPoints` arrives set only when every sitting
+ * was marked out of the same total (see sharedMax in
+ * lawpass_server/db/subject-stats.js), and anything else falls back to the
+ * percentage rather than inventing a scale.
+ *
  * EVERY POINT CARRIES ITS SCORE. Normally a chart labels selectively and leaves
  * the rest to the tooltip, because a number over every point competes with the
  * line it describes. Here the numbers were asked for, and they are the reason
@@ -30,13 +39,17 @@ import type { SubjectStat } from "@/lib/dashboard/subject-stat";
  * score it used to summarise. The labels are set small and in muted ink so the
  * line still reads as the shape of the trend.
  *
- * The y-axis is pinned to 0-100 rather than fitted to the data. Fitted, a run of
- * 62/64/63 becomes a dramatic mountain range, and the three cards would each use
- * a different scale — so the same height would mean a different score in each,
- * which is the one thing three cards side by side must not do.
+ * The y-axis is pinned to the full mark — 0-100, or 0-20 for a task marked in
+ * points — rather than fitted to the data. Fitted, a run of 62/64/63 becomes a
+ * dramatic mountain range, and a card would rescale itself every time a new
+ * result came in, so the same height would mean a different score week to week.
  */
 
-/** The Bar's own pass mark, drawn as a reference line. */
+/**
+ * The Bar's own pass mark, drawn as a reference line. As a PERCENTAGE, and
+ * rescaled to whatever unit the chart is drawing: 60% of a 20-point task is 12
+ * points, which is the same line through the same data.
+ */
 const PASS_MARK = 60;
 
 /** Height of the plot, including the two-line axis labels under it. */
@@ -70,14 +83,30 @@ export function ScoreTrendChart({
   /** The line's colour. One hue per card, so a glance tells the subjects apart. */
   color,
   label,
+  maxPoints,
 }: {
   exams: Exam[];
   color: string;
   label: string;
+  /**
+   * The mark every sitting was scored out of, if they share one — 20 for the
+   * writing task. Set, the chart plots points; null or absent, percentages.
+   */
+  maxPoints?: number | null;
 }) {
+  // Points only when the scale is known AND every point on the line has one.
+  // A series that switched units halfway would be a lie told with a straight
+  // face, so a single missing value puts the whole card back on percentages.
+  const inPoints =
+    typeof maxPoints === "number" &&
+    maxPoints > 0 &&
+    exams.every((exam) => typeof exam.points === "number");
+  const axisMax = inPoints ? maxPoints : 100;
+  const unit = inPoints ? " נק'" : "%";
+
   const data = exams.map((exam, i) => ({
     exam: i + 1,
-    score: exam.score,
+    score: inPoints ? (exam.points as number) : exam.score,
     date: shortDate(exam.date),
     fullDate: fullDate(exam.date),
   }));
@@ -107,8 +136,9 @@ export function ScoreTrendChart({
             axisLine={{ stroke: "var(--color-line)" }}
           />
           <YAxis
-            domain={[0, 100]}
-            ticks={[0, 50, 100]}
+            // Three ticks whatever the unit: nothing, halfway, full marks.
+            domain={[0, axisMax]}
+            ticks={[0, Math.round((axisMax / 2) * 10) / 10, axisMax]}
             tick={{ fontSize: 11, fill: "var(--color-ink-muted)" }}
             tickLine={false}
             axisLine={false}
@@ -117,7 +147,7 @@ export function ScoreTrendChart({
           {/* Drawn before the line so a line crossing it stays readable: the
               pass mark is a reference, not something to occlude the data. */}
           <ReferenceLine
-            y={PASS_MARK}
+            y={(PASS_MARK / 100) * axisMax}
             stroke="var(--color-status-weak)"
             strokeWidth={1.5}
             strokeDasharray="4 4"
@@ -140,7 +170,7 @@ export function ScoreTrendChart({
             // Unannotated, so the parameter types come from recharts' own
             // Formatter rather than from a narrower guess that will not accept
             // it (the same pattern topic-charts.tsx uses).
-            formatter={(value) => [`${Number(value)}%`, label]}
+            formatter={(value) => [`${Number(value)}${unit}`, label]}
           />
           <Line
             type="monotone"
