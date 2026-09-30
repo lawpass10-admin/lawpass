@@ -7,7 +7,12 @@ import { z } from "zod";
 import { isValidPlanId, type PlanId } from "@/lib/billing/plans";
 import { createClient } from "@/lib/supabase/server";
 
-type ActionResult = { ok: true } | { ok: false; error: string };
+type ActionResult =
+  // `warning` is for the case that is neither: the thing the caller asked for
+  // happened, and something alongside it did not. The feedback box uses it for
+  // a message that was filed while its screenshot was not.
+  | { ok: true; warning?: string }
+  | { ok: false; error: string };
 
 /**
  * Maps the client-side PlanId (URL-safe identifier used by /pricing →
@@ -99,8 +104,60 @@ export async function grantMockSubscriptionAction(
  */
 const FEEDBACK_MAX_CHARS = 4000;
 
+/**
+ * The three things a student can be writing about, matching the QA report
+ * form's own vocabulary (lib/validators/qa-reports).
+ *
+ * The SAME three, deliberately: a student's "the timer jumped" and a tester's
+ * are the same report, and two vocabularies for one thing would mean sorting
+ * the pile twice.
+ */
+const FEEDBACK_TYPES = ["bug", "content", "design"] as const;
+
+/** The screenshot bucket, created by migration 20260930000003. */
+const FEEDBACK_SCREENSHOT_BUCKET = "feedback-screenshots";
+/** Matches the bucket's own file_size_limit — rejected here so the student
+ *  gets a sentence rather than a storage error. */
+const FEEDBACK_SCREENSHOT_MAX_BYTES = 5 * 1024 * 1024;
+const FEEDBACK_SCREENSHOT_TYPES = ["image/png", "image/jpeg", "image/webp"];
+/** Shown when the words were saved and the picture was not. */
+const SCREENSHOT_WARNING =
+  "המשוב נשלח, אך צילום המסך לא נשמר. אין צורך לשלוח שוב.";
+
 const submitFeedbackSchema = z.object({
+  /**
+   * What went wrong — the message itself, and the only field the database
+   * insists on (`feedback_body -> 'text'`, migration 20260923000006).
+   */
   text: z.string().trim().min(1).max(FEEDBACK_MAX_CHARS),
+  /**
+   * What should have happened instead. OPTIONAL, unlike the QA form's own
+   * version of this field, and the asymmetry is on purpose: a tester is filing
+   * a report as a job, while a student is interrupting their own studying to
+   * tell us something. Someone who knows a thing is broken but not what the
+   * right behaviour is has still told us something worth having, and a required
+   * second box is where that person gives up.
+   */
+  expected: z.string().trim().max(FEEDBACK_MAX_CHARS).optional(),
+  /** Which of the three kinds of thing this is. Defaults to the first card. */
+  type: z.enum(FEEDBACK_TYPES).default("bug"),
+  /**
+   * An optional screenshot, validated HERE as well as by the bucket.
+   *
+   * The bucket enforces the same size and MIME list, so this is not the
+   * security boundary — it exists so an oversized image comes back as a
+   * sentence in Hebrew instead of a storage error the student cannot act on.
+   */
+  screenshot: z
+    .instanceof(File)
+    .refine((file) => file.size > 0, { message: "קובץ ריק" })
+    .refine((file) => file.size <= FEEDBACK_SCREENSHOT_MAX_BYTES, {
+      message: "צילום המסך גדול מדי",
+    })
+    .refine((file) => FEEDBACK_SCREENSHOT_TYPES.includes(file.type), {
+      message: "סוג קובץ לא נתמך",
+    })
+    .nullish(),
   /**
    * The route the student was on when they opened the box. Optional, and
    * deliberately not trusted for anything but context: it comes from the
@@ -123,11 +180,38 @@ const submitFeedbackSchema = z.object({
  * student is precisely the one with something to tell us.
  */
 export async function submitUserFeedbackAction(
-  input: unknown
+  formData: FormData
 ): Promise<ActionResult> {
-  const parsed = submitFeedbackSchema.safeParse(input);
+  // FORM DATA, NOT A PLAIN OBJECT, and the screenshot is why. A Server
+  // Function's arguments are serialized by React, and FormData is the one
+  // carrier whose file support is stated outright — a File smuggled inside an
+  // object literal depends on behaviour this app would be the first place in
+  // the repo to rely on. Everything else rides along in the same envelope.
+  const screenshot = formData.get("screenshot");
+  const parsed = submitFeedbackSchema.safeParse({
+    text: formData.get("text"),
+    expected: formData.get("expected") || undefined,
+    type: formData.get("type") ?? undefined,
+    page: formData.get("page") || undefined,
+    // An empty file input posts a zero-byte File in some browsers rather than
+    // nothing at all; treated as "no screenshot" so it cannot fail validation
+    // for a student who never touched the field.
+    screenshot:
+      screenshot instanceof File && screenshot.size > 0 ? screenshot : null,
+  });
   if (!parsed.success) {
-    return { ok: false, error: "לא ניתן לשלוח הודעה ריקה" };
+    // The screenshot gets its own sentence. "לא ניתן לשלוח הודעה ריקה" over a
+    // rejected image would send the student back to a paragraph they already
+    // wrote, looking for a fault that is not there.
+    const badScreenshot = parsed.error.issues.find(
+      (issue) => issue.path[0] === "screenshot"
+    );
+    return {
+      ok: false,
+      error: badScreenshot
+        ? `צילום המסך לא נקלט: ${badScreenshot.message}`
+        : "לא ניתן לשלוח הודעה ריקה",
+    };
   }
 
   const supabase = await createClient();
@@ -136,17 +220,51 @@ export async function submitUserFeedbackAction(
   } = await supabase.auth.getUser();
   if (!user) return { ok: false, error: "לא מחובר" };
 
+  // UPLOADED BEFORE THE ROW IS WRITTEN, so the row can carry the path it ended
+  // up at. A failure here is deliberately NOT fatal: the words are the
+  // feedback and the picture is context, and losing a typed paragraph because
+  // an image would not upload is the wrong trade. The student is told, and the
+  // message is filed either way.
+  let screenshotPath: string | null = null;
+  let screenshotFailed = false;
+  if (parsed.data.screenshot) {
+    const file = parsed.data.screenshot;
+    const extension = file.type === "image/png" ? "png" : file.type === "image/webp" ? "webp" : "jpg";
+    // Foldered by user id because that is what the bucket's INSERT policy
+    // checks — a path outside your own folder is refused by the database.
+    const path = `${user.id}/${crypto.randomUUID()}.${extension}`;
+    const { error: uploadError } = await supabase.storage
+      .from(FEEDBACK_SCREENSHOT_BUCKET)
+      .upload(path, file, { contentType: file.type, upsert: false });
+    if (uploadError) {
+      screenshotFailed = true;
+      // TODO(slice-7): replace with structured logger.
+      console.error(
+        `[feedback] screenshot upload FAILED user=${user.id} message=${uploadError.message}`
+      );
+    } else {
+      screenshotPath = path;
+    }
+  }
+
+  // COLUMNS, NOT THE jsonb BODY (migration 20260930000002). Every field here is
+  // asked of every student, which makes it a column rather than context: the
+  // inbox sorts by type, counts bugs against design complaints and finds the
+  // rows carrying a screenshot with an ordinary WHERE. `feedback_body` is left
+  // NULL — it still holds the rows filed before the form had columns.
+  //
+  // No `submitted_at`: the row's own created_at is the authority, and the
+  // second copy the jsonb carried existed only because a blob has to be
+  // self-contained when exported. A column does not.
   const { error } = await supabase.from("user_feedback").insert({
     user_id: user.id,
-    feedback_body: {
-      text: parsed.data.text,
-      page: parsed.data.page ?? null,
-      // The server's clock, not the browser's — this is the one timestamp
-      // inside the payload and it should not be a machine we do not control.
-      // created_at on the row is the authority; this travels with the text so
-      // an exported body is self-contained.
-      submitted_at: new Date().toISOString(),
-    },
+    feedback_type: parsed.data.type,
+    problem_text: parsed.data.text,
+    // Null rather than an empty string, so "not answered" has exactly one
+    // representation in the column — which is also what the CHECK enforces.
+    expected_text: parsed.data.expected || null,
+    screenshot_path: screenshotPath,
+    page: parsed.data.page ?? null,
   });
 
   if (error) {
@@ -161,8 +279,11 @@ export async function submitUserFeedbackAction(
 
   // TODO(slice-7): replace with structured logger.
   console.info(
-    `[feedback] insert OK user=${user.id} chars=${parsed.data.text.length}`
+    `[feedback] insert OK user=${user.id} type=${parsed.data.type} chars=${parsed.data.text.length} screenshot=${screenshotPath ? "yes" : "no"}`
   );
 
-  return { ok: true };
+  // A saved message whose picture did not upload is a SUCCESS with a note, not
+  // a failure: telling the student "השליחה נכשלה" over a message that is
+  // safely in the table invites them to type the whole thing again.
+  return screenshotFailed ? { ok: true, warning: SCREENSHOT_WARNING } : { ok: true };
 }

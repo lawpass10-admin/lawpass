@@ -5,6 +5,9 @@ import { useMemo, useState } from "react";
 
 import type { StudyDoc, StudyItem } from "@/lib/db/study-material";
 
+/** The guide half of the union — the only shape this reader draws. */
+type StudyGuide = Extract<StudyDoc, { kind: "guide" }>;
+
 /**
  * The reading surface for one study document.
  *
@@ -25,7 +28,7 @@ import type { StudyDoc, StudyItem } from "@/lib/db/study-material";
  * study_material_public, so none of the source's expression can reach the
  * screen even if this component is reused for another document.
  */
-export function StudyReader({ doc }: { doc: StudyDoc }) {
+export function StudyReader({ doc }: { doc: StudyGuide }) {
   const [query, setQuery] = useState("");
   const q = query.trim();
 

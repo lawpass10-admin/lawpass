@@ -1,0 +1,32 @@
+{
+  "_what_this_is": "Requirements for the דגשים attached to «ערעור פסלות» in חוברת הדוגמאות בניסוח משפטי (section [29]).",
+  "_origin_honesty": [
+    "Extracted by a MODEL from the booklet's דגשים prose, which the operator directed be converted.",
+    "requirements_input permits official_rules | human_extraction; neither describes this. `origin` is set to human_extraction because the validator accepts only those two, and `extracted_by` records what actually happened.",
+    "These are statements OF LAW — what a statute or court rule requires. Facts of law are not copyrightable; the booklet's selection and phrasing are. Each should be checked against the provision it names before publication."
+  ],
+  "_section_index": 29,
+  "extracted_by": "Claude (model extraction from the source prose — not human_extraction; see _origin_honesty)",
+  "extracted_at": "2026-09-30",
+  "checked_against": "חוברת הדוגמאות בניסוח משפטי (a7a643a2-4ad6-4e2e-9c84-494911653f13), section [29] דגשים under «ערעור פסלות»",
+  "requirements": [
+    {
+      "id": "psilut-date-and-service",
+      "statement": "בערעור פסלות מצוינים תאריך החתימה ואישור המצאה לצד שכנגד, לפי הנחיות נשיאת בית המשפט העליון.",
+      "origin": "human_extraction",
+      "stage": "ערעור פסלות"
+    },
+    {
+      "id": "psilut-affidavit",
+      "statement": "לערעור בהליך אזרחי מצורף תצהיר לאימות העובדות שבו.",
+      "origin": "human_extraction",
+      "stage": "ערעור פסלות"
+    },
+    {
+      "id": "psilut-attachments",
+      "statement": "לערעור פסלות מצורפים בקשת הפסלות, פרוטוקול הדיון בה וההחלטה נושא הערעור.",
+      "origin": "human_extraction",
+      "stage": "ערעור פסלות"
+    }
+  ]
+}

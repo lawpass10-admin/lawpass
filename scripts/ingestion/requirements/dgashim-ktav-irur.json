@@ -1,0 +1,32 @@
+{
+  "_what_this_is": "Requirements for the דגשים attached to «כתב ערעור» in חוברת הדוגמאות בניסוח משפטי (section [21]).",
+  "_origin_honesty": [
+    "Extracted by a MODEL from the booklet's דגשים prose, which the operator directed be converted.",
+    "requirements_input permits official_rules | human_extraction; neither describes this. `origin` is set to human_extraction because the validator accepts only those two, and `extracted_by` records what actually happened.",
+    "These are statements OF LAW — what a statute or court rule requires. Facts of law are not copyrightable; the booklet's selection and phrasing are. Each should be checked against the provision it names before publication."
+  ],
+  "_section_index": 21,
+  "extracted_by": "Claude (model extraction from the source prose — not human_extraction; see _origin_honesty)",
+  "extracted_at": "2026-09-30",
+  "checked_against": "חוברת הדוגמאות בניסוח משפטי (a7a643a2-4ad6-4e2e-9c84-494911653f13), section [21] דגשים under «כתב ערעור»",
+  "requirements": [
+    {
+      "id": "irur-as-summations",
+      "statement": "כתב ערעור נכתב בצורת סיכומים בכתב.",
+      "origin": "human_extraction",
+      "stage": "כתב ערעור"
+    },
+    {
+      "id": "irur-attachments",
+      "statement": "לכתב ערעור מצורפים ההחלטה שעליה מערערים ומסמכים רלוונטיים שהוגשו כדין בערכאה הדיונית, ולא ראיות חדשות.",
+      "origin": "human_extraction",
+      "stage": "כתב ערעור"
+    },
+    {
+      "id": "irur-legal-focus",
+      "statement": "ערעור מתמקד בטיעונים משפטיים; ערכאת הערעור אינה מבטלת בנקל ממצאים עובדתיים של הערכאה הדיונית.",
+      "origin": "human_extraction",
+      "stage": "כתב ערעור"
+    }
+  ]
+}

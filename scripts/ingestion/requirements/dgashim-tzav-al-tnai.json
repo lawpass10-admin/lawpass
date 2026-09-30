@@ -1,0 +1,44 @@
+{
+  "_what_this_is": "Requirements for the דגשים attached to «עתירה למתן צו על־תנאי» in חוברת הדוגמאות בניסוח משפטי (section [101]).",
+  "_origin_honesty": [
+    "Extracted by a MODEL from the booklet's דגשים prose, which the operator directed be converted.",
+    "requirements_input permits official_rules | human_extraction; neither describes this. `origin` is set to human_extraction because the validator accepts only those two, and `extracted_by` records what actually happened.",
+    "These are statements OF LAW — what a statute or court rule requires. Facts of law are not copyrightable; the booklet's selection and phrasing are. Each should be checked against the provision it names before publication."
+  ],
+  "_section_index": 101,
+  "extracted_by": "Claude (model extraction from the source prose — not human_extraction; see _origin_honesty)",
+  "extracted_at": "2026-09-30",
+  "checked_against": "חוברת הדוגמאות בניסוח משפטי (a7a643a2-4ad6-4e2e-9c84-494911653f13), section [101] דגשים under «עתירה למתן צו על־תנאי»",
+  "requirements": [
+    {
+      "id": "standing",
+      "statement": "עותר לבג\"ץ נדרש להצביע על אינטרס אישי וממשי; בנסיבות מוגדרות מוכרת גם זכות עמידה של מי שאינו נפגע במישרין.",
+      "origin": "human_extraction",
+      "stage": "עתירה למתן צו על־תנאי"
+    },
+    {
+      "id": "tzav-affidavit",
+      "statement": "לעתירה לצו על־תנאי מצורף תצהיר על דרך ההפניה.",
+      "origin": "human_extraction",
+      "stage": "עתירה למתן צו על־תנאי"
+    },
+    {
+      "id": "tzav-relief-form",
+      "statement": "הסעד בעתירה לצו על־תנאי מנוסח כדרישה מהמשיב להתייצב וליתן טעם מדוע לא יעשה את המבוקש.",
+      "origin": "human_extraction",
+      "stage": "עתירה למתן צו על־תנאי"
+    },
+    {
+      "id": "supreme-date",
+      "statement": "בכתב בי־דין המוגש לבית המשפט העליון מצוין תאריך החתימה על המסמך.",
+      "origin": "human_extraction",
+      "stage": "עתירה למתן צו על־תנאי"
+    },
+    {
+      "id": "supreme-service",
+      "statement": "בכתב בי־דין המוגש לבית המשפט העליון מצוין שהעותק הומצא לצד שכנגד במקביל להגשה.",
+      "origin": "human_extraction",
+      "stage": "עתירה למתן צו על־תנאי"
+    }
+  ]
+}

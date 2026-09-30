@@ -57,6 +57,34 @@ const commit = argv.includes("--commit");
 const refresh = argv.includes("--refresh");
 const docsDir = flagOf("docs");
 const lawpassDir = flagOf("lawpass");
+// A pdf2json.mjs output folder — page-01.json … page-NN.json plus index.json —
+// loaded as ONE row: a booklet is one document, not sixty-two.
+//
+// Named --pages-dir rather than --pages on purpose. pdf2json.mjs reads --pages
+// as a page COUNT and rejects a non-number at import time, so the two scripts
+// must not share the spelling; that collision has already cost this repo a bug
+// once (see validateFlags in docx2json.mjs).
+const pagesDir = flagOf("pages-dir");
+const paperIdFlag = flagOf("paper-id");
+// The booklet's converted half, from rewrite-source.mjs. The .docx path finds
+// its .lawpass.json by pairing on filename; a booklet's source is a folder of
+// page JSONs whose name need not match, so it is named outright.
+const lawpassFile = flagOf("lawpass-file");
+// Publish the source ITSELF as the LawPass text, unconverted.
+//
+// This exists for one narrow case: material that has no unprotectable layer to
+// convert — a booklet of worked example documents, where the drafting IS the
+// content — and that is held to be official published material rather than a
+// third party's copyrighted work. rewrite-source.mjs cannot help there; there
+// is nothing to send while withholding the expression.
+//
+// It is deliberately awkward to reach, and it does not publish anything on its
+// own. The row is written with
+// `provenance.publication = 'pending_legal_review'`, which the candidate-facing
+// view filters out (20260930000001). Someone has to change that field before a
+// candidate sees a word of it. Whether the material really is exempt is a legal
+// question, and this flag records the claim rather than settling it.
+const verbatim = argv.includes("--verbatim");
 
 // ═══════════════════════════════════════════════════════════════════════════
 //  CONFIGURATION — text_field
@@ -99,6 +127,10 @@ function usage(code) {
       "  --lawpass   folder holding <name>.lawpass.json from rewrite-source.mjs\n" +
       "  --text-field which part of the product this material belongs to\n" +
       "  --refresh   replace a lawpass_text that is already stored (promotion)\n" +
+      "  --pages-dir a pdf2json.mjs output folder, loaded as ONE booklet row\n" +
+      "  --paper-id  the row key; defaults to the folder name\n" +
+      "  --lawpass-file  a .lawpass.json to store as lawpass_text\n" +
+      "  --verbatim  store the source AS the lawpass text, held pending review\n" +
       "  --commit    actually write; without it the run is a dry run"
   );
   process.exit(code);
@@ -141,6 +173,96 @@ function pair(docs, lawpass) {
   return { rows, skipped, orphans };
 }
 
+// ------------------------------------------------- a booklet of page JSONs
+
+/** What the OCR prompt writes where it could not read, and for a blank page. */
+const UNREADABLE = "[לא קריא]";
+const BLANK_PAGE = "[עמוד ריק]";
+
+/**
+ * Whether one page of a pdf2json run is good enough to load.
+ *
+ * THIS IS A LOADING POLICY, not a reading one, which is why it lives here and
+ * not in pdf2json.mjs. That script's job is to report honestly what it read;
+ * this one decides what is fit to go into the product. A page with one
+ * unreadable word is a page with one unreadable word — it loads. A page that is
+ * mostly markers is not a page of text, and loading it would put holes into
+ * study material that a candidate is going to read.
+ *
+ * `blank` is a third answer, separate from both: correct, and not content.
+ */
+function pageStatus(json) {
+  const markdown = (json.markdown ?? "").trim();
+  if (json.blank || markdown === BLANK_PAGE) return "blank";
+  if (!markdown) return "empty";
+  const gaps = (markdown.match(/\[לא קריא\]/g) ?? []).length;
+  const readable = markdown.length - gaps * UNREADABLE.length;
+  if (readable < markdown.length * 0.5 || gaps >= 5) return "unreadable";
+  return gaps > 0 ? "partial" : "ok";
+}
+
+/**
+ * One booklet, assembled from the pages worth loading.
+ *
+ * The pages' blocks are concatenated IN PAGE ORDER and run through the same
+ * `asDocument` the .docx path uses, so the row's shape is identical whichever
+ * script produced it — one `sections` array, not sixty-two. That also handles a
+ * section running across a page break, which is the normal case in a booklet:
+ * the heading is on page 4, its paragraphs continue on page 5, and concatenating
+ * first means they end up under that heading rather than in two fragments.
+ *
+ * Which pages went in is recorded on the row. Four of this booklet's 62 were
+ * left out, and a reader who cannot see that from the data would reasonably
+ * assume they were reading the whole thing.
+ */
+function bookletFromPages(dir) {
+  const index = JSON.parse(readFileSync(join(dir, "index.json"), "utf8"));
+  const files = readdirSync(dir)
+    .map((name) => /^page-(\d+)\.json$/.exec(name))
+    .filter(Boolean)
+    .map((hit) => ({ page: Number(hit[1]), file: join(dir, hit[0]) }))
+    .sort((a, b) => a.page - b.page);
+
+  const loaded = [];
+  const excluded = { blank: [], unreadable: [], empty: [] };
+  const blocks = [];
+  let partial = 0;
+
+  for (const { page, file } of files) {
+    const json = JSON.parse(readFileSync(file, "utf8"));
+    const status = pageStatus(json);
+    if (status !== "ok" && status !== "partial") {
+      excluded[status].push(page);
+      continue;
+    }
+    if (status === "partial") partial++;
+    loaded.push(page);
+    // mode=page writes `blocks`; fall back to re-deriving them from the
+    // markdown so a folder written in another mode still loads.
+    blocks.push(...(json.blocks ?? toStructure(json.markdown ?? "")));
+  }
+
+  const { sections, warnings } = asDocument(blocks);
+  return {
+    document: {
+      source_file: index.source_file,
+      language: "he",
+      section_count: sections.length,
+      sections,
+      // Provenance: this row is a SUBSET of the booklet, and says so.
+      page_count: index.page_count,
+      pages_loaded: loaded,
+      pages_excluded: excluded,
+      pages_with_gaps: partial,
+      ...(warnings.length ? { warnings } : {}),
+    },
+    loaded,
+    excluded,
+    partial,
+    pageCount: index.page_count,
+  };
+}
+
 // ------------------------------------------------------------ extraction
 
 async function extractOriginal(path, toMarkdown) {
@@ -177,23 +299,183 @@ async function connect() {
   throw new Error("no reachable database host");
 }
 
+/**
+ * Load one pdf2json folder as a single study_material row.
+ *
+ * `lawpass_text` is left NULL: this is the source side of the pair, exactly as
+ * a freshly extracted .docx is, and rewrite-source.mjs fills the other half
+ * later. Re-running updates the row in place rather than adding a second one,
+ * so re-reading a page and loading again is safe.
+ */
+async function loadBooklet() {
+  const booklet = bookletFromPages(pagesDir);
+  const paperId = paperIdFlag ?? basename(pagesDir);
+  const { document, loaded, excluded, partial, pageCount } = booklet;
+
+  console.log(`booklet '${paperId}', text_field='${textField}'`);
+  console.log(`  from: ${pagesDir}`);
+  console.log(
+    `  ${loaded.length} of ${pageCount} page(s) loaded — ` +
+      `${loaded.length - partial} clean, ${partial} with a small gap`
+  );
+  for (const [why, pages] of Object.entries(excluded)) {
+    if (pages.length) console.log(`  left out (${why}): ${pages.join(", ")}`);
+  }
+  console.log(
+    `  → ${document.section_count} section(s), ` +
+      `${(JSON.stringify(document).length / 1024).toFixed(0)}KB of jsonb\n`
+  );
+
+  if (loaded.length === 0) {
+    console.error("nothing to load — every page was excluded");
+    process.exitCode = 1;
+    return;
+  }
+
+  let lawpass = null;
+  if (verbatim) {
+    if (lawpassFile) {
+      console.error("--verbatim and --lawpass-file are mutually exclusive.");
+      process.exitCode = 2;
+      return;
+    }
+    // The same envelope rewrite-source.mjs writes, so the column has one shape
+    // whatever produced it — and a `provenance` block saying plainly that this
+    // one was not authored, only copied.
+    lawpass = {
+      contract: "verbatim-source (no conversion)",
+      model: null,
+      generated_at: new Date().toISOString(),
+      item_count: document.section_count,
+      provenance: {
+        kind: "official_publication",
+        verbatim: true,
+        publication: "pending_legal_review",
+        claim:
+          "Held to be official published material of the Bar examining committee, " +
+          "so stored unconverted. Not verified by this pipeline.",
+        note:
+          "No unprotectable layer exists in worked example documents, so " +
+          "LLM-text-converting cannot apply. Clear the publication hold only " +
+          "after a lawyer familiar with Israeli copyright has reviewed it.",
+      },
+      doc: document,
+    };
+    console.log(
+      "  lawpass_text: VERBATIM copy of the source, publication=pending_legal_review\n" +
+        "                (held out of study_material_public until that is cleared)\n"
+    );
+  } else if (lawpassFile) {
+    if (!existsSync(lawpassFile)) {
+      console.error(`--lawpass-file: no such file — ${lawpassFile}`);
+      process.exitCode = 1;
+      return;
+    }
+    lawpass = JSON.parse(readFileSync(lawpassFile, "utf8"));
+    console.log(
+      `  lawpass_text: ${lawpass.contract ?? "unknown contract"}, ` +
+        `${lawpass.item_count ?? "?"} item(s)\n`
+    );
+  }
+
+  const client = await connect();
+  try {
+    await client.query("BEGIN");
+
+    const found = await client.query(
+      `SELECT study_material_id, lawpass_text IS NOT NULL AS has_lawpass
+         FROM public.study_material
+        WHERE paper_id = $1 AND text_field = $2`,
+      [paperId, textField]
+    );
+
+    const mark = commit ? "" : "would ";
+    if (found.rowCount === 0) {
+      await client.query(
+        `INSERT INTO public.study_material (paper_id, text_field, original_text, lawpass_text)
+         VALUES ($1, $2, $3::jsonb, $4::jsonb)`,
+        [paperId, textField, JSON.stringify(document), lawpass ? JSON.stringify(lawpass) : null]
+      );
+      console.log(`  ${mark}insert one row${lawpass ? " with its LawPass version" : ""}`);
+    } else {
+      // The same rule the .docx path follows: a lawpass_text already stored is
+      // published text, and only --refresh may replace it. Without the flag an
+      // ordinary re-run still updates the source side and leaves it alone.
+      const writeLawpass = lawpass && (!found.rows[0].has_lawpass || refresh);
+      await client.query(
+        writeLawpass
+          ? `UPDATE public.study_material
+                SET original_text = $2::jsonb, lawpass_text = $3::jsonb
+              WHERE study_material_id = $1`
+          : `UPDATE public.study_material
+                SET original_text = $2::jsonb
+              WHERE study_material_id = $1`,
+        writeLawpass
+          ? [found.rows[0].study_material_id, JSON.stringify(document), JSON.stringify(lawpass)]
+          : [found.rows[0].study_material_id, JSON.stringify(document)]
+      );
+      console.log(
+        `  ${mark}update the existing row (${found.rows[0].study_material_id})` +
+          (writeLawpass
+            ? found.rows[0].has_lawpass
+              ? " — lawpass_text REPLACED (--refresh)"
+              : " — lawpass_text added"
+            : lawpass
+              ? " — lawpass_text kept (pass --refresh to replace it)"
+              : "")
+      );
+    }
+
+    if (commit) {
+      await client.query("COMMIT");
+      console.log("\nCOMMITTED.");
+    } else {
+      await client.query("ROLLBACK");
+      console.log("\nDRY RUN — rolled back. Pass --commit to write it.");
+    }
+  } catch (error) {
+    await client.query("ROLLBACK").catch(() => {});
+    console.error(`\nFAILED — rolled back, nothing written.\n${error.message}`);
+    process.exitCode = 1;
+  } finally {
+    await client.end();
+  }
+}
+
 // ------------------------------------------------------------------ main
 
 async function main() {
   if (argv.includes("--help")) usage(0);
-  if (!docsDir || !lawpassDir || !textField) {
-    console.error("--docs, --lawpass and --text-field are all required.\n");
+  if (!textField) {
+    console.error("--text-field is required.\n");
+    usage(2);
+  }
+  if (!pagesDir && (!docsDir || !lawpassDir)) {
+    console.error("--docs and --lawpass are required (or --pages-dir for a booklet).\n");
     usage(2);
   }
   if (!TEXT_FIELDS.includes(textField)) {
     console.error(`--text-field must be one of ${TEXT_FIELDS.join(", ")} (got '${textField}')`);
     process.exit(2);
   }
-  for (const [label, dir] of [["--docs", docsDir], ["--lawpass", lawpassDir]]) {
+  for (const [label, dir] of [
+    ["--docs", docsDir],
+    ["--lawpass", lawpassDir],
+    ["--pages-dir", pagesDir],
+  ]) {
+    if (!dir) continue;
     if (!existsSync(dir) || !statSync(dir).isDirectory()) {
       console.error(`${label}: not a folder — ${dir}`);
       process.exit(2);
     }
+  }
+
+  // The booklet path: one folder of page JSONs in, one row out. It shares
+  // everything below — the connection, the upsert, the dry run — and differs
+  // only in where `original_text` comes from.
+  if (pagesDir) {
+    await loadBooklet();
+    return;
   }
 
   const { rows, skipped, orphans } = pair(docsDir, lawpassDir);

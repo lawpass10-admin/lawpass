@@ -265,6 +265,41 @@ const hebrewShare = (t) =>
 /** U+FFFD — a character the font's CMap could not name. See `encodingWarnings`. */
 const replacementCount = (t) => (t.match(/�/g) ?? []).length;
 
+/** What the OCR prompt writes where it could not read, and for a blank page. */
+const UNREADABLE = "[לא קריא]";
+const BLANK_PAGE = "[עמוד ריק]";
+
+/**
+ * What a page's own text says about how well it was read.
+ *
+ * THE HEBREW-SHARE CHECK DOES NOT COVER THIS, and the gap was live: a page whose
+ * every table cell came back `[לא קריא]` measured 44.5% Hebrew — because the
+ * marker is itself Hebrew — and so passed a check meant to catch pages that were
+ * not read. 24 pages of the booklet carried an unreadable region and none of
+ * them were flagged. The markers have to be counted, not inferred from the
+ * alphabet.
+ */
+function readingWarnings(markdown) {
+  const text = markdown.trim();
+  if (text === BLANK_PAGE) return { blank: true, warnings: [] };
+
+  const unreadable = (markdown.match(/\[לא קריא\]/g) ?? []).length;
+  if (unreadable === 0) return { blank: false, warnings: [] };
+
+  // Marker characters as a share of the page: one unreadable word in a full
+  // page is a footnote, a page that is nothing but markers was not read.
+  const share = (unreadable * UNREADABLE.length) / Math.max(markdown.length, 1);
+  return {
+    blank: false,
+    warnings: [
+      share > 0.5
+        ? `this page is mostly unreadable — ${unreadable} region(s) marked ${UNREADABLE} ` +
+          `and almost no other text. Check the scan; it may need a better source.`
+        : `${unreadable} region(s) on this page could not be read and are marked ${UNREADABLE}`,
+    ],
+  };
+}
+
 /**
  * Drop emphasis markup, keeping the words and the structure.
  *
@@ -461,11 +496,20 @@ async function mapWithConcurrency(items, limit, worker) {
   return results;
 }
 
-/** The bytes of one page of `buffer`, as a PDF in its own right. */
-async function onePagePdf(PDFDocument, source, page) {
+/**
+ * The bytes of one page of `buffer`, as a PDF in its own right.
+ *
+ * `turn` adds to the page's own /Rotate, which is a page attribute rather than a
+ * re-render: the scan's pixels are untouched and the reader — or the model — is
+ * simply told which way up it is.
+ */
+async function onePagePdf(PDFDocument, degrees, source, page, turn = 0) {
   const one = await PDFDocument.create();
   const [copied] = await one.copyPages(source, [page - 1]);
-  one.addPage(copied);
+  const added = one.addPage(copied);
+  if (turn) {
+    added.setRotation(degrees((added.getRotation().angle + turn) % 360));
+  }
   return Buffer.from(await one.save());
 }
 
@@ -504,14 +548,14 @@ function claudeOcrPrompt(page, pageCount) {
  * lossy step between the scan and the model. That is also why this script needs
  * no image tooling at all, unlike jpeg2json.mjs, which starts from photographs.
  */
-async function ocrPageWithClaude({ PDFDocument, source, page, pageCount }) {
+async function ocrPageWithClaude({ PDFDocument, degrees, source, page, pageCount, turn = 0 }) {
   try {
     const apiKey = process.env.ANTHROPIC_API_KEY;
     if (!apiKey) throw new Error("ANTHROPIC_API_KEY is not set (it lives in .env.local)");
 
     const { default: Anthropic } = await import("@anthropic-ai/sdk");
     const client = new Anthropic({ apiKey, maxRetries: 3, timeout: 10 * 60 * 1000 });
-    const bytes = await onePagePdf(PDFDocument, source, page);
+    const bytes = await onePagePdf(PDFDocument, degrees, source, page, turn);
 
     const message = await client.messages.create({
       model,
@@ -543,6 +587,7 @@ async function ocrPageWithClaude({ PDFDocument, source, page, pageCount }) {
       message.content.find((block) => block.type === "text")?.text?.trim() ?? "";
     return {
       markdown,
+      turn,
       error: null,
       // Worth saying: a page cut off at the token ceiling is half a page, and
       // it looks exactly like a short one in the JSON.
@@ -571,6 +616,8 @@ async function ocrPageWithClaude({ PDFDocument, source, page, pageCount }) {
  * position IS the mapping. It also means a three-page test run uploads three
  * pages instead of a 2.9MB booklet.
  */
+// No `degrees` here: this builds its own multi-page sub-document rather than
+// going through onePagePdf, so there is nothing to turn.
 async function ocrPagesWithMistral({ PDFDocument, source, pages }) {
   const apiKey = process.env.MISTRAL_API_KEY;
   if (!apiKey) {
@@ -656,6 +703,53 @@ async function ocrPagesWithMistral({ PDFDocument, source, pages }) {
 }
 
 /**
+ * One scanned page, read upright — and if that fails, read sideways.
+ *
+ * WHY. Page 6 of the booklet is a full-page table printed in landscape: the
+ * text runs bottom-to-top and the model marked all 21 cells `[לא קריא]`, which
+ * was the honest answer to the question it was asked. Turning the page and
+ * asking again is the fix, and it is the same one jpeg2json.mjs offers as
+ * --rotate for photographs held sideways.
+ *
+ * It fires only on a page that came back MOSTLY unreadable, so an upright page
+ * with one blurred word costs one request as before. 90° first because a
+ * landscape page in a Hebrew booklet is nearly always turned that way; 270° is
+ * the other possibility and costs a third request on the rare page that needs
+ * it. Whichever attempt reads best is kept, measured by how much of it is
+ * unreadable rather than by length — a long transcription of nothing is not a
+ * better answer than a short one.
+ */
+async function ocrPageUpOrSideways(args) {
+  const first = await ocrPageWithClaude(args);
+
+  // How much of the attempt is text that was actually READ — its length with
+  // the markers' own characters taken out.
+  //
+  // Scoring on the markers' SHARE instead was a mistake worth recording: a page
+  // answered with one `[לא קריא]` and nothing else scored better than the same
+  // page answered with a whole table skeleton whose cells were unreadable,
+  // because the short answer had proportionally less marker in it. The rule has
+  // to reward reading, not brevity.
+  const readable = (result) => {
+    if (result.error || !result.markdown.trim()) return 0;
+    const hits = (result.markdown.match(/\[לא קריא\]/g) ?? []).length;
+    return Math.max(0, result.markdown.length - hits * UNREADABLE.length);
+  };
+  const mostlyUnread = (result) =>
+    readable(result) < Math.max(result.markdown.length, 1) * 0.5;
+
+  if (!mostlyUnread(first)) return first;
+
+  let best = first;
+  for (const turn of [90, 270]) {
+    const turned = await ocrPageWithClaude({ ...args, turn });
+    if (readable(turned) > readable(best)) best = turned;
+    if (!mostlyUnread(best)) break;
+  }
+  return best;
+}
+
+/**
  * One scanned page, read cheaply and then corrected.
  *
  * THE IDEA: Firecrawl reads the page in ~4s and gets most words right; Claude
@@ -672,15 +766,15 @@ async function ocrPagesWithMistral({ PDFDocument, source, pages }) {
  * the run should say when the cheap path did not apply rather than quietly
  * costing what it was supposed to save.
  */
-async function ocrPageHybrid({ toMarkdownBytes, PDFDocument, source, page, pageCount }) {
-  const draft = await ocrPage({ toMarkdownBytes, PDFDocument, source, page });
+async function ocrPageHybrid({ toMarkdownBytes, PDFDocument, degrees, source, page, pageCount }) {
+  const draft = await ocrPage({ toMarkdownBytes, PDFDocument, degrees, source, page });
 
   // A draft worth correcting has to be mostly Hebrew already. Below that it is
   // not a transcription of this page at all.
   const usable =
     !draft.error && draft.markdown.trim().length > 0 && hebrewShare(draft.markdown) >= 40;
   if (!usable) {
-    const full = await ocrPageWithClaude({ PDFDocument, source, page, pageCount });
+    const full = await ocrPageUpOrSideways({ PDFDocument, degrees, source, page, pageCount });
     return { ...full, fellBack: true };
   }
 
@@ -690,7 +784,7 @@ async function ocrPageHybrid({ toMarkdownBytes, PDFDocument, source, page, pageC
 
     const { default: Anthropic } = await import("@anthropic-ai/sdk");
     const client = new Anthropic({ apiKey, maxRetries: 3, timeout: 10 * 60 * 1000 });
-    const bytes = await onePagePdf(PDFDocument, source, page);
+    const bytes = await onePagePdf(PDFDocument, degrees, source, page);
 
     const message = await client.messages.create({
       model,
@@ -800,9 +894,9 @@ async function ocrPageHybrid({ toMarkdownBytes, PDFDocument, source, page, pageC
  * that page, not the other sixty-one. The caller writes what came back —
  * including nothing — and says so in the JSON.
  */
-async function ocrPage({ toMarkdownBytes, PDFDocument, source, page }) {
+async function ocrPage({ toMarkdownBytes, PDFDocument, degrees, source, page }) {
   try {
-    const bytes = await onePagePdf(PDFDocument, source, page);
+    const bytes = await onePagePdf(PDFDocument, degrees, source, page);
     const markdown = await toMarkdownBytes(bytes, "pdf", {
       ocr: "hosted",
       ...(process.env.FIRECRAWL_API_KEY
@@ -859,7 +953,14 @@ function pageJson({ pdfName, page, pageCount, pdfType, extracted }) {
     };
   }
 
-  const warnings = [];
+  const reading = readingWarnings(markdown);
+  if (reading.blank) {
+    // A blank page is a correct result, not a failure — but it has to be
+    // labelled, or `[עמוד ריק]` ends up loaded as if it were the page's text.
+    return { ...envelope, blank: true, markdown };
+  }
+
+  const warnings = [...reading.warnings];
   const lost = replacementCount(markdown);
   if (lost > 0) {
     warnings.push(
@@ -993,11 +1094,13 @@ async function main() {
   // a machine without them still converts every PDF that has text.
   let toMarkdownBytes;
   let PDFDocument;
+  // pdf-lib's degrees() builds the rotation value setRotation takes.
+  let degrees;
   if ((wantOcr || wantHtml) && !inspectOnly) {
     try {
       // pdf-lib cuts a single page out of the document — for the upload, and
       // for the copy embedded in a proof sheet.
-      ({ PDFDocument } = await import("pdf-lib"));
+      ({ PDFDocument, degrees } = await import("pdf-lib"));
       if (ocrEngine === "firecrawl" || ocrEngine === "hybrid") {
         ({ toMarkdownBytes } = await import("@firecrawl/anydoc"));
       }
@@ -1199,13 +1302,14 @@ async function main() {
           const args = {
             toMarkdownBytes,
             PDFDocument,
+            degrees,
             source: pdfDoc,
             page,
             pageCount: detected.pageCount,
           };
           const ocr =
             ocrEngine === "claude"
-              ? await ocrPageWithClaude(args)
+              ? await ocrPageUpOrSideways(args)
               : ocrEngine === "hybrid"
                 ? await ocrPageHybrid(args)
                 : await ocrPage(args);
@@ -1275,7 +1379,7 @@ async function main() {
       for (const page of pages) {
         if (!existsSync(fileFor(page))) continue;
         const data = JSON.parse(readFileSync(fileFor(page), "utf8"));
-        const bytes = await onePagePdf(PDFDocument, pdfDoc, page);
+        const bytes = await onePagePdf(PDFDocument, degrees, pdfDoc, page);
         writeFileSync(
           fileFor(page).replace(/\.json$/, ".html"),
           proofSheet(data, bytes),
@@ -1308,7 +1412,14 @@ async function main() {
     for (const page of present) {
       try {
         const written = JSON.parse(readFileSync(fileFor(page), "utf8"));
-        if (written.warnings?.length) suspect.push(page);
+        // The page's own warnings, plus a fresh look at its text. The second
+        // half is what makes this index correct for pages written before the
+        // unreadable-marker check existed: it re-derives the finding from the
+        // markdown instead of trusting a `warnings` array that predates it.
+        const found =
+          written.warnings?.length ||
+          readingWarnings(written.markdown ?? "").warnings.length;
+        if (found) suspect.push(page);
       } catch {
         // A page file that cannot be read or parsed is itself a reason to
         // look, which is the same answer as a warning inside it.

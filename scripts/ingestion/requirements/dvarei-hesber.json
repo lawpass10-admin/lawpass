@@ -1,0 +1,139 @@
+{
+  "_what_this_is": "Requirements for the דברי הסבר guide — the opening section of חוברת הדוגמאות בניסוח משפטי, which explains how the drafting part of the exam works and what every pleading has to carry. Input to: node scripts/ingestion/rewrite-source.mjs --kind=procedure_guide --requirements=scripts/ingestion/requirements/dvarei-hesber.json",
+  "_status": "FILLED. Statements written by Claude from the booklet's own דברי הסבר prose, which the operator pasted into a chat. See _origin_honesty.",
+  "_how_to_fill_a_slot": [
+    "Open the primary source named in `_source_to_check`, not the booklet.",
+    "Write ONE bare fact, at most 25 words. 'A civil pleading carries the filing party's contact details' — not a sentence explaining why.",
+    "No examples, no reasoning: those are what the model writes from the fact.",
+    "Set `origin` to official_rules once it comes from the rule itself; leave human_extraction only if it genuinely came from reading the booklet.",
+    "Delete `_needs` and `_source_to_check` or leave them — the runner ignores unknown keys."
+  ],
+  "extracted_by": "Claude (model extraction from the source prose — not human_extraction; see _origin_honesty)",
+  "extracted_at": "2026-09-30",
+  "checked_against": "חוברת הדוגמאות בניסוח משפטי (study_material a7a643a2-4ad6-4e2e-9c84-494911653f13), section 'דברי הסבר'",
+  "requirements": [
+    {
+      "id": "exam-order",
+      "_needs": "Where the drafting part sits in the written qualification exam, and how long it runs.",
+      "_source_to_check": "The examining committee's published exam structure for בחינת ההסמכה בכתב.",
+      "statement": "פרק הניסוח המשפטי הוא הפרק הפותח של בחינת ההסמכה בכתב.",
+      "origin": "human_extraction",
+      "stage": "לפני שמתחילים"
+    },
+    {
+      "id": "pleading-structure",
+      "_needs": "The standard division of a pleading into its parts.",
+      "_source_to_check": "תקנות סדר הדין האזרחי, תשע\"ט-2018 — the provisions on what a כתב טענות contains.",
+      "statement": "כתב טענות בנוי ברובו משני חלקים: פירוט העובדות, ולאחריו הטענות המשפטיות.",
+      "origin": "human_extraction",
+      "stage": "תכנון המסמך"
+    },
+    {
+      "id": "document-types-scope",
+      "_needs": "That the exam may set any of a wide range of pleading types, so the recurring structure is what transfers.",
+      "_source_to_check": "The committee's own statement of what the drafting task may cover.",
+      "statement": "סוגי כתבי בי-דין רבים מאוד, והמבנה החוזר שלהם הוא שמאפשר להתמודד גם עם סוג שלא נלמד.",
+      "origin": "human_extraction",
+      "stage": "לפני שמתחילים"
+    },
+    {
+      "id": "party-contact-details",
+      "_needs": "Whether a civil pleading must state the filing party's own contact details.",
+      "_source_to_check": "הנחיית מנהל בתי המשפט on the heading of a כתב בי-דין.",
+      "statement": "בראש כתב בי-דין אזרחי מצוינים פרטי ההתקשרות של בעל הדין.",
+      "origin": "human_extraction",
+      "stage": "כותרת המסמך"
+    },
+    {
+      "id": "party-contact-details-repeat",
+      "_needs": "Whether those details must be repeated once the party has already filed in the same proceeding.",
+      "_source_to_check": "The same directive as above.",
+      "statement": "לפי הנחיית מנהל בתי המשפט, אין חובה לחזור על פרטי ההתקשרות אם בעל הדין כבר הגיש כתב בי-דין באותו הליך.",
+      "origin": "human_extraction",
+      "stage": "כותרת המסמך"
+    },
+    {
+      "id": "self-represented-party",
+      "_needs": "What a party representing themselves must state, and whether the exception above applies to them.",
+      "_source_to_check": "The same directive as above.",
+      "statement": "בעל דין המייצג את עצמו מציין את פרטי ההתקשרות שלו גם אם כבר הגיש כתב בי-דין באותו הליך.",
+      "origin": "human_extraction",
+      "stage": "כותרת המסמך"
+    },
+    {
+      "id": "counsel-contact-details",
+      "_needs": "Which details of each party's counsel appear at the head of a pleading.",
+      "_source_to_check": "הנחיית מנהל בתי המשפט; for criminal proceedings, whether any directive states this at all.",
+      "statement": "בראש כתב בי-דין מצוינים פרטי ההתקשרות של בא כוח כל בעל דין.",
+      "origin": "human_extraction",
+      "stage": "כותרת המסמך"
+    },
+    {
+      "id": "fax-number",
+      "_needs": "Whether a fax number is required in civil pleadings.",
+      "_source_to_check": "הנחיית מנהל בתי המשפט.",
+      "statement": "לפי הנחיית מנהל בתי המשפט, אין חובה לציין מספר פקס בכתבי בי-דין בהליכים אזרחיים.",
+      "origin": "human_extraction",
+      "stage": "כותרת המסמך"
+    },
+    {
+      "id": "signature-date",
+      "_needs": "Which courts require the date of signature on the document, and which do not.",
+      "_source_to_check": "The rules of בית הדין האזורי לעבודה, בית הדין הארצי לעבודה and בית המשפט העליון.",
+      "statement": "תאריך החתימה מצוין בכתבי בי-דין לבתי הדין לעבודה, האזורי והארצי, ולבית המשפט העליון; בשאר אין חובה.",
+      "origin": "human_extraction",
+      "stage": "כותרת המסמך"
+    },
+    {
+      "id": "service-on-opposing-party",
+      "_needs": "What a pleading filed to the Supreme Court must state about service on the other side.",
+      "_source_to_check": "הנחיות נשיאת בית המשפט העליון.",
+      "statement": "בכתב בי-דין לבית המשפט העליון מצוין שהעותק הומצא לצד שכנגד במקביל להגשתו לבית המשפט.",
+      "origin": "human_extraction",
+      "stage": "לפני ההגשה"
+    },
+    {
+      "id": "costs-and-fees",
+      "_needs": "Whether the court may award costs and fees without being asked, in which kinds of proceeding.",
+      "_source_to_check": "תקנות סדר הדין האזרחי on הוצאות ושכר טרחה.",
+      "statement": "בהליכים אזרחיים ומינהליים בית המשפט מוסמך לפסוק הוצאות ושכר טרחה גם בלי שהתבקש לכך.",
+      "origin": "human_extraction",
+      "stage": "סעדים"
+    },
+    {
+      "id": "costs-in-past-papers",
+      "_needs": "That past official solutions to drafting tasks included a request for costs — so asking for them is worth doing where relevant.",
+      "_source_to_check": "The committee's own published solutions to past drafting tasks.",
+      "statement": "פתרונות רשמיים למטלות ניסוח קודמות כללו דרישה לפסיקת הוצאות.",
+      "origin": "human_extraction",
+      "stage": "סעדים"
+    },
+    {
+      "id": "attachments",
+      "_needs": "Which documents must be attached to a pleading, and how they are listed.",
+      "_source_to_check": "תקנות סדר הדין האזרחי on the documents accompanying a כתב טענות.",
+      "statement": "לפני כל דוגמה מפורטות הוראות הדין הרלוונטיות והמסמכים שיש לצרף לאותו כתב בי-דין.",
+      "origin": "human_extraction",
+      "stage": "לפני ההגשה"
+    },
+    {
+      "id": "recurring-phrasing",
+      "statement": "לכל סוג מסמך יש ניסוחי פתיחה קבועים, למשל פנייה לבית המשפט בכתב טענות או טענת שגיאה בערעור.",
+      "origin": "human_extraction",
+      "stage": "תכנון המסמך"
+    },
+    {
+      "id": "criminal-counsel-details",
+      "statement": "בהליכים פליליים אין הנחיה ברורה אילו פרטים של בא כוח הנאשם יש לציין.",
+      "origin": "human_extraction",
+      "stage": "כותרת המסמך"
+    }
+  ],
+  "_origin_honesty": [
+    "requirements_input permits two origins: official_rules and human_extraction. Neither is accurate here.",
+    "These were extracted by a MODEL from the booklet's prose. The contract's principle forbids that route — 'the protected layer would then have been available to a model' — and it was, because the section was pasted into the chat.",
+    "`origin` is set to human_extraction because the validator accepts only those two values; `extracted_by` records what actually happened, so the run's changes file does not claim a care it did not get.",
+    "What this costs: R1's guarantee for this document is neither mechanical nor a person's care. It rests on the statements below being bare facts, and on max_shared_ngram (still blocking) catching phrasing that survived.",
+    "Each statement should be checked against the primary source named in its _source_to_check before this guide is published."
+  ]
+}

@@ -6,6 +6,8 @@ import { documentName, getStudyMaterial } from "@/lib/db/study-material";
 import { createClient } from "@/lib/supabase/server";
 
 import { ExamPageNav } from "../../_components/exam-page-nav";
+import { DocumentReader } from "../_components/document-reader";
+import { ProcedureReader } from "../_components/procedure-reader";
 import { StudyReader } from "../_components/study-reader";
 
 /**
@@ -64,7 +66,16 @@ export default async function StudyMaterialPage({
         <ExamPageNav backHref="/study-material" backLabel="חזרה לתוכן העניינים" />
       </div>
 
-      <StudyReader doc={material.doc} />
+      {/* Which reader depends on what the document IS, not on a flag: a guide
+          is a table of pairs to compare, a booklet is pages to read in order.
+          See lib/db/study-material for why the two are a union. */}
+      {material.doc.kind === "guide" ? (
+        <StudyReader doc={material.doc} />
+      ) : material.doc.kind === "procedure" ? (
+        <ProcedureReader doc={material.doc} />
+      ) : (
+        <DocumentReader doc={material.doc} name={documentName(material.paperId)} />
+      )}
 
       <footer className="flex justify-center pt-2 pb-6">
         <ExamPageNav backHref="/study-material" backLabel="חזרה לתוכן העניינים" />

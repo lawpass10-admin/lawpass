@@ -144,7 +144,14 @@ function MaterialContents({
                   className="mt-0.5 block font-heebo"
                   style={{ fontSize: 12.5, color: "var(--color-ink-dim)" }}
                 >
-                  {m.groupCount} נושאים · {m.itemCount} פריטים
+                  {/* Counted in the unit the document actually has. A booklet
+                      of pages has no "items", and printing 0 of them would
+                      read as an empty document rather than a different kind. */}
+                  {m.kind === "sections"
+                    ? `${m.groupCount} פרקים`
+                    : m.kind === "procedure"
+                      ? `${m.groupCount} שלבים · ${m.itemCount} כללים`
+                      : `${m.groupCount} נושאים · ${m.itemCount} פריטים`}
                 </span>
               </span>
 

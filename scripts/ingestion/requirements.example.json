@@ -1,0 +1,36 @@
+{
+  "_what_this_is": "The input to rewrite-source.mjs --kind=procedure_guide. Copy it, fill it in, and pass it with --requirements=<your file>. The source booklet is NEVER sent to the model; this file is what the guide is written from.",
+
+  "_how_to_fill_it": [
+    "One requirement per entry. A requirement is a FACT about the exam task: a time limit, a required register, how exhibits are numbered, a grading dimension.",
+    "Write the fact, not the sentence that carried it. 'The task is 45 minutes' — not the booklet's phrasing of that, however good it is.",
+    "At most 25 words. If it needs more, it is an explanation, and explanations are what the model writes.",
+    "No examples and no reasoning in a statement. Those are `do` and `pitfall` in the output, and they are authored.",
+    "`origin` is required on every entry and is recorded in the run's changes file — see below."
+  ],
+
+  "_origins": {
+    "official_rules": "From the examining committee's own published rules. PREFERRED: it is the primary source, and a prep booklet is only a secondary summary of it.",
+    "human_extraction": "A person read the booklet and wrote the fact down. Permitted, and this is where most will come from. Be honest about what it is: R1's mechanical guarantee is replaced by that person's care, which is why max_shared_ngram stays blocking and why the origin is recorded per requirement."
+  },
+
+  "_why_a_person_has_to_do_this": "There is no path into a paragraph that yields the requirement without the sentence expressing it. A mechanical extraction of an instructional booklet is not possible, and having a model read the prose to extract them is exactly what the contract's principle forbids — the protected layer would then have been available to a model. So the facts must arrive from outside this pipeline. That is the cost of the design, and it is deliberate.",
+
+  "extracted_by": "REPLACE — who wrote this file",
+  "extracted_at": "REPLACE — YYYY-MM-DD",
+  "checked_against": "REPLACE — the source document these were taken from, for the record",
+
+  "requirements": [
+    {
+      "id": "time-budget",
+      "statement": "REPLACE — one bare fact, at most 25 words",
+      "origin": "human_extraction",
+      "stage": "optional hint: which part of the task this belongs to"
+    },
+    {
+      "id": "register",
+      "statement": "REPLACE — another one",
+      "origin": "official_rules"
+    }
+  ]
+}

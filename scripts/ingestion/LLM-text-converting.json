@@ -1,51 +1,97 @@
 {
-  "version": "1.2.0",
+  "version": "1.4.0",
   "name": "LLM-text-converting",
   "purpose": "The contract for turning an extracted source document into LawPass's own independently-authored text. Versioned so that any change to how conversion behaves is a visible change to this file.",
   "disclaimer": "These rules reduce risk; they are not legal advice and they are not a guarantee. Copyright turns on facts and jurisdiction. For anything commercial or central to the product, have a lawyer familiar with Israeli copyright review the output before publication.",
   "principle": "Copyright protects expression, not facts or ideas. The pipeline is built so that the protected layer of a source is never available to the model, rather than trusting the model to avoid imitating something it can see.",
+  "what_changed_in_1_3": {
+    "summary": "A second source_kind, `procedure_guide`, for instructional prose — the 888 paragraphs of חוברת מיקוד בניסוח משפטי that v1.2 could not touch.",
+    "why": "v1.2 is `usage_guide` only. Its send_to_model is two table columns, so pointed at a booklet it converts the three usage tables in it (29 pairs) and withholds everything else. That is correct behaviour and a complete answer for a table of usage pairs; it is 1% of a booklet whose substance is how the writing task works.",
+    "structural": "`pipeline` becomes `pipelines`, keyed by source_kind. The usage_guide entry is v1.2's, unchanged, so every document converted under 1.2 remains reproducible.",
+    "the_hard_part": "THIS IS THE DECISION TO REVIEW. In usage_guide, R1 is enforced MECHANICALLY: the extractor reads two named JSON fields and the prose is literally never in the process. Prose has no such field. There is no path into a paragraph that yields the requirement without the sentence that expresses it, so a mechanical extraction of an instructional booklet is not possible. Either a model reads the prose — which is exactly what the principle above forbids — or the facts arrive from somewhere the pipeline did not read them from. 1.3 takes the second route: see requirements_input."
+  },
+  "requirements_input": {
+    "what": "For procedure_guide the facts are NOT extracted from the source document. They are supplied to the run as a separate file of bare requirement statements, and the source document is never opened by the converter at all.",
+    "why": "It keeps R1 mechanical rather than aspirational. send_to_model names a path into the REQUIREMENTS file; the source document has no path in the prompt-building code, so the protected expression cannot reach a prompt by mistake, by refactor, or by a model deciding it needs context.",
+    "legitimate_origins": [
+      {
+        "id": "official_rules",
+        "what": "The examining committee's own published rules — the time limit, the מחוון grading dimensions, the required document formats.",
+        "preferred": true,
+        "note": "This is the primary source. A prep booklet is a secondary summary of it, and writing from the primary source is both safer and more accurate than paraphrasing someone's summary."
+      },
+      {
+        "id": "human_extraction",
+        "what": "A person reads the booklet and writes down each requirement as a bare fact: '45 minutes for the whole task', 'the document is written in third person', 'exhibits are numbered and listed in the facts section'.",
+        "preferred": false,
+        "note": "Permitted, and it is where most of these will come from in practice. But be honest about what it is: a human who has read the expression is writing the facts down. The mechanical guarantee of R1 is replaced by that person's care. Write the fact, not the sentence that carried it."
+      },
+      {
+        "id": "model_extraction",
+        "what": "A model read the source document and emitted the requirements as bare facts. A SEPARATE run from the one that writes the guide: the writer still never sees the prose.",
+        "preferred": false,
+        "weakest": true,
+        "note": "THIS DOES NOT SATISFY R1 MECHANICALLY, and that is the whole point of naming it separately. R1's guarantee is that the protected layer was never available to a model; here it was, to the extractor. What remains is that the facts themselves are unprotectable, that the writer worked only from those facts, and that max_shared_ngram runs blocking against the source. Use it when no person is going to do the extraction and the alternative is publishing the source verbatim — which is worse. Any row built this way should be reviewed by a lawyer before publication."
+      }
+    ],
+    "recorded_per_run": [
+      "which origin each requirement came from",
+      "who extracted it, when",
+      "the source document it was checked against"
+    ],
+    "shape": {
+      "requirements": [
+        {
+          "id": "string — stable slug",
+          "statement": "string — ONE bare fact or rule, max 25 words, no explanation and no example",
+          "origin": "official_rules | human_extraction",
+          "stage": "string — optional hint: which part of the task it belongs to"
+        }
+      ]
+    }
+  },
   "rules": [
     {
       "id": "R1",
       "name": "Extract core concepts only",
       "statement": "Take raw facts, ideas and data points. Ignore the source's sentence structure, stylistic flow and unique phrasing.",
       "enforced_by": "mechanical",
-      "how": "Only fields listed in pipeline.send_to_model are read out of the source JSON. Fields in pipeline.withhold_from_model are never placed in a prompt, so the model cannot mirror wording it never received."
+      "how": "Only fields listed in pipelines[kind].send_to_model are read into a prompt. For usage_guide those are two columns of the source. For procedure_guide they are statements in the requirements file, and the source document is not read by the converter at all — see requirements_input."
     },
     {
       "id": "R2",
       "name": "Enforce structural transformation",
       "statement": "Reorganise the material under a different organising principle. Do not follow the source's order or grouping.",
       "enforced_by": "mechanical+instruction",
-      "how": "pipeline.reorganise_by names an axis different from the source's own. Source ordering is discarded before the prompt is built, and the check `order_differs` fails the run if the output sequence matches the input sequence."
+      "how": "pipelines[kind].reorganise_by names an axis different from the source's own. Source ordering is discarded before the prompt is built, and the check `order_differs` fails the run if the output sequence matches the input sequence."
     },
     {
       "id": "R3",
       "name": "Ban verbatim translation and mimicry",
       "statement": "Do not reuse the source's vocabulary, idioms or distinctive turns of phrase.",
       "enforced_by": "mechanical+check",
-      "how": "The source's prose is withheld (R1). As a backstop, checks.max_shared_ngram compares the output against the source text that the operator holds locally; any shared run of n+ words is reported as a finding."
+      "how": "The source's prose is withheld (R1). As a backstop, checks.max_shared_ngram compares the output against the source text that the operator holds locally; any shared run of n+ words is reported as a finding. For procedure_guide this check matters MORE than in usage_guide, because the requirement statements passed through a human who read the source."
     },
     {
       "id": "R4",
       "name": "Apply a distinct tone and voice",
       "statement": "Write from a different stylistic perspective than the source.",
       "enforced_by": "instruction",
-      "how": "pipeline.voice states the target register explicitly and is inserted into the prompt."
+      "how": "pipelines[kind].voice states the target register explicitly and is inserted into the prompt."
     },
     {
       "id": "R5",
       "name": "Isolate unprotectable facts",
       "statement": "Build only on objective facts, dates, numbers and general concepts.",
       "enforced_by": "mechanical",
-      "how": "For a usage guide the unprotectable core is the pair (incorrect form, correct form) — a fact about Hebrew. The explanation of why is authored expression and is regenerated, never carried across."
+      "how": "For a usage guide the unprotectable core is the pair (incorrect form, correct form) — a fact about Hebrew. For a procedure guide it is the requirement itself — the time limit, the register, the grading dimension — which is a fact about an exam set by an external body. In both cases the explanation of why is authored expression and is regenerated, never carried across."
     },
     {
       "id": "R6",
       "name": "Prevent substantial similarity",
       "statement": "The result must read as an independent work that happens to share a subject, not as a substitute for the source.",
       "enforced_by": "check+human",
-      "how": "checks.* are run automatically and reported. The final judgement is the operator's: `would a reasonable reader accept this instead of the original?`"
+      "how": "checks.* are run automatically and reported. The final judgement is the operator's: `would a reasonable reader accept this instead of the original?` For procedure_guide, weigh it knowing the answer is closer than it was for a usage table: a complete guide to the same exam task is a nearer substitute for a booklet about that task than a language guide was."
     },
     {
       "id": "R7",
@@ -59,13 +105,231 @@
       "name": "Add independent value",
       "statement": "Original analysis and framing that are not in the source are what make the work independently authored rather than a rewrite.",
       "enforced_by": "instruction",
-      "how": "v1.1 removed the worked example and exam note; v1.2 restores a SHORT example (<=10 words) and leaves the exam note out. What carries R8 is the structure — grouping by cause, the headings, why_this_group — plus one original clause per item. Measured: v1.1 without examples scored a 3-word longest shared run against the source, better than v1.0's 4, so brevity did not push the texts together. checks.max_shared_ngram stays blocking and covers the example too."
+      "how": "v1.1 removed the worked example and exam note; v1.2 restores a SHORT example (<=10 words) and leaves the exam note out. What carries R8 is the structure — grouping by cause, the headings, why_this_group — plus one original clause per item. Measured: v1.1 without examples scored a 3-word longest shared run against the source, better than v1.0's 4, so brevity did not push the texts together. checks.max_shared_ngram stays blocking and covers the example too. For procedure_guide, R8 is carried by the workflow arrangement and by `do` and `pitfall`, which are the whole substance of each row."
+    },
+    {
+      "id": "R9",
+      "name": "Never send the source document",
+      "statement": "For procedure_guide, the source document must not appear in any prompt, in whole or in part.",
+      "enforced_by": "mechanical+check",
+      "how": "The converter is given a requirements file and never opens the source. `no_source_in_prompt` re-reads the built prompt and fails the run if any sentence of the source appears in it. New in 1.3: usage_guide never needed this, because its prompt was assembled from two columns and could not contain a paragraph.",
+      "new_in": "1.3"
     }
   ],
   "quoting": {
     "allowed": false,
     "note": "This pipeline produces no quotations. If a run ever needs one, it must be short, wrapped in quotation marks, attributed inline, and recorded in the run's changes file."
   },
+  "pipelines": {
+    "usage_guide": {
+      "source_kind": "usage_guide",
+      "description": "A table of incorrect/correct usage pairs with explanations, as produced by scripts/ingestion/docx2json.mjs --mode=document.",
+      "send_to_model": [
+        "tables[].rows[].שגוי",
+        "tables[].rows[].תקין"
+      ],
+      "withhold_from_model": [
+        "tables[].rows[].למה",
+        "sections[].heading",
+        "sections[].paragraphs"
+      ],
+      "withhold_rationale": "The wrong/right pair is the fact. The 'why' column, the section headings and the introduction are the source author's expression — the exact layer that must not be reproduced — so they are dropped before any prompt is built.",
+      "reorganise_by": "cause_of_error",
+      "reorganise_note": "The source groups by part of speech (prepositions, copula, word-form, dates). Grouping instead by WHY writers make the mistake — foreign-language calque, an added letter, Aramaic morphology, condition confused with degree, an unnecessary copula — is a different organising principle, not a reshuffle of the same one.",
+      "voice": "Second-person coaching for a bar-exam candidate: direct, practical, focused on what to write under exam conditions. The source is a neutral third-person reference table.",
+      "add_own": [
+        "the grouping itself: which cause each error belongs to",
+        "the group headings and the one-line reason the group exists",
+        "one short clause per item showing the preferred form actually in use"
+      ],
+      "model": "claude-opus-5",
+      "max_tokens": 24000,
+      "max_tokens_note": "Thinking tokens are billed and budgeted as output, so this ceiling covers reasoning plus the document. 16000 truncated an 18-item guide mid-JSON. Streaming is used, so a large ceiling costs nothing when it is not needed — you are billed for what is produced.",
+      "brevity": {
+        "reason_max_words": 28,
+        "why_this_group_max_words": 25,
+        "intro_max_words": 45,
+        "_note": "A candidate scanning a table reads the pair and moves on; the explanation is there for the one they stop at. Long prose in a table cell is read by nobody and paid for by every run. v1.2 restores the example at 10 words against v1.0's median of 12 and max of 18 — and, more to the point, excludes what the long ones actually were: docket headers and party lists, which show no usage at all.",
+        "example_max_words": 10
+      },
+      "effort": "medium",
+      "effort_note": "Thinking is billed as output and dominated the bill — 14,205 output tokens for ~3,500 tokens of visible Hebrew at effort 'high'. These are short factual explanations of settled grammar, not a reasoning problem, so 'medium' is where the quality stops paying for itself. Raise it back to 'high' if the explanations come out thin."
+    },
+    "procedure_guide": {
+      "source_kind": "procedure_guide",
+      "description": "An instructional booklet about how to perform an exam task: what is required, how it is graded, how to spend the time. Its facts are the requirements of a procedure set by an external body; its expression is how the booklet explains them.",
+      "send_to_model": [
+        "requirements[].statement",
+        "requirements[].stage"
+      ],
+      "withhold_from_model": [
+        "the entire source document — sections, headings, paragraphs and tables alike"
+      ],
+      "withhold_rationale": "A requirement is a fact about the exam: the time limit, the register, the numbering of exhibits, the grading dimensions. How the booklet explains, motivates and illustrates each one is its author's expression, and none of it is needed to write a guide from the requirement itself.",
+      "reorganise_by": "the order the candidate does the work",
+      "reorganise_note": "The source arranges by topic — a section on the introduction, a section on the facts, a section on language. Arranging instead by the SEQUENCE the candidate actually works in — read the task, choose it, budget the time, plan, draft, check — is a different organising principle, and it is also the more useful one under exam conditions.",
+      "voice": "Second-person coaching for a bar-exam candidate, written to be followed while the clock runs. Imperative where the requirement is binding, plain where it is advice.",
+      "add_own": [
+        "the workflow: which stage each requirement belongs to and in what order",
+        "the stage headings and the one-line reason each stage exists",
+        "what to actually do about each requirement, and what going wrong looks like",
+        "one short worked phrasing per rule where a form of words helps"
+      ],
+      "model": "claude-opus-5",
+      "max_tokens": 32000,
+      "max_tokens_note": "Higher than usage_guide's 24000: a procedure guide carries a paragraph of guidance per rule rather than a clause, and thinking tokens are billed and budgeted as output. Streaming is used, so a large ceiling costs nothing when it is not needed.",
+      "brevity": {
+        "do_max_words": 45,
+        "pitfall_max_words": 30,
+        "why_this_stage_max_words": 25,
+        "intro_max_words": 60
+      },
+      "estimated_cost_usd": "1-3 for a booklet's worth of requirements, at the rates below. Compare the 0.3273 a 29-pair usage guide cost: this sends more and writes much more."
+    }
+  },
+  "output_schema": {
+    "usage_guide": {
+      "doc": {
+        "title": "string — LawPass's own title, not the source's",
+        "intro": "string — written for this product, in the target voice",
+        "groups": [
+          {
+            "id": "string — slug of the cause",
+            "heading": "string",
+            "why_this_group": "string — what these errors have in common",
+            "items": [
+              {
+                "id": "string",
+                "avoid": "string — the incorrect form (fact, carried across)",
+                "use": "string — the correct form (fact, carried across)",
+                "reason": "string — newly authored, ONE short sentence",
+                "example": "string — newly authored, one short clause using the preferred form"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    "procedure_guide": {
+      "doc": {
+        "title": "string — LawPass's own title, not the source's",
+        "intro": "string — what this guide is for, in the target voice",
+        "stages": [
+          {
+            "id": "string — slug of the stage",
+            "heading": "string — the stage, named as an action",
+            "why_this_stage": "string — what this stage is for, one line",
+            "rules": [
+              {
+                "id": "string",
+                "requirement": "string — the supplied fact, carried across unchanged",
+                "do": "string — newly authored: what to do about it",
+                "pitfall": "string — newly authored: what going wrong looks like"
+              }
+            ]
+          }
+        ]
+      },
+      "note": "`requirement` is the only field carried across, and it is the only one that may match the input. Everything else on the row is written by the model."
+    }
+  },
+  "checks": [
+    {
+      "id": "no_source_in_prompt",
+      "applies_to": "procedure_guide",
+      "fails_run": true,
+      "new_in": "1.3",
+      "note": "Re-read the assembled prompt and fail if any sentence of the source document appears in it. The converter does not open the source, so this can only fire if someone wires it in later — which is exactly the regression worth failing a run over."
+    },
+    {
+      "id": "max_shared_ngram",
+      "n": 6,
+      "applies_to": "reason, example, intro, why_this_group (usage_guide); do, pitfall, intro, why_this_stage (procedure_guide)",
+      "fails_run": true,
+      "ignores_fact_words": true,
+      "note": "Any run of 6+ consecutive words shared with the source's prose is reported, EXCEPT runs made mostly of the facts themselves — identical on both sides by design and the subject, not the expression. Run locally against the source the operator already holds; the source is never sent anywhere. Runs contained in a phrase from legal_boilerplate are also ignored (1.4.0): they are fixed court language, not the source's expression.",
+      "ignores_boilerplate": true
+    },
+    {
+      "id": "facts_preserved",
+      "applies_to": "usage_guide",
+      "fails_run": true,
+      "note": "Every (incorrect, correct) pair in the source must survive into the output. Losing one is a content bug, not a compliance win."
+    },
+    {
+      "id": "requirements_covered",
+      "applies_to": "procedure_guide",
+      "fails_run": true,
+      "new_in": "1.3",
+      "note": "Every supplied requirement must appear in exactly one stage. A guide that silently drops a requirement is worse than no guide: the candidate believes they have the whole list."
+    },
+    {
+      "id": "order_differs",
+      "fails_run": false,
+      "note": "The output item order must not reproduce the source order (R2)."
+    },
+    {
+      "id": "no_source_headings",
+      "fails_run": true,
+      "note": "None of the source's section headings may appear as an output heading."
+    }
+  ],
+  "change_tracking": {
+    "written_to": "<output>.changes.json",
+    "records": [
+      "the contract version and the source_kind used",
+      "model and settings",
+      "every fact or requirement carried across, with the stage or group it was moved into",
+      "for procedure_guide: each requirement's origin, who extracted it and when",
+      "which source fields were withheld",
+      "the result of every check",
+      "a timestamp"
+    ],
+    "note": "The changes file records the source only by its unprotectable facts, so it can live in the repo without carrying the source's expression into it."
+  },
+  "pricing": {
+    "_note": "Anthropic first-party rates, USD per million tokens. Update when Anthropic's pricing page changes; the run records which rate it used.",
+    "_source": "https://www.anthropic.com/pricing",
+    "claude-opus-5": {
+      "input_per_mtok": 5,
+      "output_per_mtok": 25
+    },
+    "claude-sonnet-5": {
+      "input_per_mtok": 2,
+      "output_per_mtok": 10
+    },
+    "claude-haiku-4-5": {
+      "input_per_mtok": 1,
+      "output_per_mtok": 5
+    }
+  },
+  "decisions_in_1_3": [
+    {
+      "question": "Is human_extraction an acceptable origin for requirements?",
+      "answer": "Yes.",
+      "consequence": "R1's guarantee is mechanical for usage_guide and procedural for procedure_guide: the converter still cannot read the source, but the requirements it is given were written by a person who did. max_shared_ngram is the backstop and stays blocking."
+    },
+    {
+      "question": "Is `requirement` carried across verbatim?",
+      "answer": "Yes — the supplied statement is copied into the output unchanged.",
+      "consequence": "requirements_covered can match exactly rather than fuzzily. The cost is that a distinctive phrasing in a supplied statement would survive into the output, so statements must be written as bare facts — that instruction is in requirements_input.shape."
+    },
+    {
+      "question": "Is n=6 still right for max_shared_ngram over procedural prose?",
+      "answer": "Yes, unchanged.",
+      "consequence": "Hebrew legal boilerplate can reach six words innocently, so findings are reported for a human to read rather than assumed to be copying. ignores_fact_words already excludes runs made mostly of the carried facts."
+    },
+    {
+      "question": "May a model do the extraction when no person will?",
+      "answer": "Yes — added in 1.3.1, at the operator's direction, after the alternative (verbatim publication) was tried and withdrawn.",
+      "consequence": "origin 'model_extraction' is recorded per requirement and travels into the changes file and the stored row, so the weaker basis is visible to whoever looks next rather than inferred from nothing."
+    },
+    {
+      "question": "How should max_shared_ngram treat standard legal boilerplate?",
+      "answer": "Allowlist it — legal_boilerplate, added in 1.4.0.",
+      "consequence": "A shared run inside a listed formula no longer fails a run. The list is deliberately short and each entry is justified, because the cost of a long one is that the check stops meaning anything."
+    }
+  ],
   "pipeline": {
     "source_kind": "usage_guide",
     "description": "A table of incorrect/correct usage pairs with explanations, as produced by scripts/ingestion/docx2json.mjs --mode=document.",
@@ -98,81 +362,31 @@
       "example_max_words": 10
     },
     "effort": "medium",
-    "effort_note": "Thinking is billed as output and dominated the bill — 14,205 output tokens for ~3,500 tokens of visible Hebrew at effort 'high'. These are short factual explanations of settled grammar, not a reasoning problem, so 'medium' is where the quality stops paying for itself. Raise it back to 'high' if the explanations come out thin."
+    "effort_note": "Thinking is billed as output and dominated the bill — 14,205 output tokens for ~3,500 tokens of visible Hebrew at effort 'high'. These are short factual explanations of settled grammar, not a reasoning problem, so 'medium' is where the quality stops paying for itself. Raise it back to 'high' if the explanations come out thin.",
+    "_alias_note": "Alias of pipelines.usage_guide, kept so a consumer written against v1.2 does not break. New code reads pipelines[kind]."
   },
-  "output_schema": {
-    "doc": {
-      "title": "string — LawPass's own title, not the source's",
-      "intro": "string — written for this product, in the target voice",
-      "groups": [
-        {
-          "id": "string — slug of the cause",
-          "heading": "string",
-          "why_this_group": "string — what these errors have in common",
-          "items": [
-            {
-              "id": "string",
-              "avoid": "string — the incorrect form (fact, carried across)",
-              "use": "string — the correct form (fact, carried across)",
-              "reason": "string — newly authored, ONE short sentence",
-              "example": "string — newly authored, one short clause using the preferred form"
-            }
-          ]
-        }
-      ]
-    }
-  },
-  "checks": [
-    {
-      "id": "max_shared_ngram",
-      "n": 6,
-      "applies_to": "reason, example, intro, why_this_group",
-      "fails_run": true,
-      "note": "Any run of 6+ consecutive words shared with the source's prose is reported, EXCEPT runs made mostly of the fact pairs themselves — those are identical on both sides by design and are the subject, not the expression. A window counts only when at least half its words are ordinary prose. Run locally against the source the operator already holds; the source is never sent anywhere. With the examples removed (v1.1) there is less original prose to dilute shared phrasing, so this check matters more than it did.",
-      "ignores_fact_words": true
-    },
-    {
-      "id": "facts_preserved",
-      "fails_run": true,
-      "note": "Every (incorrect, correct) pair in the source must survive into the output. Losing one is a content bug, not a compliance win."
-    },
-    {
-      "id": "order_differs",
-      "fails_run": false,
-      "note": "The output item order must not reproduce the source order (R2)."
-    },
-    {
-      "id": "no_source_headings",
-      "fails_run": true,
-      "note": "None of the source's section headings may appear as an output heading."
-    }
-  ],
-  "change_tracking": {
-    "written_to": "<output>.changes.json",
-    "records": [
-      "the contract version used",
-      "model and settings",
-      "every fact pair carried across, with the group it was moved into",
-      "which source fields were withheld",
-      "the result of every check",
-      "a timestamp"
-    ],
-    "note": "The changes file records the source only by its unprotectable fact pairs, so it can live in the repo without carrying the source's expression into it."
-  },
-  "pricing": {
-    "_note": "Anthropic first-party rates, USD per million tokens. Update when Anthropic's pricing page changes; the run records which rate it used.",
-    "_source": "https://www.anthropic.com/pricing",
-    "claude-opus-5": {
-      "input_per_mtok": 5.0,
-      "output_per_mtok": 25.0
-    },
-    "claude-sonnet-5": {
-      "input_per_mtok": 2.0,
-      "output_per_mtok": 10.0
-    },
-    "claude-haiku-4-5": {
-      "input_per_mtok": 1.0,
-      "output_per_mtok": 5.0
-    }
+  "legal_boilerplate": {
+    "_what": "Fixed formulae of Israeli legal drafting that max_shared_ngram ignores.",
+    "_why": "The check compares the output against the source's prose and reports any shared run of n words. That is the right instrument for authored phrasing and the wrong one for court boilerplate: 'בית המשפט הנכבד מתבקש להורות על' is how every motion opens, it reaches six words on its own, and it appears in the source only because the source teaches it. Reporting it as copying trains the operator to wave findings through, which is the failure mode worth avoiding.",
+    "_rule": "A phrase belongs here ONLY if a candidate would write it whoever had taught them — fixed court language, not a formulation this source happens to use well. Every entry carries its justification. Adding one loosens a compliance check and needs the same sign-off this list got.",
+    "_added": "1.4.0, on the operator's decision of 2026-09-30, after the run of חוברת מיקוד blocked on the first entry below.",
+    "phrases": [
+      {
+        "phrase": "בית המשפט הנכבד מתבקש להורות על",
+        "why": "The standard opening of the prayer for relief in an Israeli motion or pleading."
+      },
+      {
+        "phrase": "בית המשפט הנכבד מתבקש",
+        "why": "The shorter form of the same formula."
+      },
+      {
+        "phrase": "לאור כל האמור לעיל",
+        "why": "The conventional connective into a concluding request."
+      },
+      {
+        "phrase": "מן הדין ומן הצדק",
+        "why": "A fixed doublet of Israeli pleading, older than any prep material."
+      }
+    ]
   }
 }
