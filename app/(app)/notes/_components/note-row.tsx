@@ -197,7 +197,12 @@ export function NoteRow({ note, choices, learning360 }: NoteRowProps) {
             {live.contentHtml ? (
               <div
                 dir="rtl"
-                className="note-editor-content font-heebo text-[15px] leading-relaxed"
+                // allow-copy: the user wrote this. The app-wide deterrent
+                // (<NoCopyApp>) blocks selection everywhere inside (app), and
+                // this is the exception it exists for — refusing to let someone
+                // copy their own note would be hostile and protects nothing.
+                // Slice 37 made the same call by leaving this unwrapped.
+                className="allow-copy note-editor-content font-heebo text-[15px] leading-relaxed"
                 dangerouslySetInnerHTML={{ __html: live.contentHtml }}
               />
             ) : (

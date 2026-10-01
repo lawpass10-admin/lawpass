@@ -16,6 +16,7 @@
 const { anonClient } = require("../config/supabase");
 const { isValidPlanId } = require("../constants/profile");
 const { userMetadataSchema } = require("../validators/auth");
+const { SUBSCRIPTION_GATE_ENABLED } = require("../middleware/require-subscription");
 
 // =============================================================================
 // Helpers
@@ -252,7 +253,7 @@ async function verifyOtp(req, res) {
     ? "/dashboard"
     : intendedPlan
       ? `/checkout?plan=${intendedPlan}`
-      : "/pricing";
+      : afterSignup();
 
   logAuth("verifyOtp", `OK user=${userId} subscribed=${subscribed} → ${url}`);
   return res.json({
@@ -419,9 +420,26 @@ async function completeGoogleSignup(req, res) {
   }
 
   const subscribed = await hasActiveSubscription(supabase, user.id);
-  const url = subscribed ? "/dashboard" : "/pricing";
+  const url = subscribed ? "/dashboard" : afterSignup();
   logAuth("completeGoogleSignup", `OK user=${user.id} subscribed=${subscribed} → ${url}`);
   return res.json({ ok: true, url });
+}
+
+/**
+ * Where an account with no subscription goes once it is created.
+ *
+ * THE PAYWALL SWITCH DECIDES, and until now it did not. SUBSCRIPTION_GATE_ENABLED
+ * is off, which its own documentation says means "a user with no active
+ * subscription signs up, lands on /dashboard, and is never bounced to the plan
+ * picker" — but this controller sent every new account to /pricing regardless,
+ * so a first-time user met a plan picker the product had switched off, with a
+ * paywall behind it that would have let them through anyway.
+ *
+ * A user who PICKED a plan before signing up still goes to checkout: that is
+ * their own choice rather than a gate, and it is handled by the caller.
+ */
+function afterSignup() {
+  return SUBSCRIPTION_GATE_ENABLED ? "/pricing" : "/dashboard";
 }
 
 /** Signs the user out (revokes the session server-side). Returns /login. */

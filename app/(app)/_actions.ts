@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 
+import { isMockCheckoutEnabled } from "@/lib/billing/mock-checkout";
 import { isValidPlanId, type PlanId } from "@/lib/billing/plans";
 import { createClient } from "@/lib/supabase/server";
 
@@ -51,6 +52,19 @@ const PLAN_TYPE_BY_ID: Record<PlanId, "3_months" | "6_months"> = {
 export async function grantMockSubscriptionAction(
   planId: PlanId
 ): Promise<ActionResult> {
+  // THE FIRST THING THIS DOES, before validating anything or touching the
+  // database. A Server Action is a public POST endpoint: the checkout screen
+  // is one way to reach this function and not a precondition of reaching it,
+  // so the refusal has to live here rather than on the page. In production
+  // without ALLOW_MOCK_CHECKOUT, granting a free subscription is simply not a
+  // thing this deployment can do. See lib/billing/mock-checkout.ts.
+  if (!isMockCheckoutEnabled()) {
+    console.warn(
+      "[billing] grant_mock_subscription REFUSED — mock checkout disabled in this environment"
+    );
+    return { ok: false, error: "התשלום אינו זמין כרגע" };
+  }
+
   if (!isValidPlanId(planId)) {
     return { ok: false, error: "תוכנית לא תקינה" };
   }

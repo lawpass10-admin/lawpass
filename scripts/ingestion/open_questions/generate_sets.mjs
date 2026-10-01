@@ -3,24 +3,38 @@
 //
 //   node scripts/ingestion/open_questions/generate_sets.mjs
 //   node scripts/ingestion/open_questions/generate_sets.mjs 5
+//   node scripts/ingestion/open_questions/generate_sets.mjs 5 --sequential
+//   node scripts/ingestion/open_questions/generate_sets.mjs 5 --seed=1738205
+//   node scripts/ingestion/open_questions/generate_sets.mjs 10 --parallel=4
+//
+// TWO FLAGS THAT SOUND LIKE OPPOSITES AND ARE NOT. --sequential is about the
+// ORDER sources are picked in (newest-first instead of shuffled). --parallel is
+// about EXECUTION (several sets at once instead of one at a time). They are
+// independent, and `--sequential --parallel=4` is a coherent request: walk the
+// papers newest-first, and run four lanes while doing it.
 //
 // With no argument it asks at the terminal how many sets to generate. That is
 // the only input it takes; everything else comes from the source bundles and
 // from llm-params.json / llm-params-answers.json.
 //
-// WHICH SOURCE EACH SET COMES FROM. The bundles under answers/pages/ are ranked
-// newest sitting first, and the runner walks that list in order: 1 set uses the
-// newest paper, 2 sets use the newest two, and so on. Past the end of the list
-// it wraps to the top and goes round again, so with ten bundles the eleventh set
-// returns to 2026 — a SECOND angle on that paper, not a repeat of the first: the
-// angle letter advances to the next one free (A, then B, then C).
+// WHICH SOURCE EACH SET COMES FROM. The bundles under answers/pages/ are
+// shuffled, and the runner walks that shuffled list. Past the end it reshuffles
+// and goes round again, so with ten bundles the eleventh set returns to some
+// paper for a SECOND angle — not a repeat of the first: the angle letter
+// advances to the next one free (A, then B, then C).
 //
-//   set 1  2026-S-Q1 A      set 6   2022-W-Q2 A
-//   set 2  2026-S-Q2 A      set 7   2021-S-Q1 A
-//   set 3  2023-S-Q1 A      set 8   2021-S-Q2 A
-//   set 4  2023-S-Q2 A      set 9   2021-W-Q1 A
-//   set 5  2022-W-Q1 A      set 10  2021-W-Q2 A
-//                           set 11  2026-S-Q1 B   <- wraps, next free angle
+// Shuffling a pass rather than picking a paper at random per set is deliberate.
+// Independent picks cluster: a run of ten could take the same sitting four
+// times while never touching half the corpus. A shuffled pass keeps the even
+// spread — every source used once before any is used twice — and randomises
+// only the order within it.
+//
+//   node ... generate_sets.mjs 5                 random order, new seed
+//   node ... generate_sets.mjs 5 --seed=1738205  repeat an earlier run's order
+//   node ... generate_sets.mjs 5 --sequential    the old newest-first walk
+//
+// The seed is printed with the plan, so a run that produced something odd can
+// be replayed exactly.
 //
 // WHAT EACH SET RUNS, in order, reusing the scripts that already do each job:
 //
@@ -41,9 +55,12 @@
 // need a browser on the machine.
 //
 // COSTS REAL MONEY AND REAL TIME. Each set is three Opus calls; reckon on eight
-// to eleven minutes and roughly 90-100k tokens per set. Sets run one at a time,
-// on purpose: the quote-lock validators reject work often enough that a failed
-// set should not be competing for the API with nine others.
+// to eleven minutes and roughly 90-100k tokens per set. Sets run one at a time by
+// default; --parallel=N runs N lanes at once, which costs the same in tokens and
+// less in wall clock. See set_lanes.mjs for why a lane is a SOURCE PAPER rather
+// than just a set — two angles of one paper must not be written simultaneously,
+// or neither knows what the other wrote. A run shorter than the number of source
+// papers puts every set on its own paper, so there the grouping costs nothing.
 //
 // A FAILED SET DOES NOT STOP THE RUN. Generation can be rejected by the quote
 // lock, and that verdict is correct behaviour, not a crash. The runner records
@@ -72,18 +89,17 @@
 
 import dotenv from 'dotenv';
 import { createInterface } from 'node:readline/promises';
-import { existsSync, writeFileSync, mkdirSync } from 'node:fs';
+import { writeFileSync, mkdirSync } from 'node:fs';
 import { join, dirname, relative } from 'node:path';
-import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
 import { rotation, plan } from './set_plan.mjs';
+import { generateSet } from './set_runner.mjs';
+import { laneize, laneWorkers, estimateMinutes, runLanes } from './set_lanes.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const appRoot = join(here, '..', '..', '..');
-const serverDir = join(appRoot, 'lawpass_server');
 const pagesDir = join(here, 'answers', 'pages');
-const sourcesDir = join(here, 'sources');
 const generatedDir = join(here, 'generated');
 const logsDir = join(here, 'logs');
 
@@ -92,103 +108,6 @@ dotenv.config({ path: join(appRoot, '.env') });
 
 const RUN_STARTED = Date.now();
 const mmss = (ms) => `${String(Math.floor(ms / 60000)).padStart(2, '0')}:${String(Math.floor((ms % 60000) / 1000)).padStart(2, '0')}`;
-
-// ------------------------------------------------------------- the steps
-
-/**
- * Run one stage. Output streams through so the long model calls show progress.
- * Returns the exit status rather than exiting, so one bad set does not take the
- * rest of the run down with it.
- */
-function run(script, args, cwd = appRoot) {
-  const res = spawnSync('node', [script, ...args], { cwd, stdio: 'inherit' });
-  return res.status ?? 1;
-}
-
-function generateSet(step) {
-  const { source, angle } = step;
-  const base = `${source.id}-${angle}`;
-  const sourceFile = join(sourcesDir, `${source.id}.source.json`);
-  const questionJson = join(generatedDir, `${base}.generated.json`);
-  const answerJson = join(generatedDir, `${base}.answer.json`);
-  const rubricJson = join(generatedDir, `${base}.rubric.json`);
-
-  // 1. adapt + question + answer. generate_from_source.mjs writes the adapted
-  //    source file the two renderers and the loader then read.
-  let status = run(join(here, 'generate_from_source.mjs'), [`--folder=${source.folder}`, `--angle=${angle}`]);
-  if (status !== 0) return { ok: false, at: 'generation', detail: 'rejected or failed — see generated/rejected/' };
-  if (!existsSync(questionJson)) return { ok: false, at: 'generation', detail: `${base}.generated.json was not written` };
-  if (!existsSync(answerJson)) return { ok: false, at: 'generation', detail: `${base}.answer.json was not written` };
-
-  // 2. the marking scheme, derived from the question and the answer together.
-  //    Runs here rather than after the renders so that a set which cannot be
-  //    marked is known before anything is loaded — a question in the table with
-  //    no rubric is a task a student can sit and nobody can grade.
-  status = run(join(serverDir, 'scripts', 'generate-rubric.js'), [answerJson], serverDir);
-  if (status !== 0) return { ok: false, at: 'rubric', detail: 'rejected or failed — see generated/rejected/' };
-  if (!existsSync(rubricJson)) return { ok: false, at: 'rubric', detail: `${base}.rubric.json was not written` };
-
-  // 3 & 4. HTML for the exam paper and for the model answer. No PDF.
-  status = run(join(serverDir, 'scripts', 'render-open-question-pdf.js'), [questionJson, sourceFile, '--html-only'], serverDir);
-  if (status !== 0) return { ok: false, at: 'question html', detail: 'renderer failed' };
-
-  status = run(join(serverDir, 'scripts', 'render-open-answer-pdf.js'), [answerJson, sourceFile, '--html-only'], serverDir);
-  if (status !== 0) return { ok: false, at: 'answer html', detail: 'renderer failed' };
-
-  // THE COMPLETENESS GATE. Nothing reaches the database unless all three parts
-  // of the set exist: question, answer, and the rubric that marks them. The
-  // stages above already stop on their own failures, but the invariant is
-  // restated here as one check because it is the one that matters — a question
-  // row without a rubric is a task a student can sit and nobody can grade, and
-  // it is far easier to never write it than to find it later.
-  const parts = [
-    ['question', questionJson],
-    ['answer', answerJson],
-    ['rubric', rubricJson],
-  ];
-  const missing = parts.filter(([, p]) => !existsSync(p)).map(([name]) => name);
-  if (missing.length) {
-    return {
-      ok: false,
-      at: 'incomplete set',
-      detail: `missing ${missing.join(', ')} — nothing was loaded to the database`,
-    };
-  }
-
-  // 5. the row. The loader re-validates, attaches the quote bank, inherits the
-  //    subject from the parent source row and skips anything already present.
-  status = run(join(here, 'load_generated_questions.mjs'), [`${base}.answer.json`, '--commit']);
-  if (status !== 0) return { ok: false, at: 'database', detail: 'load failed — the JSON and HTML are still on disk' };
-
-  // 6. the rubric row, into open_question_rubrics — a separate table, not a
-  //    column here, because open_questions is student-readable and RLS is
-  //    row-level: a rubric beside the question would be one direct query away
-  //    from being the answer key in a student's browser.
-  //
-  //    Loaded as a DRAFT, with no --approve. A draft grades nothing, which is
-  //    the same promise the rest of this runner makes: generated content reaches
-  //    a student only after a human has read it.
-  //
-  //    This is the one stage that can leave the database half-written: the
-  //    rubric row is looked up by the question row, so the question has to be
-  //    inserted first and the two cannot go in as one transaction. A failure
-  //    here is reported as PARTIAL rather than as a plain failure, because the
-  //    fix is different — the question is already in the table and only the
-  //    rubric has to be loaded, not the whole set regenerated.
-  status = run(join(here, 'load_rubric.mjs'), [`${base}.rubric.json`, '--commit']);
-  if (status !== 0) {
-    return {
-      ok: false,
-      partial: true,
-      at: 'database',
-      detail:
-        'rubric load failed — the QUESTION ROW IS IN THE TABLE and its rubric is not. ' +
-        `Load it with: node scripts/ingestion/open_questions/load_rubric.mjs ${base}.rubric.json --commit`,
-    };
-  }
-
-  return { ok: true, base };
-}
 
 // ------------------------------------------------------------------ main
 
@@ -213,6 +132,52 @@ async function ask(question) {
   }
 }
 
+// --sequential restores the newest-first walk; the default is a shuffled
+// order. --seed=N reproduces a previous run's order exactly (the seed used is
+// printed below, so a run that went wrong can be replayed).
+const sequential = process.argv.includes('--sequential');
+const seedArg = process.argv.slice(2).find((a) => a.startsWith('--seed='));
+const seed = seedArg ? Number(seedArg.split('=')[1]) : Date.now();
+
+// --parallel / --parallel=N. Validated here rather than left to build a pool of
+// NaN workers, which silently runs nothing at all.
+const parallelArg = process.argv.slice(2).find((a) => a === '--parallel' || a.startsWith('--parallel='));
+const parallel = Boolean(parallelArg);
+let laneLimit = Infinity;
+if (parallelArg?.startsWith('--parallel=')) {
+  laneLimit = Number(parallelArg.split('=')[1]);
+  if (!Number.isInteger(laneLimit) || laneLimit < 1) {
+    console.error(`--parallel=${parallelArg.split('=')[1]} is not a whole number of lanes.`);
+    process.exit(2);
+  }
+}
+
+// --pick=independent draws a source at random for every set, so a paper can come
+// up more than once in a run and others not at all. The default spreads instead:
+// random order, even coverage. See plan() in set_plan.mjs.
+const pickArg = process.argv.slice(2).find((a) => a.startsWith('--pick='));
+const pick = pickArg ? pickArg.split('=')[1] : 'spread';
+if (!['spread', 'independent', 'subject'].includes(pick)) {
+  console.error(
+    `--pick=${pick} is not a mode. Use --pick=spread, --pick=independent or --pick=subject.`
+  );
+  process.exit(2);
+}
+
+// --exclude-subject=<text>, repeatable. Substring match, because these subjects
+// come off PDFs and their punctuation is not reliably identical — matching the
+// whole string exactly would silently exclude nothing.
+const excludeSubjects = process.argv
+  .slice(2)
+  .filter((a) => a.startsWith('--exclude-subject='))
+  .map((a) => a.slice('--exclude-subject='.length))
+  .filter((s) => s.trim() !== '');
+
+const RUN_STAMP = new Date().toISOString().replace(/[:.]/g, '-');
+
+/** Minutes a set takes, for the estimate only. */
+const MINUTES_PER_SET = 10;
+
 const sources = rotation();
 if (!sources.length) {
   console.error(`no usable bundles under ${relative(appRoot, pagesDir)}`);
@@ -220,41 +185,139 @@ if (!sources.length) {
 }
 
 const count = await howMany();
-const steps = plan(count, sources);
+let steps;
+try {
+  steps = plan(count, sources, { random: !sequential, seed, pick, excludeSubjects });
+} catch (error) {
+  // The usual cause is an --exclude-subject that matched everything, which is
+  // worth naming rather than letting a stack trace explain it.
+  console.error(`\n${error.message}`);
+  process.exit(2);
+}
 
 console.log(`\n${sources.length} source paper(s) available, newest first:`);
 for (const s of sources) console.log(`  ${s.id.padEnd(12)} ${s.folder}`);
 
 console.log(`\nplan — ${count} set(s):`);
 for (const s of steps) console.log(`  ${String(s.n).padStart(3)}. ${s.source.id}-${s.angle}`);
+
+// The seed, so a run that produced something odd can be replayed exactly with
+// --seed=N. It was documented as printed and was not, which made the whole
+// reproducibility story untrue in practice.
+const distinctPapers = new Set(steps.map((s) => s.source.id)).size;
+const MODE_LABEL = {
+  spread: 'random order, every paper used evenly (--pick=spread)',
+  independent: 'random, drawn independently per set (--pick=independent)',
+  subject: 'random order, every SUBJECT used evenly (--pick=subject)',
+};
+console.log(`\norder : ${sequential ? 'newest-first (--sequential)' : MODE_LABEL[pick]}`);
+
+if (excludeSubjects.length) {
+  const dropped = sources.filter((s) =>
+    excludeSubjects.some((x) => String(s.subject ?? '').includes(x))
+  );
+  console.log(`excl. : ${excludeSubjects.map((x) => `"${x}"`).join(', ')}`);
+  console.log(
+    `        ${dropped.length} paper(s) dropped: ${dropped.map((s) => s.id).join(', ') || '(none matched)'}`
+  );
+}
+
 console.log(
-  `\nEach set is two Opus calls. Nothing is skippable once started; ` +
-  `stop with Ctrl-C between sets.\n`
+  `papers: ${distinctPapers} of ${sources.length} used` +
+    `${distinctPapers < sources.length ? `, ${sources.length - distinctPapers} untouched this run` : ''}`
 );
+
+// The subject tally, because this is the number that was out of balance and the
+// one worth seeing before a run rather than after it.
+const bySubject = new Map();
+for (const s of steps) {
+  const key = s.source.subject ?? '(no subject)';
+  bySubject.set(key, (bySubject.get(key) ?? 0) + 1);
+}
+console.log(`subjects: ${bySubject.size} in this run`);
+for (const [subject, n] of [...bySubject].sort((a, b) => b[1] - a[1])) {
+  console.log(`        ${String(n).padStart(2)} × ${subject}`);
+}
+console.log(
+  `seed  : ${seed}${sequential ? ' (unused — the order is not random)' : `   replay with --seed=${seed}`}`
+);
+
+const lanes = laneize(steps, (s) => s.source.id);
+const workers = laneWorkers(lanes, laneLimit);
+const estimateMin = parallel
+  ? estimateMinutes({ lanes, workers, setCount: count, minutesPerSet: MINUTES_PER_SET })
+  : count * MINUTES_PER_SET;
+
+if (parallel) {
+  console.log(`\nlanes — one per source paper, ${lanes.length} in all:`);
+  for (const lane of lanes) {
+    console.log(
+      `  ${lane.source.padEnd(12)} ${lane.steps.length} set(s)   ` +
+        lane.steps.map((s) => `${s.source.id}-${s.angle}`).join(' → ')
+    );
+  }
+}
+
+console.log(
+  `\nmode  : ${
+    parallel
+      ? `PARALLEL execution, ${workers} lane(s) at a time` +
+        `${laneLimit === Infinity ? '' : ` (--parallel=${laneLimit})`}`
+      : 'one set at a time'
+  }`
+);
+console.log(`est.  : ~${estimateMin} min — each set is three Opus calls, ~90-100k tokens\n`);
 
 const loaded = [];   // question row AND rubric row both in the database
 const partial = [];  // question row in, rubric not — needs a hand
 const failed = [];   // nothing loaded
 
-for (const step of steps) {
-  const started = Date.now();
-  console.log('═'.repeat(72));
-  console.log(`SET ${step.n}/${count} — ${step.source.id}-${step.angle}   (elapsed ${mmss(Date.now() - RUN_STARTED)})`);
-  console.log('═'.repeat(72));
+/** File one finished set into the right bucket. Shared by both drivers. */
+function record(step, result, took) {
+  const row = { ...step, took, ...result };
+  if (result.ok) loaded.push(row);
+  else if (result.partial) partial.push(row);
+  else failed.push(row);
+  return row;
+}
 
-  const result = generateSet(step);
-  const took = mmss(Date.now() - started);
-  const record = { ...step, took, ...result };
+if (parallel) {
+  console.log(
+    `${count} set(s) over ${lanes.length} lane(s), ${workers} running at a time.\n` +
+      `Per-lane detail goes to logs/lane-<paper>-${RUN_STAMP}.log — the console shows stage changes only.\n`
+  );
 
-  if (result.ok) {
-    loaded.push(record);
-    console.log(`\n✓ set ${step.n} loaded in ${took} — ${result.base}: question row + rubric row (draft)\n`);
-  } else if (result.partial) {
-    partial.push(record);
-    console.error(`\n! set ${step.n} PARTIAL after ${took}: ${result.detail}\n`);
-  } else {
-    failed.push(record);
-    console.error(`\n✗ set ${step.n} failed at ${result.at} after ${took} — nothing loaded: ${result.detail}\n`);
+  const records = await runLanes({
+    lanes,
+    workers,
+    logsDir,
+    stamp: RUN_STAMP,
+    startedAt: RUN_STARTED,
+    labelOf: (step) => `${step.source.id}-${step.angle}`,
+  });
+
+  // Lanes finish out of order; put them back into plan order so the summary
+  // below reads the same as a sequential run's.
+  records.sort((a, b) => a.step.n - b.step.n);
+  for (const r of records) record(r.step, r.outcome, r.took);
+} else {
+  for (const step of steps) {
+    const started = Date.now();
+    console.log('═'.repeat(72));
+    console.log(`SET ${step.n}/${count} — ${step.source.id}-${step.angle}   (elapsed ${mmss(Date.now() - RUN_STARTED)})`);
+    console.log('═'.repeat(72));
+
+    const result = generateSet(step);
+    const took = mmss(Date.now() - started);
+    record(step, result, took);
+
+    if (result.ok) {
+      console.log(`\n✓ set ${step.n} loaded in ${took} — ${result.base}: question row + rubric row (draft)\n`);
+    } else if (result.partial) {
+      console.error(`\n! set ${step.n} PARTIAL after ${took}: ${result.detail}\n`);
+    } else {
+      console.error(`\n✗ set ${step.n} failed at ${result.at} after ${took} — nothing loaded: ${result.detail}\n`);
+    }
   }
 }
 
@@ -294,6 +357,12 @@ const report = [
   `finished    : ${finishedAt.toISOString()}`,
   `duration    : ${mmss(Date.now() - RUN_STARTED)}`,
   `requested   : ${count} set(s)`,
+  // Enough to reproduce this run exactly, which is the only reason the seed is
+  // held rather than left to Math.random.
+  `order       : ${
+    sequential ? 'newest-first (--sequential)' : `random (--pick=${pick}), seed ${seed}`
+  }`,
+  `execution   : ${parallel ? `${workers} lane(s) in parallel` : 'one set at a time'}`,
   '',
   headline.toUpperCase(),
   `  loaded  ${loaded.length}   partial ${partial.length}   failed ${failed.length}`,

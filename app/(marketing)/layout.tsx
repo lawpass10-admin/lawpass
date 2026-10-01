@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { ContactDialogProvider } from "./_components/contact-dialog";
 
 /**
  * Public site URL used to anchor every absolute URL the metadata API
@@ -26,7 +27,7 @@ const SITE_URL =
  * answer different questions (page language vs. content locale)
  * so there's no conflict.
  */
-const TITLE = "LawPass — עוברים את מבחן הלשכה בפעם הראשונה";
+const TITLE = "LawPass — מגיעים למבחן הלשכה בראש שקט";
 const DESCRIPTION =
   "פלטפורמה דיגיטלית להכנה למבחני ההסמכה של לשכת עורכי הדין. שיטת ה-360°: לכל שאלה ניתוח מלא של הנושא, המסיחים, מלכודות ופסיקה.";
 
@@ -66,5 +67,11 @@ export default function MarketingLayout({
   // viewport (radial washes, the character figure with -6% inset,
   // future overhanging decorations) gets clipped here rather than
   // triggering horizontal scroll on phones.
-  return <div className="overflow-x-hidden">{children}</div>;
+  // The contact dialog is mounted once here, so the nav and the footer open
+  // the SAME form rather than each carrying their own copy of it.
+  return (
+    <ContactDialogProvider>
+      <div className="overflow-x-hidden">{children}</div>
+    </ContactDialogProvider>
+  );
 }

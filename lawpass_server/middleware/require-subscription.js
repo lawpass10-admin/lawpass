@@ -64,4 +64,8 @@ async function requireSubscription(req, res, next) {
   next();
 }
 
-module.exports = { requireSubscription };
+// Exported so the auth controller can send a new account to the same place the
+// gate would have let them reach. Without it the switch was half-wired: the
+// middleware waved requests through while signup still routed people to the
+// plan picker it had just disconnected.
+module.exports = { requireSubscription, SUBSCRIPTION_GATE_ENABLED };

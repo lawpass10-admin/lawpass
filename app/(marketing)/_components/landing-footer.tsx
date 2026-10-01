@@ -1,4 +1,6 @@
 import Image from "next/image";
+
+import { ContactLink } from "./contact-dialog";
 import Link from "next/link";
 
 import { footerCopy } from "@/app/(marketing)/_components/landing-copy";
@@ -20,6 +22,11 @@ import styles from "./landing.module.css";
  * element type swaps based on href shape.
  */
 function FooterLink({ href, label }: { href: string; label: string }) {
+  // "#contact" is not a destination — it opens the contact dialog. Checked
+  // before the "/" test because it is neither a route nor an anchor.
+  if (href === "#contact") {
+    return <ContactLink label={label} />;
+  }
   // Internal app routes get next/link's prefetch + client-side nav. Everything
   // else (anchor "#", mailto:, external) stays on plain <a>.
   if (href.startsWith("/")) {

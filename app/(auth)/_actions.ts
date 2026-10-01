@@ -8,6 +8,7 @@ import { z } from "zod";
 
 import { SUBSCRIPTION_GATE_ENABLED } from "@/lib/auth/subscription-gate";
 import { isValidPlanId, type PlanId } from "@/lib/billing/plans";
+import { NDA_VERSION } from "@/lib/legal/nda";
 import { createClient } from "@/lib/supabase/server";
 import type { AcademicInstitution } from "@/lib/profile/institutions";
 import type { LegalSpecialization } from "@/lib/profile/specializations";
@@ -143,6 +144,11 @@ const userMetadataSchema = z.object({
   legal_specialization: legalSpecializationSchema,
   // ISO timestamp captured server-side at signUpAction time.
   terms_accepted_at: z.string().min(1),
+  // The NDA acceptance, same round trip. Optional in the SCHEMA only so an
+  // account that started signing up before the agreement shipped can still
+  // finish verifying; a new signup always carries both.
+  nda_accepted_at: z.string().min(1).optional(),
+  nda_version: z.string().min(1).optional(),
   // Slice 16 / Phase L4 — plan the user picked on the landing page
   // pricing card before they hit "התחילו עם …". signUpAction stashes
   // it here; verifyOtpAction reads it back and routes the user to
@@ -174,6 +180,10 @@ async function createProfile(input: {
   birth_date: string; // YYYY-MM-DD
   exam_date_planned: string | null; // YYYY-MM-01 or null
   terms_accepted_at: string; // ISO timestamp from signUpAction
+  // Written together or not at all — the RPC rejects one without the other,
+  // because a date with no version cannot answer "agreed to what".
+  nda_accepted_at?: string | null;
+  nda_version?: string | null;
   signup_source: "email" | "google";
   // Slice 13 — required at onboarding for new users. The RPC signature
   // was widened to 9 args (DROP+CREATE OR REPLACE in migration
@@ -193,6 +203,8 @@ async function createProfile(input: {
     p_signup_source: input.signup_source,
     p_academic_institution: input.academic_institution,
     p_legal_specialization: input.legal_specialization,
+    p_nda_accepted_at: input.nda_accepted_at ?? null,
+    p_nda_version: input.nda_version ?? null,
   });
 
   if (error) {
@@ -280,6 +292,10 @@ export async function signUpAction(
         // Captured server-side at signup time, persisted to
         // profiles.terms_accepted_at on OTP verification.
         terms_accepted_at: new Date().toISOString(),
+        // The NDA acceptance, captured at the same moment and against the
+        // version the form actually rendered — see lib/legal/nda.ts.
+        nda_accepted_at: new Date().toISOString(),
+        nda_version: NDA_VERSION,
         // Conditionally include — Supabase strips null-valued keys
         // but spreading nothing keeps the on-disk shape minimal.
         ...(intendedPlan ? { intended_plan: intendedPlan } : {}),
@@ -388,6 +404,8 @@ export async function verifyOtpAction(input: {
     // shape; the createProfile RPC stores it as a real null.
     exam_date_planned: metaParsed.data.exam_date_planned ?? null,
     terms_accepted_at: metaParsed.data.terms_accepted_at,
+    nda_accepted_at: metaParsed.data.nda_accepted_at ?? null,
+    nda_version: metaParsed.data.nda_version ?? null,
     signup_source: "email",
     // Slice 13 — recovered from user_metadata after the user verifies
     // the OTP. Required at signup so by this point both fields are
@@ -612,6 +630,12 @@ export async function completeGoogleOAuthSignup(
     // undefined; createProfile RPC needs string | null.
     exam_date_planned: data.exam_date_planned ?? null,
     terms_accepted_at: new Date().toISOString(),
+    // The OAuth path records the NDA too. There is no round trip through
+    // user_metadata here — the form was just submitted, so the acceptance is
+    // now — but it must still be stored, or signing in with Google would be a
+    // way to reach the content without a recorded agreement.
+    nda_accepted_at: new Date().toISOString(),
+    nda_version: NDA_VERSION,
     signup_source: "google",
     // Slice 13 — required by oauthCompletionSchema; guaranteed
     // present at this point.
@@ -648,7 +672,14 @@ export async function completeGoogleOAuthSignup(
     .gt("ends_at", new Date().toISOString())
     .maybeSingle();
 
-  return { ok: true, url: subscription ? "/dashboard" : "/pricing" };
+  // Same rule as the email flow above, which this had drifted from: with the
+  // paywall off, a new account goes to the dashboard rather than to a plan
+  // picker the app will not then ask them to complete. Google users have no
+  // pre-selected plan, so there is no checkout shortcut to preserve here.
+  return {
+    ok: true,
+    url: subscription || !SUBSCRIPTION_GATE_ENABLED ? "/dashboard" : "/pricing",
+  };
 }
 
 /**

@@ -41,14 +41,17 @@ function setupAdminMock(): void {
  */
 type UpdateCall = { table: string; payload: Record<string, unknown> };
 type AuditCall = Record<string, unknown>;
+type RpcCall = { fn: string; args: Record<string, unknown> };
 
 function buildFakeSupabase(opts: {
   qaReportPriorRow?: { status: string; user_id: string } | null;
   profilePriorRow?: { is_qa_tester: boolean } | null;
   updateError?: { message: string; code?: string } | null;
+  rpcError?: { message: string; code?: string } | null;
 }) {
   const updates: UpdateCall[] = [];
   const auditInserts: AuditCall[] = [];
+  const rpcCalls: RpcCall[] = [];
 
   function qaReportsBuilder() {
     const builder: Record<string, unknown> = {};
@@ -106,12 +109,20 @@ function buildFakeSupabase(opts: {
   return {
     updates,
     auditInserts,
+    rpcCalls,
     client: {
       from: (table: string) => {
         if (table === "qa_reports") return qaReportsBuilder();
         if (table === "profiles") return profilesBuilder();
         if (table === "admin_actions_log") return auditBuilder();
         throw new Error(`unexpected from(${table})`);
+      },
+      // is_qa_tester is no longer a direct UPDATE: migration
+      // 20261001000009 took that column out of the authenticated role's
+      // grant, so the action calls admin_set_qa_tester instead.
+      rpc: (fn: string, args: Record<string, unknown>) => {
+        rpcCalls.push({ fn, args });
+        return Promise.resolve({ data: null, error: opts.rpcError ?? null });
       },
     },
   };
@@ -203,7 +214,7 @@ describe("adminSetQaTesterAction", () => {
     setupAdminMock();
   });
 
-  it("rejects malformed userId without UPDATE", async () => {
+  it("rejects malformed userId without touching the database", async () => {
     const fake = buildFakeSupabase({});
     vi.mocked(createClient).mockResolvedValue(fake.client as never);
     const result = await adminSetQaTesterAction({
@@ -212,6 +223,7 @@ describe("adminSetQaTesterAction", () => {
     });
     expect(result.ok).toBe(false);
     expect(fake.updates).toEqual([]);
+    expect(fake.rpcCalls).toEqual([]);
   });
 
   it("runs the UPDATE and writes qa.grant_tester when promoting", async () => {
@@ -224,8 +236,14 @@ describe("adminSetQaTesterAction", () => {
       isQaTester: true,
     });
     expect(result.ok).toBe(true);
-    expect(fake.updates).toEqual([
-      { table: "profiles", payload: { is_qa_tester: true } },
+    // Through the RPC, not a direct UPDATE — the column is not in the
+    // authenticated role's grant any more (migration 20261001000009).
+    expect(fake.updates).toEqual([]);
+    expect(fake.rpcCalls).toEqual([
+      {
+        fn: "admin_set_qa_tester",
+        args: { p_user_id: TARGET_USER_ID, p_value: true },
+      },
     ]);
     expect(fake.auditInserts.length).toBe(1);
     const audit = fake.auditInserts[0];
@@ -245,6 +263,12 @@ describe("adminSetQaTesterAction", () => {
       isQaTester: false,
     });
     expect(result.ok).toBe(true);
+    expect(fake.rpcCalls).toEqual([
+      {
+        fn: "admin_set_qa_tester",
+        args: { p_user_id: TARGET_USER_ID, p_value: false },
+      },
+    ]);
     expect(fake.auditInserts[0]?.action_type).toBe("qa.revoke_tester");
     expect(fake.auditInserts[0]?.details).toEqual({ from: true, to: false });
   });

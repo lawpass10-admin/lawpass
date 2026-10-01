@@ -147,6 +147,13 @@ export const signupSchema = z
     terms_accepted: z.literal(true, {
       message: "יש לאשר את התקנון ומדיניות הפרטיות",
     }),
+    // A SECOND, SEPARATE consent. The quality-control NDA requires its own
+    // box — merging it into terms_accepted would record someone who ticked
+    // one line as having signed a confidentiality agreement. See
+    // lib/legal/nda.ts and app/(auth)/_components/nda-consent.tsx.
+    nda_accepted: z.literal(true, {
+      message: "יש לאשר את הסכם שמירת הסודיות",
+    }),
   })
   .refine((data) => data.password === data.confirmPassword, {
     message: "הסיסמאות אינן תואמות",
@@ -186,6 +193,10 @@ export const signupStep3Schema = z.object({
   legal_specialization: legalSpecializationSchema,
   terms_accepted: z.literal(true, {
     message: "יש לאשר את התקנון ומדיניות הפרטיות",
+  }),
+  // See the note on the signup schema's nda_accepted.
+  nda_accepted: z.literal(true, {
+    message: "יש לאשר את הסכם שמירת הסודיות",
   }),
 });
 
@@ -247,6 +258,10 @@ export const oauthCompletionSchema = z.object({
   legal_specialization: legalSpecializationSchema,
   terms_accepted: z.literal(true, {
     message: "יש לאשר את התקנון ומדיניות הפרטיות",
+  }),
+  // See the note on the signup schema's nda_accepted.
+  nda_accepted: z.literal(true, {
+    message: "יש לאשר את הסכם שמירת הסודיות",
   }),
 });
 export type OAuthCompletionInput = z.infer<typeof oauthCompletionSchema>;

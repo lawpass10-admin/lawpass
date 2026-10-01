@@ -3,6 +3,20 @@
 // CLI: write the grading rubric (מחוון) for a generated question.
 //
 //   node scripts/generate-rubric.js <merged-bundle.answer.json> [--effort=...]
+//   node scripts/generate-rubric.js <merged-bundle.answer.json> --recover
+//
+// --recover MAKES NO MODEL CALL. It re-processes the output already saved in
+// generated/rejected/<id>.rubric.rejected.json through the repairs in
+// lib/ai/generate-rubric.js and validates it again. It exists because a rubric
+// can be rejected for a defect that is mechanical rather than substantive — a
+// trailing blank criterion worth zero points, or the three bands emitted in
+// descending order — and when the repairs can fix it provably, regenerating is
+// paying for three Opus calls to produce the same content a second time.
+//
+// It is NOT a way to force a rejected rubric through: the repaired output goes
+// through exactly the same validateRubric as a fresh one, and a rubric that is
+// wrong about the question fails again. If it still fails, the errors are printed
+// and nothing is written.
 //
 // The bundle path is resolved against the CURRENT directory, so it differs by
 // where you stand. Both of these run the same thing:
@@ -46,6 +60,9 @@ const {
   generateRubric,
   buildRubricRequest,
   processRubricMessage,
+  repairGenerated,
+  validateRubric,
+  OPENING_HEADING,
   SCALE,
   TOTAL_POINTS,
 } = require("../lib/ai/generate-rubric");
@@ -63,6 +80,65 @@ function findWorkspaceRoot(startDir) {
     dir = parent;
   }
   return path.resolve(startDir);
+}
+
+/**
+ * Re-process a previously rejected rubric, with no model call.
+ *
+ * Returns the same shape processRubricMessage does, so everything downstream —
+ * validation reporting, the output file, the printing — is the one code path.
+ * The repairs come from the same repairGenerated() the live call uses, so a
+ * recovered rubric is byte-for-byte what the generator would have written had
+ * those repairs existed when it ran.
+ */
+function recoverRubric({ base, rejectedDir, answer, params }) {
+  const rejectedPath = path.join(rejectedDir, `${base}.rubric.rejected.json`);
+  if (!fs.existsSync(rejectedPath)) {
+    throw new Error(
+      `--recover needs a previously rejected rubric, and there is none at:\n  ${rejectedPath}`
+    );
+  }
+
+  const stored = JSON.parse(fs.readFileSync(rejectedPath, "utf8"));
+  if (!stored.generated) {
+    throw new Error(`${rejectedPath} has no "generated" payload to recover from`);
+  }
+
+  console.log(`recovering from : ${rejectedPath}`);
+  console.log(`rejected at     : ${stored.rejected_at ?? "unknown"}`);
+  console.log(`original errors : ${(stored.errors ?? []).length}`);
+  for (const e of stored.errors ?? []) console.log(`  [${e.type}] ${e.detail}`);
+  console.log("");
+
+  const generated = stored.generated;
+  const repairs = repairGenerated(generated, params);
+
+  // Built exactly as processRubricMessage builds it — the grounding check
+  // compares content items against these headings.
+  const answerSections = [
+    ...(String(answer.opening || "").trim() ? [OPENING_HEADING] : []),
+    ...(answer.sections || []).map((s) => s.heading),
+  ];
+
+  return {
+    generated,
+    validation: validateRubric(generated, { answerSections, params }),
+    repairs,
+    usage: stored.usage ?? {},
+    meta: {
+      model: stored.model ?? params.model?.id ?? null,
+      effort: stored.effort ?? params.model?.effort ?? null,
+      prompt_version: stored.prompt_version ?? null,
+      scale: stored.scale ?? {
+        לשון: SCALE.language.max,
+        ארגון: SCALE.organization.max,
+        תוכן: SCALE.content.max,
+      },
+      // So a loaded rubric says plainly that it was not written in one pass.
+      recovered_from: path.basename(rejectedPath),
+      recovered_at: new Date().toISOString(),
+    },
+  };
 }
 
 /** Flatten a hebrew_pdf_to_json.py output back into plain text. */
@@ -177,76 +253,108 @@ async function main() {
   console.log(`exemplar : ${rubricFile} (${exemplarRubricText.length} chars) from ${dir}`);
   console.log(`scale    : לשון ${SCALE.language.max} + ארגון ${SCALE.organization.max} + תוכן ${SCALE.content.max} = ${TOTAL_POINTS}`);
   console.log(`params   : ${fs.existsSync(rubricParamsPath) ? rubricParamsPath : "(built-in defaults)"}`);
-  console.log(`\nwriting the rubric — this can take a couple of minutes...\n`);
 
-  const stopTimer = startTimer("writing");
+  // --recover re-processes output already on disk. Everything from the
+  // validation check onwards is shared with a live call, so a recovered rubric
+  // is written, printed and loaded exactly like a fresh one.
+  const recover = flags.includes("--recover");
   let result;
-  let emitted = false;
-  try {
-    // One live call, unless the Batch API flags are set. The crash-recording
-    // below covers this the same way it covered the direct call: a batched
-    // reply that cannot be processed is still a stage that failed, and it
-    // leaves the same trace on disk.
-    const staged = await runStage({
-      flags,
-      args: { question, answer, exemplarRubricText, params },
-      build: buildRubricRequest,
-      process: processRubricMessage,
-      generate: generateRubric,
-    });
-    emitted = Boolean(staged.emitted);
-    result = staged.result;
-  } catch (err) {
-    // A throw here is not a rejected rubric — it is the call itself failing:
-    // an API error, output truncated at max_tokens, a refusal. Nothing was
-    // validated, so the rejected-output path below never runs and the failure
-    // used to leave no trace at all beyond one line on a terminal that scrolls.
-    // Record what it was, so the next run does not have to reproduce it.
-    stopTimer();
-    fs.mkdirSync(rejectedDir, { recursive: true });
-    const crashPath = path.join(rejectedDir, `${base}.rubric.crash.json`);
-    fs.writeFileSync(
-      crashPath,
-      JSON.stringify(
-        {
-          failed_at: new Date().toISOString(),
-          bundle: path.basename(bundlePath),
-          question_external_id: base,
-          model: params.model.id,
-          effort: params.model.effort,
-          max_tokens: params.model.max_tokens,
-          error: {
-            name: err?.name ?? null,
-            message: err?.message ?? String(err),
-            status: err?.status ?? null,
-            stack: err?.stack ?? null,
+
+  if (recover) {
+    console.log(`\nrecovering the rejected rubric — no model call, nothing spent...\n`);
+    result = recoverRubric({ base, rejectedDir, answer, params });
+  } else {
+    console.log(`\nwriting the rubric — this can take a couple of minutes...\n`);
+
+    const stopTimer = startTimer("writing");
+    let emitted = false;
+    try {
+      // One live call, unless the Batch API flags are set. The crash-recording
+      // below covers this the same way it covered the direct call: a batched
+      // reply that cannot be processed is still a stage that failed, and it
+      // leaves the same trace on disk.
+      const staged = await runStage({
+        flags,
+        args: { question, answer, exemplarRubricText, params },
+        build: buildRubricRequest,
+        process: processRubricMessage,
+        generate: generateRubric,
+      });
+      emitted = Boolean(staged.emitted);
+      result = staged.result;
+    } catch (err) {
+      // A throw here is not a rejected rubric — it is the call itself failing:
+      // an API error, output truncated at max_tokens, a refusal. Nothing was
+      // validated, so the rejected-output path below never runs and the failure
+      // used to leave no trace at all beyond one line on a terminal that scrolls.
+      // Record what it was, so the next run does not have to reproduce it.
+      stopTimer();
+      fs.mkdirSync(rejectedDir, { recursive: true });
+      const crashPath = path.join(rejectedDir, `${base}.rubric.crash.json`);
+      fs.writeFileSync(
+        crashPath,
+        JSON.stringify(
+          {
+            failed_at: new Date().toISOString(),
+            bundle: path.basename(bundlePath),
+            question_external_id: base,
+            model: params.model.id,
+            effort: params.model.effort,
+            max_tokens: params.model.max_tokens,
+            error: {
+              name: err?.name ?? null,
+              message: err?.message ?? String(err),
+              status: err?.status ?? null,
+              stack: err?.stack ?? null,
+            },
           },
-        },
-        null,
-        2
-      ) + "\n",
-      "utf8"
+          null,
+          2
+        ) + "\n",
+        "utf8"
+      );
+      console.error(`\nRUBRIC CALL FAILED — nothing was generated: ${err?.message || err}`);
+      console.error(`details saved for inspection: ${crashPath}`);
+      throw err;
+    }
+    const seconds = stopTimer();
+    if (emitted) return;
+
+    const u = result.usage || {};
+    console.log(
+      `model call: ${mmss(seconds * 1000)} (${seconds}s) — in ${u.input_tokens ?? "?"} | ` +
+        `cache write ${u.cache_creation_input_tokens ?? 0} | ` +
+        `cache read ${u.cache_read_input_tokens ?? 0} | ` +
+        `out ${u.output_tokens ?? "?"} tokens\n`
     );
-    console.error(`\nRUBRIC CALL FAILED — nothing was generated: ${err?.message || err}`);
-    console.error(`details saved for inspection: ${crashPath}`);
-    throw err;
   }
-  const seconds = stopTimer();
-  if (emitted) return;
 
   const u = result.usage || {};
-  console.log(
-    `model call: ${mmss(seconds * 1000)} (${seconds}s) — in ${u.input_tokens ?? "?"} | ` +
-      `cache write ${u.cache_creation_input_tokens ?? 0} | ` +
-      `cache read ${u.cache_read_input_tokens ?? 0} | ` +
-      `out ${u.output_tokens ?? "?"} tokens\n`
-  );
-
   const v = result.validation;
 
   if (!v.ok) {
-    fs.mkdirSync(rejectedDir, { recursive: true });
     const rejectedPath = path.join(rejectedDir, `${base}.rubric.rejected.json`);
+
+    // A FAILED RECOVERY DOES NOT REWRITE THE FILE IT READ. The rejected file is
+    // the only copy of that model output, and the recovery source has to survive
+    // a recovery that did not work — overwriting it with the repaired-but-still-
+    // invalid version would replace the original errors with a narrower set and
+    // destroy the payload a second attempt would need.
+    if (recover) {
+      console.error("STILL INVALID AFTER REPAIR — nothing written, the rejected file is untouched:\n");
+      for (const e of v.errors) console.error(`  [${e.type}] ${e.detail}`);
+      if (result.repairs?.length) {
+        console.error("\nrepairs that were applied and did not save it:");
+        for (const r of result.repairs) console.error(`  - ${r}`);
+      } else {
+        console.error("\nno repair applied — none of the defects is one this can fix mechanically.");
+      }
+      console.error("\nThis rubric has to be regenerated, or corrected by hand.");
+      console.error(`total time: ${mmss(Date.now() - RUN_STARTED)}`);
+      process.exit(1);
+    }
+
+    fs.mkdirSync(rejectedDir, { recursive: true });
     fs.writeFileSync(
       rejectedPath,
       JSON.stringify(

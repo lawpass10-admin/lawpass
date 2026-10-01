@@ -34,9 +34,6 @@ export function LandingHero() {
           </p>
 
           <div className={styles.ctaRow}>
-            <Link className={styles.btnGold} href={heroCopy.primaryCtaHref}>
-              {heroCopy.primaryCtaLabel}
-            </Link>
             <a
               className={styles.btnGhost}
               aria-label={heroCopy.secondaryCtaAriaLabel}

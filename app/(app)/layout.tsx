@@ -7,6 +7,7 @@ import { getActiveBookmarkAndMistakeCounts } from "@/lib/db/practice";
 import { createClient } from "@/lib/supabase/server";
 
 import { AppShell } from "./_components/app-shell";
+import { NoCopyApp } from "./_components/no-copy-app";
 import { NoCopyBypassProvider } from "./_components/no-copy-bypass-provider";
 
 // Routes inside (app) that don't require an active subscription. The user
@@ -151,7 +152,11 @@ export default async function AppLayout({
 
   return (
     <NoCopyBypassProvider bypass={canCopy}>
-      <AppShell
+      {/* The deterrent now covers the whole signed-in app, not just the
+          surfaces wrapped in <NoCopyText>. Inside the provider so the QA
+          bypass applies to both in one place. */}
+      <NoCopyApp>
+        <AppShell
         userEmail={user.email ?? ""}
         profileFullName={profile.full_name}
         subscription={subscription}
@@ -161,8 +166,9 @@ export default async function AppLayout({
         isAdmin={profile.is_admin === true}
         isQaTester={isQaTester}
       >
-        {children}
-      </AppShell>
+          {children}
+        </AppShell>
+      </NoCopyApp>
     </NoCopyBypassProvider>
   );
 }

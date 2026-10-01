@@ -25,9 +25,9 @@ import styles from "./landing.module.css";
  * callback through 3 child islands and keeps the design's data-pane
  * cross-card grouping faithful.
  *
- * Unlock-CTA destination (PM-locked §A): all 12 locked-pane CTAs route to
- * `/early-access?source=try-unlock`, NOT the design's `#plans`. Single href,
- * defined once on `trySectionCopy.unlockCta.href` in the copy module.
+ * Unlock-CTA destination: all 12 locked-pane CTAs route to
+ * `/signup?source=try-unlock`, NOT the design's `#plans`. Single href, defined
+ * once on `trySectionCopy.unlockCta.href` in the copy module.
  */
 export function LandingTry() {
   return (

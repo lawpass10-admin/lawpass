@@ -1,5 +1,6 @@
-import { redirect } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 
+import { isMockCheckoutEnabled } from "@/lib/billing/mock-checkout";
 import {
   DEFAULT_PLAN_ID,
   getPlan,
@@ -13,6 +14,9 @@ import CheckoutScreen from "./_components/checkout-screen";
  * /checkout — Slice 1 payment-form placeholder.
  *
  * Server Component:
+ *   0. Environment guard: 404 unless the mock checkout is allowed to run
+ *      here (lib/billing/mock-checkout.ts). Production refuses by default,
+ *      because this page's button grants a subscription without charging.
  *   1. Active-sub guard: if the user already has a current active
  *      subscription, redirect /dashboard. Defers SPEC §6.10 upgrade flow
  *      to Slice 4. (Same query the parent (app)/layout.tsx uses.)
@@ -29,6 +33,13 @@ export default async function CheckoutPage({
 }: {
   searchParams: Promise<{ plan?: string | string[] }>;
 }) {
+  // 404 rather than a screen whose only button cannot work. The action behind
+  // it refuses in production anyway (lib/billing/mock-checkout.ts) — this just
+  // means nobody is offered a payment form that would answer "התשלום אינו
+  // זמין כרגע". A real not-found is also the honest description: in a
+  // deployment without ALLOW_MOCK_CHECKOUT there is no checkout here yet.
+  if (!isMockCheckoutEnabled()) notFound();
+
   const supabase = await createClient();
 
   const {

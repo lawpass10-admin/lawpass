@@ -333,6 +333,151 @@ function dedupeBands(bands) {
 }
 
 /**
+ * Put the three bands back into the fixed order.
+ *
+ * The schema's label enum constrains WHICH labels appear, not their order, so the
+ * model can emit a correct set of bands descending — גבוה, בינוני, חלש — and the
+ * validator rejects all three positions at once. Observed on 2026-S-Q1-K, whose
+ * language_bands in the same response were correctly ascending: the bands
+ * themselves were right and only the array order was flipped.
+ *
+ * REORDERS ONLY WHEN THE CONTENT IS ALREADY PROVABLY CORRECT: exactly the three
+ * expected labels, each once, and each one carrying the range that belongs to
+ * THAT label. Under those conditions the order is the only thing wrong and
+ * sorting cannot change a grade. If a band's range does not match its own label
+ * the model got the banding wrong rather than the ordering, so this returns null
+ * and leaves the rejection to validateRubric — reordering there would bury a
+ * real error under a tidy-looking array.
+ */
+function reorderBands(bands) {
+  if (!Array.isArray(bands) || bands.length !== BANDS.length) return null;
+
+  const matched = BANDS.map((expected) => {
+    const found = bands.filter((b) => b && b.label === expected.label);
+    if (found.length !== 1) return null;
+    const b = found[0];
+    if (Number(b.min_points) !== expected.min || Number(b.max_points) !== expected.max) return null;
+    return b;
+  });
+  if (!matched.every(Boolean)) return null;
+
+  // Already in order — nothing to repair, and reporting a repair that changed
+  // nothing would make the log lie.
+  const alreadyOrdered = bands.every((b, i) => b.label === BANDS[i].label);
+  return alreadyOrdered ? null : matched;
+}
+
+/**
+ * Drop a trailing placeholder content item.
+ *
+ * The model sometimes closes content_items with an unfilled slot: zero points,
+ * empty title, empty requirement. Observed twice in one run — C11 of 11 on
+ * 2026-S-Q2-D and C12 of 12 on 2021-W-Q1-C — and in both the real items already
+ * summed to the full 12 content points, so the stub carried nothing. It cost two
+ * complete sets, question and answer included, over a slot the model left blank.
+ *
+ * THE CONDITIONS ARE WHAT MAKE THIS SAFE, and each one rules out a defect that
+ * only looks like a stub:
+ *
+ *   - LAST ITEM ONLY. Ids must run sequentially from C1, so removing one from the
+ *     middle renumbers everything after it. A gap is a real error; leave it.
+ *   - ZERO POINTS AND BOTH TEXT FIELDS EMPTY. An item with a requirement but no
+ *     points is a criterion the model meant to score and mispriced — a genuine
+ *     mistake, and dropping it would silently discard a grading criterion.
+ *   - THE REMAINDER MUST ALREADY SUM TO THE FULL CONTENT SCALE. If it does not,
+ *     the stub was holding points that belong somewhere, and that is for
+ *     rebalanceContentPoints or a human, not for a delete.
+ *   - THE REMAINDER MUST STILL MEET min_content_items.
+ *
+ * Returns { items, dropped } or null when nothing qualifies.
+ */
+function dropTrailingStubs(items, params) {
+  if (!Array.isArray(items) || !items.length) return null;
+
+  const min = params?.validation?.min_content_items ?? 4;
+  const kept = [...items];
+  const dropped = [];
+
+  // A loop rather than a single check: two trailing stubs have not been seen, but
+  // the condition is the same for the second one and stopping at one would turn a
+  // recoverable rubric into a rejection for no reason.
+  for (;;) {
+    const last = kept[kept.length - 1];
+    if (!last) break;
+
+    const isStub =
+      !(Number(last.points) > 0) && empty(last.title) && empty(last.requirement);
+    if (!isStub) break;
+    if (kept.length - 1 < min) break;
+
+    const remainder = round2(
+      kept.slice(0, -1).reduce((sum, i) => sum + Number(i.points || 0), 0)
+    );
+    if (remainder !== SCALE.content.max) break;
+
+    dropped.push(last.id ?? `[${kept.length - 1}]`);
+    kept.pop();
+  }
+
+  return dropped.length ? { items: kept, dropped } : null;
+}
+
+/**
+ * Every repair that needs no model call, applied in place.
+ *
+ * Shared by the live path and by --recover so the two cannot disagree about what
+ * counts as repairable: a rubric recovered from a rejected file must be exactly
+ * the rubric the generator would have produced had these repairs existed when it
+ * ran. Returns the human-readable log lines.
+ */
+function repairGenerated(generated, params) {
+  const repairs = [];
+
+  // The model tends to open `challenges` with the official document's own
+  // heading — "האתגרים הבולטים במטלה: ...". Every surface that shows the field
+  // prints that heading itself, so left in it renders twice. Stored without it;
+  // the label belongs to the view, not to the data.
+  if (typeof generated.challenges === "string") {
+    generated.challenges = generated.challenges
+      .replace(/^\s*האתגרים\s+הבולטים\s+במטלה\s*[:：-]?\s*/u, "")
+      .trim();
+  }
+
+  for (const field of ["language_bands", "organization_bands"]) {
+    const deduped = dedupeBands(generated[field]);
+    if (deduped) {
+      repairs.push(
+        `${field}: dropped ${generated[field].length - BANDS.length} repeated band(s) — ` +
+          `kept ${BANDS.map((b) => b.label).join(", ")}`
+      );
+      generated[field] = deduped;
+    }
+
+    // After dedupe, so a repeated band is removed before the order is judged.
+    const reordered = reorderBands(generated[field]);
+    if (reordered) {
+      repairs.push(
+        `${field}: reordered ${generated[field].map((b) => b.label).join(", ")} -> ` +
+          `${BANDS.map((b) => b.label).join(", ")} (labels and ranges were already correct)`
+      );
+      generated[field] = reordered;
+    }
+  }
+
+  const trimmed = dropTrailingStubs(generated.content_items, params);
+  if (trimmed) {
+    repairs.push(
+      `content_items: dropped empty trailing item(s) ${trimmed.dropped.join(", ")} — ` +
+        `zero points, no title, no requirement, and the remaining ${trimmed.items.length} ` +
+        `item(s) already sum to ${SCALE.content.max}`
+    );
+    generated.content_items = trimmed.items;
+  }
+
+  return repairs;
+}
+
+/**
  * Everything that makes a rubric unusable rather than merely imperfect.
  *
  * The point totals are the load-bearing checks: a rubric that does not sum to
@@ -752,27 +897,7 @@ async function processRubricMessage(message, context) {
     ...(String(answer.opening || "").trim() ? [OPENING_HEADING] : []),
     ...(answer.sections || []).map((s) => s.heading),
   ];
-  const repairs = [];
-
-  // The model tends to open `challenges` with the official document's own
-  // heading — "האתגרים הבולטים במטלה: ...". Every surface that shows the field
-  // prints that heading itself, so left in it renders twice. Stored without it;
-  // the label belongs to the view, not to the data.
-  if (typeof generated.challenges === "string") {
-    generated.challenges = generated.challenges
-      .replace(/^\s*האתגרים\s+הבולטים\s+במטלה\s*[:：-]?\s*/u, "")
-      .trim();
-  }
-
-  for (const field of ["language_bands", "organization_bands"]) {
-    const deduped = dedupeBands(generated[field]);
-    if (!deduped) continue;
-    repairs.push(
-      `${field}: dropped ${generated[field].length - BANDS.length} repeated band(s) — ` +
-        `kept ${BANDS.map((b) => b.label).join(", ")}`
-    );
-    generated[field] = deduped;
-  }
+  const repairs = repairGenerated(generated, params);
 
   let validation = validateRubric(generated, { answerSections, params });
 
@@ -828,6 +953,9 @@ module.exports = {
   processRubricMessage,
   validateRubric,
   dedupeBands,
+  reorderBands,
+  dropTrailingStubs,
+  repairGenerated,
   buildRubricPrompt,
   mergeRubricParams,
   RUBRIC_SCHEMA,

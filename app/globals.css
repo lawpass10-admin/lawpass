@@ -466,3 +466,40 @@
   -webkit-user-select: none;
   -webkit-touch-callout: none;
 }
+
+/* App-wide copy deterrent — <NoCopyApp> wraps the whole (app) tree, so this
+   covers every signed-in page rather than the surfaces someone remembered to
+   wrap in <NoCopyText>. The handlers live in that component; this is the
+   selection half.
+
+   THE EXCEPTIONS BELOW ARE LOAD-BEARING. `user-select: none` on a field a
+   candidate is typing into breaks the writing task, the notes editor and every
+   search box — they cannot select their own text to fix it. `.allow-copy` is
+   the opt-out for the user's OWN authored content, which is theirs to copy.
+   Keep this list and the `isExempt` selector in no-copy-app.tsx in step. */
+/* `display: contents` because this wrapper must not exist as far as layout is
+   concerned. <body> is `flex flex-col`, and on focus routes (exam, mahoti,
+   diuni) <main className="flex-1"> is its direct child and depends on that to
+   fill the viewport — those screens are fixed-height non-scrolling columns.
+   An ordinary <div> here breaks the chain: main's flex-1 resolves against the
+   div instead of body, and the workspaces collapse. The element still exists in
+   the DOM, so the delegated copy/cut/contextmenu handlers are unaffected, and
+   user-select is an inherited property so it still reaches every descendant. */
+.no-copy-app {
+  display: contents;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+}
+
+.no-copy-app input,
+.no-copy-app textarea,
+.no-copy-app select,
+.no-copy-app [contenteditable="true"],
+.no-copy-app [contenteditable=""],
+.no-copy-app .allow-copy,
+.no-copy-app .allow-copy * {
+  user-select: text;
+  -webkit-user-select: text;
+  -webkit-touch-callout: default;
+}

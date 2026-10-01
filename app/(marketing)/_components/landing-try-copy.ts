@@ -6,9 +6,9 @@
  * does NOT pull from the live question bank — PM-locked decision §B in the
  * Slice 48 discovery.
  *
- * Unlock CTA destination — per PM decision §A — is
- * `/early-access?source=try-unlock` for ALL 12 locked panes (4 × 3 Qs), not
- * the design's `#plans`. Single href, identical across every locked pane.
+ * Unlock CTA destination is `/signup?source=try-unlock` for ALL 12 locked
+ * panes (4 × 3 Qs), not the design's `#plans`. Single href, identical across
+ * every locked pane.
  *
  * Locked-pane TITLES + SUBS are identical across all 3 questions per pane
  * key (the design repeats them), so we store the strings once on
@@ -114,10 +114,10 @@ export const trySectionCopy = {
     angles: "חשיבה 360°",
     summary: "מבט מסכם ומיומנויות",
   } satisfies Record<PaneKey, string>,
-  /** PM-locked: all 12 unlock CTAs route to /early-access. */
+  /** All 12 unlock CTAs route to /signup, with the rest of the landing. */
   unlockCta: {
     label: "פתחו את הניתוח המלא",
-    href: "/early-access?source=try-unlock",
+    href: "/signup?source=try-unlock",
   },
 } as const;
 

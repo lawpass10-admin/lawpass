@@ -188,6 +188,13 @@ function estimate(n) {
 
 // ---------------------------------------------------------------- plan
 
+// --sequential restores the newest-first walk; the default is a shuffled
+// order. --seed=N reproduces a previous run's order exactly (the seed used is
+// printed below, so a run that went wrong can be replayed).
+const sequential = process.argv.includes('--sequential');
+const seedArg = process.argv.slice(2).find((a) => a.startsWith('--seed='));
+const seed = seedArg ? Number(seedArg.split('=')[1]) : Date.now();
+
 const sources = rotation();
 if (!sources.length) {
   console.error('no usable bundles under answers/pages/');
@@ -211,7 +218,7 @@ if (RESUME) {
     process.exit(2);
   }
 
-  const steps = plan(count, sources).map((s) => ({
+  const steps = plan(count, sources, { random: !sequential, seed }).map((s) => ({
     n: s.n,
     source: s.source,
     angle: s.angle,

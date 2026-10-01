@@ -18,6 +18,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { NdaConsent } from "@/app/(auth)/_components/nda-consent";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
   Form,
@@ -30,6 +31,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { RequiredLegend } from "@/components/ui/required-legend";
 import {
   Select,
   SelectContent,
@@ -136,6 +138,12 @@ export default function CompleteProfileForm({
     control: form.control,
     name: "terms_accepted",
   });
+  // The submit button waits for BOTH consents — the agreement's appendix
+  // requires that the continue control stay inert until each box is ticked.
+  const ndaAccepted = useWatch({
+    control: form.control,
+    name: "nda_accepted",
+  });
 
   // Sync month + year selects → exam_date_planned form field (YYYY-MM-01 or null).
   useEffect(() => {
@@ -187,12 +195,17 @@ export default function CompleteProfileForm({
             className="space-y-4"
             noValidate
           >
+            {/* One legend for the whole form: the asterisks below mean nothing
+                to a reader who has not been told the convention, and saying it
+                once costs a line. */}
+            <RequiredLegend />
+
             <FormField
               control={form.control}
               name="full_name"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>שם מלא</FormLabel>
+                  <FormLabel required>שם מלא</FormLabel>
                   <FormControl>
                     <Input autoComplete="name" {...field} />
                   </FormControl>
@@ -206,7 +219,7 @@ export default function CompleteProfileForm({
               name="phone"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>מספר טלפון</FormLabel>
+                  <FormLabel required>מספר טלפון</FormLabel>
                   <FormControl>
                     <Input
                       type="tel"
@@ -226,7 +239,7 @@ export default function CompleteProfileForm({
               name="gender"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>מגדר</FormLabel>
+                  <FormLabel required>מגדר</FormLabel>
                   <FormControl>
                     {/* TODO(slice-7): same Base UI RadioGroupItem
                         "uncontrolled → controlled value state" warning fires
@@ -274,7 +287,7 @@ export default function CompleteProfileForm({
               name="birth_date"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>תאריך לידה</FormLabel>
+                  <FormLabel required>תאריך לידה</FormLabel>
                   <BirthDateSelects
                     value={field.value ?? ""}
                     onChange={field.onChange}
@@ -347,7 +360,7 @@ export default function CompleteProfileForm({
               name="academic_institution"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>מוסד אקדמי</FormLabel>
+                  <FormLabel required>מוסד אקדמי</FormLabel>
                   <FormControl>
                     <Select
                       value={field.value ?? ""}
@@ -381,7 +394,7 @@ export default function CompleteProfileForm({
               name="legal_specialization"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>תחום התמחות</FormLabel>
+                  <FormLabel required>תחום התמחות</FormLabel>
                   <FormControl>
                     <Select
                       value={field.value ?? ""}
@@ -443,8 +456,33 @@ export default function CompleteProfileForm({
                         >
                           מדיניות הפרטיות
                         </Link>
+                        {/* Mandatory like the fields above it — Zod requires
+                            literal(true), so an unticked box fails submit. */}
+                        <span aria-hidden className="ms-0.5 text-destructive">
+                          *
+                        </span>
                       </Label>
                     </div>
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            {/* The NDA's own consent. On this form too, not only on the email
+                signup — a user arriving through Google must not skip the
+                agreement by coming in a different door. */}
+            <FormField
+              control={form.control}
+              name="nda_accepted"
+              render={({ field }) => (
+                <FormItem>
+                  <FormControl>
+                    <NdaConsent
+                      id="nda_accepted_cp"
+                      checked={field.value === true}
+                      onCheckedChange={field.onChange}
+                    />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
@@ -455,7 +493,7 @@ export default function CompleteProfileForm({
               <Button
                 type="submit"
                 className="ms-auto"
-                disabled={submitting || termsAccepted !== true}
+                disabled={submitting || termsAccepted !== true || ndaAccepted !== true}
               >
                 {submitting ? "שולח..." : "הרשם"}
               </Button>

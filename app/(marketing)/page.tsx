@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import { redirect } from "next/navigation";
 
 import { CookieBar } from "@/app/(marketing)/_components/cookie-bar";
 import { LandingFaq } from "@/app/(marketing)/_components/landing-faq";
@@ -7,20 +6,27 @@ import { LandingFooter } from "@/app/(marketing)/_components/landing-footer";
 import { LandingHeader } from "@/app/(marketing)/_components/landing-header";
 import { LandingHero } from "@/app/(marketing)/_components/landing-hero";
 import { LandingMethod } from "@/app/(marketing)/_components/landing-method";
-import { LandingPlans } from "@/app/(marketing)/_components/landing-plans";
 import { LandingSourceNote } from "@/app/(marketing)/_components/landing-source-note";
 import { LandingTry } from "@/app/(marketing)/_components/landing-try";
 import styles from "@/app/(marketing)/_components/landing.module.css";
-import { createClient } from "@/lib/supabase/server";
 
 /**
  * / — public landing page (Server Component).
  *
  * Slice 46 — replaces the <ComingSoon> placeholder with the new responsive
- * landing rebuilt from `_design/landing-hifi-new.html`. Anonymous visitors see
- * the full landing; authenticated visitors continue to bounce to /dashboard
- * (unchanged from Slice 16 / Phase L1; the project still has no
- * `middleware.ts`, so the redirect lives here).
+ * landing rebuilt from `_design/landing-hifi-new.html`.
+ *
+ * EVERY VISITOR SEES IT, signed in or not. It used to redirect an
+ * authenticated visitor to /dashboard (Slice 16 / Phase L1), which meant the
+ * front door of the product was closed to anyone holding a session: a brand-new
+ * Google account that had just authenticated could not reach this page at all —
+ * `/` sent it to /dashboard, which sent it on to /onboarding/complete-profile,
+ * so the landing was unreachable from the moment you signed in.
+ *
+ * The header CTA reads "כניסה לאזור אישי" and points at /early-access,
+ * where registration and login are offered side by side — those words are
+ * clicked by returning members and by strangers alike, and that page is where
+ * the two part ways.
  *
  * Section order (matches the design):
  *   1. <LandingHeader>     — sticky navy bar.
@@ -30,7 +36,10 @@ import { createClient } from "@/lib/supabase/server";
  *   5. <LandingMethod>     — navy section, 6 pillars (hover-video).
  *   6. <LandingTry>        — Slice 48: 3-question interactive simulator
  *                            (was a 0-height placeholder in Slice 46).
- *   7. <LandingPlans>      — 3-card plans grid (3mo / 6mo / 6mo+AI disabled).
+ *   (the 3-card plans grid used to sit here; the landing no longer quotes a
+ *   price, so the component and its "#plans" nav and footer links came out
+ *   together. <LandingPlans> itself is left in _components, unused, because
+ *   the copy it carries is the only written record of the three tiers.)
  *   8. <LandingFaq>        — character + accordion.
  *   9. <LandingFooter>     — footer.
  *
@@ -47,18 +56,12 @@ import { createClient } from "@/lib/supabase/server";
  * "בקרוב" placeholder's `noindex` metadata with the default indexable values.
  */
 export const metadata: Metadata = {
-  title: "LawPass — עוברים את מבחן הלשכה בפעם הראשונה",
+  title: "LawPass — מגיעים למבחן הלשכה בראש שקט",
   description:
     "פלטפורמה דיגיטלית להכנה למבחני ההסמכה של לשכת עורכי הדין. שיטת ה-360°: לכל שאלה ניתוח מלא של הנושא, המסיחים, מלכודות ופסיקה.",
 };
 
 export default async function Home() {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (user) redirect("/dashboard");
-
   return (
     <div className={styles.landingRoot}>
       <div className={styles.page}>
@@ -69,7 +72,6 @@ export default async function Home() {
           <LandingSourceNote />
           <LandingMethod />
           <LandingTry />
-          <LandingPlans />
           <LandingFaq />
         </main>
         <LandingFooter />

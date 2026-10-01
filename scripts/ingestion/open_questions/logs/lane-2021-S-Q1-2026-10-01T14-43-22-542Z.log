@@ -1,0 +1,26 @@
+
+──── 2021-S-Q1-E — generation ────
+source  : 2021s-q1-answer -> 2021-S-Q1
+subject : התנועה למען איכות השלטון בישראל נ' משטרת ישראל
+quotes  : V1-Q1, V2-Q1, V3-Q1, V4-Q1
+WARNING : bundle is flagged needs_review — the Hebrew still carries bidi damage
+adapted : scripts\ingestion\open_questions\sources\2021-S-Q1.source.json
+angle   : E
+
+── writing the question ────────────────────────────────────────
+◇ injected env (0) from ..\.env.local // tip: ⌘ custom filepath { path: '/custom/path/.env' }
+params warning: "authoring._fact_pattern_length_note" is not a recognised setting and will be ignored
+source : 2021-S-Q1 — 
+quotes : V1-Q1, V2-Q1, V3-Q1, V4-Q1 (locked)
+params : C:\Users\User\lowpass\lawpass-main\app\scripts\ingestion\open_questions\llm-params.json
+model  : claude-opus-5 · effort medium · max_tokens 24000 · cache on
+rules  : leak threshold 7 words · 0 forbidden term(s)
+avoid  : A, B, C, D (already written)
+
+generating with claude-opus-5 — this can take a few minutes...
+
+400 {"type":"error","error":{"type":"invalid_request_error","message":"Your credit balance is too low to access the Anthropic API. Please go to Plans & Billing to upgrade or purchase credits."},"request_id":"req_011CfbhFGdepM8xRvquMf1m3"}
+total time: 00:01
+
+writing the question failed (exit 1). Nothing further was run.
+If the quote lock failed, the output is in scripts\ingestion\open_questions\generated\rejected.

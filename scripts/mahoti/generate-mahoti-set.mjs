@@ -74,12 +74,28 @@
 // lawpass_server. Install it once at the repo root before the first run:
 //   pnpm add -D @anthropic-ai/sdk
 
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+
 import dotenv from "dotenv";
 import { createClient } from "@supabase/supabase-js";
 import { z } from "zod";
 
-dotenv.config({ path: ".env.local" });
-dotenv.config();
+/**
+ * Resolved from THIS FILE, not from the working directory.
+ *
+ * It was `dotenv.config({ path: ".env.local" })`, which reads whatever sits in
+ * the cwd. There are two .env.local files in this checkout — the project's,
+ * which carries ANTHROPIC_API_KEY, and one in the stale outer repo, which does
+ * not — so the same command worked from app/ and aborted from the repo root,
+ * for a reason the error message ("Missing ANTHROPIC_API_KEY in .env.local")
+ * pointed away from: the key is in a .env.local, just not the one it read.
+ *
+ * A run that costs money should not depend on where it was started from.
+ */
+const APP_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
+dotenv.config({ path: join(APP_ROOT, ".env.local") });
+dotenv.config({ path: join(APP_ROOT, ".env") });
 
 // ---------------------------------------------------------------------------
 // CLI

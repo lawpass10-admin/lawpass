@@ -9,7 +9,7 @@ import { LegalPageShell } from "@/app/(marketing)/_components/legal-page-shell";
  * Public, INDEXABLE (no `noindex`) — search engines should see this. Renders
  * `privacyCopy` (verbatim port of `מדיניות פרטיות LawPass (1).docx`) inside
  * the shared `<LegalPageShell>`. The shell handles the top strip (LawPass
- * logo + "חזרה לדף הנחיתה" back link) and the prose typography; this page
+ * logo + "חזרה לדף הראשי" back link) and the prose typography; this page
  * file is just metadata + the page-level mount.
  */
 export const metadata: Metadata = {

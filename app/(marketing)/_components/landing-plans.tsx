@@ -13,8 +13,9 @@ import styles from "./landing.module.css";
  *
  * Plan 1 = default; Plan 2 = `featured` (navy bg, gold border, float
  * animation on lg+); Plan 3 = `comingSoon` (dashed border, disabled CTA).
- * CTA hrefs come from the copy module — hero/plan-3mo/plan-6mo all route
- * to /early-access?source=... per the locked decisions.
+ * CTA hrefs come from the copy module. Both plan CTAs route to
+ * /signup?plan=plan_3m|plan_6m, which the signup form reads and forwards so a
+ * new account lands on that plan's checkout rather than on a generic picker.
  *
  * The check-mark SVG icon next to each feature is inlined here (small, used
  * 5×3=15 times). Plan-3 has an extra star badge + brain-icon tag.

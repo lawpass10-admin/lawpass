@@ -291,6 +291,12 @@ export async function listStudyMaterial(
   let query = supabase
     .from("study_material_public")
     .select("study_material_id, paper_id, text_field, doc, updated_at")
+    // The curriculum's order, not the ingestion log's. `updated_at DESC` alone
+    // put whichever document was reconverted most recently at the top, which
+    // reshuffled the contents page every time the pipeline ran. sort_order is
+    // the curated rank (migration 20261001000001); updated_at stays as the
+    // tiebreak so material sharing a rank still has a stable order.
+    .order("sort_order", { ascending: true })
     .order("updated_at", { ascending: false });
 
   if (textField) query = query.eq("text_field", textField);

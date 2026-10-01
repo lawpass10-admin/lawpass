@@ -2,7 +2,6 @@ import type { Metadata } from "next";
 import Image from "next/image";
 
 import { AuthEntry } from "./_components/auth-entry";
-import { EarlyAccessForm } from "./_components/early-access-form";
 
 /**
  * /early-access — Slice 43 waitlist email-capture page.
@@ -35,28 +34,18 @@ import { EarlyAccessForm } from "./_components/early-access-form";
  * BYTE-FOR-BYTE UNCHANGED from Slice 43/44 — Slice 45 is layout + seam only.
  */
 export const metadata: Metadata = {
-  title: "LawPass — הצטרפו לרשימת ההמתנה",
+  title: "LawPass — ברוכים הבאים",
   description: "אנחנו פותחים גישה בהדרגה. השאירו אימייל ונעדכן אתכם ראשונים.",
   robots: { index: false, follow: false },
   openGraph: null,
   twitter: null,
 };
 
-type SearchParams = Promise<{ source?: string | string[] }>;
-
-function firstString(value: string | string[] | undefined): string | null {
-  if (Array.isArray(value)) return value[0] ?? null;
-  return typeof value === "string" && value.length > 0 ? value : null;
-}
-
-export default async function EarlyAccessPage({
-  searchParams,
-}: {
-  searchParams?: SearchParams;
-}) {
-  const resolved = (await searchParams) ?? {};
-  const source = firstString(resolved.source);
-
+// `?source=hero|plan-3mo|plan-6mo` is still appended by the landing CTAs and is
+// now simply ignored: it existed to attribute WAITLIST signups, and the waitlist
+// is gone. The links are left working rather than chased across the landing page
+// for a parameter that costs nothing to receive.
+export default function EarlyAccessPage() {
   return (
     /* Slice 51 — id="main-content" added so the a11y widget's universal
        skip-link target exists on /early-access too. The class +
@@ -113,25 +102,19 @@ export default async function EarlyAccessPage({
           className="font-heebo mt-10 text-3xl font-extrabold sm:text-4xl"
           style={{ color: "rgba(255,255,255,0.96)" }}
         >
-          עוד קצת — ואנחנו באוויר.
+          ברוכים הבאים ל-LawPass
         </h1>
 
         <p
           className="font-heebo mt-4 max-w-md text-base leading-relaxed sm:text-lg"
           style={{ color: "rgba(255,255,255,0.72)" }}
         >
-          מוזמנים בינתיים להצטרף לרשימת ההמתנה שלנו, ונעדכן אתכם ראשונים.
+          הירשמו או התחברו כדי להתחיל.
         </p>
 
-        {/* Form max-width keeps the input + button row comfortable on mobile
-            and on the half-viewport desktop column. */}
-        <div className="mt-10 w-full max-w-md">
-          <EarlyAccessForm source={source} />
-        </div>
-
-        {/* The way in for people who already have an account, or are ready to
-            open one. Below the waitlist and behind its own rule — see
-            AuthEntry for why it is not given equal billing. */}
+        {/* The waitlist form used to sit here, with these two below it and
+            deliberately given less weight. With the waitlist gone they are the
+            page's only action, so they are no longer a secondary route. */}
         <AuthEntry />
       </div>
     </main>

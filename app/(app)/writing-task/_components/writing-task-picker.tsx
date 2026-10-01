@@ -224,15 +224,6 @@ export function WritingTaskPicker() {
                               {q.deliverable}
                             </span>
                           ) : null}
-                          <span
-                            className="mt-1 flex flex-wrap gap-x-3 font-heebo"
-                            style={{ fontSize: 12, color: "var(--color-ink-muted)" }}
-                          >
-                            {q.external_id ? (
-                              <span dir="ltr">{q.external_id}</span>
-                            ) : null}
-                            {q.answer_limit ? <span>{q.answer_limit}</span> : null}
-                          </span>
                         </span>
                       </span>
                     </button>

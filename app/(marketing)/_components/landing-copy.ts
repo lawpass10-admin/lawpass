@@ -18,14 +18,21 @@ import type { ReactNode } from "react";
 export const headerCopy = {
   navLinks: [
     { href: "#method", label: "שיטת ה-360°" },
-    { href: "#plans", label: "תוכניות מנוי" },
     { href: "#faq", label: "שאלות נפוצות" },
     { href: "#contact", label: "צרו קשר" },
   ],
-  /** Slice 49 follow-up — PM-locked: during the private-testing phase the
-   *  entire landing funnels exclusively to the waitlist, so the header CTA
-   *  now routes to /early-access?source=header (was /login in Slice 46).
-   *  Direct `/login` is still reachable by URL for testers. */
+  /** THE HEADER IS THE ONLY CTA THAT ASKS A QUESTION, so it is the only one
+   *  that does not go straight to the form.
+   *
+   *  "כניסה לאזור אישי" is what a returning member clicks AND what a
+   *  stranger clicks, and those want opposite pages. /early-access is where
+   *  both are offered — "הרשמה" to the signup form, "התחברות" to a login
+   *  dialog — so the visitor decides rather than the link guessing.
+   *
+   *  Every other CTA on this page states an intention already ("התחילו
+   *  לתרגל", "אני רוצה 6 חודשים"), so those go to /signup directly.
+   *
+   *  `?source=` is kept on each so the funnel stays attributable. */
   ctaLabel: "כניסה לאזור אישי",
   ctaHref: "/early-access?source=header",
 } as const;
@@ -57,8 +64,8 @@ export const cookieBarCopy = {
 } as const;
 
 export const heroCopy = {
-  headlineTop: "עוברים את מבחן הלשכה",
-  headlineBottom: "בפעם ראשונה",
+  headlineTop: "מגיעים למבחן הלשכה",
+  headlineBottom: "בראש שקט",
   /** Typewriter cycles through these on `<HeroTypewriter>`. */
   typewriterLines: [
     "עם שיטת ה-360° של LawPass.",
@@ -66,8 +73,10 @@ export const heroCopy = {
     "כל מסיח, כל מלכודת, כל רפרנס.",
     "כלי תרגול שיעזור להגיע מוכנים למבחן.",
   ],
-  primaryCtaLabel: "התחילו לתרגל",
-  primaryCtaHref: "/early-access?source=hero",
+  /* The hero's gold "התחילו לתרגל" is gone, and with it the only CTA that
+     sent a visitor to signup before they had read anything. What is left is
+     "איך זה עובד", which moves them down the page — the header CTA is the way
+     in for someone who already knows they want it. */
   secondaryCtaLabel: "איך זה עובד",
   secondaryCtaAriaLabel: "איך זה עובד - הסבר על שיטת LawPass",
   secondaryCtaHref: "#method",
@@ -78,7 +87,7 @@ export const sourceNoteCopy = {
   ariaLabel: "מקורות וסימוכין במאגר",
   items: [
     {
-      highlight: "כל מעל 1,000 השאלות במאגר",
+      highlight: "כל השאלות",
       tail: " מבוססות על שאלות אמיתיות ממבחני לשכת עורכי הדין בשנים 2018–2024.",
     },
     {
@@ -174,7 +183,7 @@ export const plansCopy = {
         "דשבורד התקדמות אישי",
       ],
       ctaLabel: "התחילו עם 3 חודשים",
-      ctaHref: "/early-access?source=plan-3mo",
+      ctaHref: "/signup?plan=plan_3m&source=plan-3mo",
     },
     {
       variant: "featured",
@@ -192,7 +201,7 @@ export const plansCopy = {
         "תמיכה במייל בעדיפות גבוהה",
       ],
       ctaLabel: "אני רוצה 6 חודשים",
-      ctaHref: "/early-access?source=plan-6mo",
+      ctaHref: "/signup?plan=plan_6m&source=plan-6mo",
     },
     {
       variant: "comingSoon",
@@ -237,16 +246,9 @@ export const faqCopy = {
         "חשיבה 360° של LawPass היא מתודולוגיית למידה שמלמדת את הנבחן להבין את ההיגיון המשפטי שמאחורי השאלה, ולא רק לשנן תשובות. כל שאלה מנותחת ממספר זוויות: מדוע התשובה הנכונה נכונה, מדוע כל מסיח שגוי, אילו עקרונות משפטיים עומדים בבסיס ההכרעה, וכיצד שינוי קטן בעובדות עשוי לשנות את התוצאה. המערכת מייצרת וריאציות של השאלה ומחברת בין נושאים משפטיים שונים כדי לפתח חשיבה אנליטית וגמישות מחשבתית — כך הנבחן בונה יכולת להתמודד גם עם שאלות חדשות ובלתי מוכרות במבחן, ולא רק עם שאלות שראה בעבר.",
     },
     {
-      question: "האם יש תקופת ניסיון חינם?",
-      answer:
-        "לא. אנחנו מאמינים שגישה רצינית לבחינת הלשכה דורשת מחויבות מהיום הראשון. כל המסלולים נותנים ערך מלא כבר מהרגע הראשון.",
-    },
-    {
       question: "כמה שאלות יש במאגר?",
-      // Slice 46 — corrected from "למעלה מ-1,200" → "מעל 1,000" per the
-      // locked content decision (live bank ~1,088).
       answer:
-        "המאגר בהשקה כולל מעל 1,000 שאלות, ומתעדכן באופן שוטף. כל מנוי פעיל מקבל גישה לכל העדכונים בתקופת המנוי שלו ללא תוספת תשלום.",
+        "המערכת כוללת כ-1000 שאלות, ומתעדכנת באופן שוטף. כל מנוי פעיל מקבל גישה לכל העדכונים בתקופת המנוי שלו ללא תוספת תשלום.",
     },
     {
       question: "האם המערכת מתאימה למי שניגש בפעם השנייה?",
@@ -268,21 +270,16 @@ export const footerCopy = {
       heading: "המוצר",
       links: [
         { label: "שיטת ה-360°", href: "#method" },
-        { label: "תוכניות מנוי", href: "#plans" },
         { label: "שאלות נפוצות", href: "#faq" },
       ],
     },
     {
       heading: "חשבון",
       links: [
-        { label: "כניסה לאזור אישי", href: "/login" },
-        // TODO(PM): wire to a real support page once it exists. Inert "#" today.
-        { label: "תמיכה", href: "#" },
-        // Slice 50 — `תקנון` (/terms) is deferred to a follow-up slice
-        // once the תקנון file lands. Until then the slot carries the
-        // accessibility declaration (/accessibility, חוק שוויון זכויות).
+        { label: "כניסה לאזור אישי", href: "/early-access?source=footer" },
         { label: "הצהרת נגישות", href: "/accessibility" },
         { label: "מדיניות פרטיות", href: "/privacy" },
+        { label: "תקנון האתר", href: "/terms" },
       ],
     },
     {
@@ -290,8 +287,9 @@ export const footerCopy = {
       links: [
         // TODO(PM): confirm footer email. Placeholder mailto: until then.
         { label: "info@law-pass.com", href: "mailto:info@law-pass.com" },
-        { label: "WhatsApp", href: "#" },
-        { label: "טופס פנייה", href: "#" },
+        // "#contact" is the marker for "open the contact dialog" — see
+        // ContactLink. It is not an anchor and does not navigate.
+        { label: "תמיכה", href: "#contact" },
       ],
     },
   ],

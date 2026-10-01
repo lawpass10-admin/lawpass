@@ -33,10 +33,11 @@ export function LandingHero() {
             <HeroTypewriter lines={heroCopy.typewriterLines} />
           </p>
 
+          {/* One CTA, not two. The gold "התחילו לתרגל" asked for a decision
+              above the fold, before the page had made its case; what is left
+              moves the reader into the explanation instead. Someone who
+              arrives already decided uses the header CTA. */}
           <div className={styles.ctaRow}>
-            <Link className={styles.btnGold} href={heroCopy.primaryCtaHref}>
-              {heroCopy.primaryCtaLabel}
-            </Link>
             <a
               className={styles.btnGhost}
               aria-label={heroCopy.secondaryCtaAriaLabel}

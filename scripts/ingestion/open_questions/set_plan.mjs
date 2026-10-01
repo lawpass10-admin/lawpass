@@ -79,11 +79,135 @@ export function nextAngle(sourceId, claimed) {
   throw new Error(`${sourceId} already has angles A-Z — nothing left to allocate`);
 }
 
-/** The plan, before a single token is spent. */
-export function plan(count, sources) {
+/**
+ * A seeded pseudo-random generator — mulberry32.
+ *
+ * Seeded rather than Math.random so a run can be reproduced. When a set comes
+ * out wrong, "which paper did set 7 use" has to be answerable afterwards, and
+ * with an unseeded shuffle the only record is whatever the log happened to
+ * print. The seed is reported by the runner and can be passed back in.
+ */
+function rng(seed) {
+  let a = seed >>> 0;
+  return () => {
+    a = (a + 0x6d2b79f5) >>> 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+/** Fisher-Yates, on a copy. */
+function shuffled(list, next) {
+  const out = [...list];
+  for (let i = out.length - 1; i > 0; i--) {
+    const j = Math.floor(next() * (i + 1));
+    [out[i], out[j]] = [out[j], out[i]];
+  }
+  return out;
+}
+
+/**
+ * The plan, before a single token is spent.
+ *
+ * THREE WAYS TO CHOOSE THE SOURCES, and the difference is not order but coverage.
+ *
+ *   pick: "spread"       (default) Shuffle the whole list and walk it; reshuffle
+ *                        on each wrap. The ORDER is random and the COVERAGE is
+ *                        even — every source is used once before any is used
+ *                        twice. A run of ten over ten bundles therefore touches
+ *                        each paper exactly once, which looks systematic from
+ *                        outside even though the order and the angle letters
+ *                        differ every run.
+ *
+ *   pick: "independent"  Draw a source at random for every set, independently.
+ *                        This is random in the everyday sense, and it clusters:
+ *                        over ten sets expect six or seven distinct papers, one
+ *                        of them taken three times, and three or four never
+ *                        touched at all.
+ *
+ *   pick: "subject"      Spread across SUBJECTS rather than papers: shuffle the
+ *                        distinct subjects, take one paper from each in turn, and
+ *                        rotate within a subject so its papers are used evenly
+ *                        too.
+ *
+ *   random: false        The old newest-first walk. Still the right choice when
+ *                        you want the newest sittings covered first, predictably.
+ *
+ * WHY "subject" EXISTS, AND WHY "spread" IS NOT ENOUGH. Papers and subjects are
+ * not the same thing, and in this corpus they are badly out of step: five of the
+ * ten bundles carry תקנות סדר הדין האזרחי. So "spread", which touches every paper
+ * once, still puts half of a ten-set run on that one subject — it buys breadth of
+ * PAPER and nothing else. A candidate revising across the syllabus feels subjects,
+ * not source documents, so a run meant to broaden the question bank wants this
+ * mode.
+ *
+ * NO MODE IS SIMPLY BEST. "subject" buys breadth of legal area. "spread" buys
+ * even use of the source material. "independent" buys genuine unpredictability,
+ * at the cost of leaving part of the corpus untouched in any given run.
+ *
+ * `excludeSubjects` drops any bundle whose subject contains one of the given
+ * strings — a substring match, because these subjects come off PDFs and their
+ * punctuation is not reliably identical. It applies before every mode.
+ *
+ * All modes are reproducible from the seed, which the runner prints.
+ */
+export function plan(
+  count,
+  sources,
+  { random = true, seed = Date.now(), pick = 'spread', excludeSubjects = [] } = {}
+) {
+  if (!['spread', 'independent', 'subject'].includes(pick)) {
+    throw new Error(`unknown pick mode "${pick}" — expected "spread", "independent" or "subject"`);
+  }
+
+  const usable = sources.filter(
+    (s) => !excludeSubjects.some((x) => String(s.subject ?? '').includes(x))
+  );
+  if (!usable.length) {
+    throw new Error(
+      `every source was excluded — ${sources.length} bundle(s) all match one of: ` +
+        excludeSubjects.map((x) => `"${x}"`).join(', ')
+    );
+  }
+
   const claimed = new Set();
+  const next = rng(seed);
+
+  // Pre-build the order for every set, so the whole plan can be printed and
+  // approved before a single token is spent.
+  const order = [];
+  if (!random) {
+    while (order.length < count) order.push(...usable);
+  } else if (pick === 'independent') {
+    for (let i = 0; i < count; i++) order.push(usable[Math.floor(next() * usable.length)]);
+  } else if (pick === 'subject') {
+    // One bucket per subject, each bucket shuffled once so a subject's papers are
+    // used evenly but not in a fixed order.
+    const buckets = new Map();
+    for (const s of usable) {
+      const key = String(s.subject ?? '(no subject)');
+      if (!buckets.has(key)) buckets.set(key, []);
+      buckets.get(key).push(s);
+    }
+    for (const [key, papers] of buckets) buckets.set(key, shuffled(papers, next));
+
+    const cursor = new Map([...buckets.keys()].map((k) => [k, 0]));
+    while (order.length < count) {
+      for (const key of shuffled([...buckets.keys()], next)) {
+        if (order.length >= count) break;
+        const papers = buckets.get(key);
+        const i = cursor.get(key);
+        order.push(papers[i % papers.length]);
+        cursor.set(key, i + 1);
+      }
+    }
+  } else {
+    while (order.length < count) order.push(...shuffled(usable, next));
+  }
+
   return Array.from({ length: count }, (_, i) => {
-    const source = sources[i % sources.length];
+    const source = order[i];
     return { n: i + 1, source, angle: nextAngle(source.id, claimed) };
   });
 }

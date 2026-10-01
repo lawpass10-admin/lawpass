@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<title>תגובה לבקשה לאיסור פרסום</title>
+<style>
+  @page { size: A4; margin: 20mm 20mm 16mm 20mm; }
+
+  html, body {
+    font-family: Arial, "Segoe UI", sans-serif;
+    font-size: 11pt;
+    line-height: 1.55;
+    color: #000;
+    margin: 0;
+  }
+
+  /* RULE 1 — the caption block. The court name and the case number share one
+     line ABOVE the party block, court on the right and case number on the left.
+     In the party block the party's NAME sits on the right and its role label
+     (העותר / המשיבות) on the left — house style, set by the founder. Note the
+     official Bar Association model answers do it the other way round, label
+     rightmost; do not "correct" this back without asking.
+     The page is dir="rtl", so the first child in source order renders rightmost
+     — hence court before case number, and td.main before td.side. */
+  .topline { display: flex; justify-content: space-between; margin-bottom: 4mm; }
+  .topline .court { font-weight: bold; }
+
+  table.caption { width: 100%; border-collapse: collapse; margin-bottom: 5mm; }
+  table.caption td { border: .8pt solid #000; padding: 2mm 2.5mm; vertical-align: top; }
+  table.caption td.side { width: 26%; }
+  table.caption td.mid { width: 22%; text-align: center; vertical-align: middle; }
+  table.caption td.main { width: 52%; }
+
+  .dates { margin: 4mm 0 2mm 0; }
+
+  h1 {
+    font-size: 12pt;
+    font-weight: bold;
+    text-align: center;
+    text-decoration: underline;
+    margin: 7mm 0 5mm 0;
+  }
+  h2 {
+    font-size: 11pt;
+    font-weight: bold;
+    margin: 6mm 0 2.5mm 0;
+    break-after: avoid;
+  }
+
+  p, li { text-align: justify; }
+  .opening { margin-bottom: 2mm; }
+
+  ol.para { list-style: none; padding: 0; margin: 0; }
+  ol.para li { margin-bottom: 3mm; break-inside: avoid; }
+  ol.para .num { font-weight: bold; margin-left: 1.5mm; }
+
+  /* RULE 2 — exhibit line, anchored under its paragraph */
+  .exhibit { margin: 2mm 0 0 0; }
+
+  /* Closing and signature travel together — a signature stranded alone on a
+     trailing page reads as an unfinished document. */
+  .tail { break-inside: avoid; margin-top: 6mm; }
+  .closing { margin: 0; }
+  .signature { margin-top: 10mm; text-align: left; }
+  .signature .rule { display: inline-block; border-top: .8pt solid #000; width: 55mm; padding-top: 1.5mm; }
+
+  .colophon {
+    margin-top: 12mm;
+    padding-top: 3mm;
+    border-top: .5pt solid #bbb;
+    text-align: center;
+    font-size: 8.5pt;
+    color: #666;
+  }
+</style>
+</head>
+<body>
+
+  <div class="topline">
+    <span class="court">בבית משפט השלום בחדרה</span>
+    <span class="case">ת"א _______ / בקשה מספר ___</span>
+  </div>
+
+  <table class="caption">
+    <tr>
+      <td class="main">רבקה ליפשיץ, ת.ז ________<br>באמצעות ב"כ עו"ד ??? (מ"ר ???) מרחוב ???<br>טל': ???; פקס: ???; דוא"ל: ???</td>
+      <td class="mid"></td>
+      <td class="side"><u>התובעת</u><br>המשיבה</td>
+    </tr>
+    <tr>
+      <td class="main"></td>
+      <td class="mid"><b>-נגד-</b></td>
+      <td class="side"></td>
+    </tr>
+    <tr>
+      <td class="main">ארנון בוסקילה, ת.ז ________<br>באמצעות ב"כ עו"ד ??? (מ"ר ???) מרחוב ???<br>טל': ???; פקס: ???; דוא"ל: ???</td>
+      <td class="mid"></td>
+      <td class="side"><u>הנתבע</u><br>המבקש</td>
+    </tr>
+  </table>
+
+  <div class="dates"><div>מועד המצאת הבקשה: 9.3.2025</div><div>מועד אחרון לתגובה: 6.4.2025</div></div>
+
+  <h1>תגובה לבקשה לאיסור פרסום</h1>
+
+  <p class="opening">בהתאם להחלטת בית המשפט הנכבד מיום 9.3.2025, מתכבדת המשיבה להגיש את תגובתה לבקשת המבקש לאיסור פרסום גורף על התביעה ועל כל פרט הקשור בה, ולהתנגד לה — למעט בכל הנוגע לסעד המצומצם המפורט בסופה — ואלה נימוקי התגובה:</p>
+
+  <h2>הרקע לתגובה</h2><ol class="para"><li><span class="num">1.</span> ביום 9.3.2025 הגישה המשיבה תביעה כספית נגד המבקש, סוכן ביטוח עצמאי, בסך 640,000 ₪, בטענה כי לא עדכן את פוליסת ביטוח עסקה כפי שהתבקש ולא הודיע לה שבקשתה לא נרשמה; משנשרף העסק, שולמו לה תגמולי ביטוח חלקיים בלבד (להלן: "התביעה").</li><li><span class="num">2.</span> בו ביום, ובטרם הוגש כתב הגנה, הגיש המבקש את הבקשה שבכותרת (להלן: "הבקשה"). שלושה טעמים בפיו: מחלתו הכרונית, אשפוזו בחודש דצמבר 2023 והטיפולים שהוא מקבל; חשש לביטחונו ולביטחון משפחתו בעקבות אירוע שהתרחש לטענתו במשרדו ביום 6.1.2025; וחשש לפגיעה בפרנסתו ובמוניטין שצבר.</li><li><span class="num">3.</span> יוער כי עוד בטרם הוגשה התביעה, ובמענה למכתב הדרישה ששלחה המשיבה, דרש ב"כ המבקש כי המשיבה תימנע מכל פרסום בעניין.<div class="exhibit">***&#9;העתק העתק מכתב התשובה מטעם ב"כ המבקש למכתב הדרישה, הכולל את הדרישה להימנע מכל פרסום מצ"ב <b>כנספח 1</b>.</div></li><li><span class="num">4.</span> כבר עתה מובהר: המשיבה אינה מתנגדת לאיסור פרסום ממוקד על פרטי מצבו הרפואי של המבקש ועל פרטים מזהים של הצדדים. התנגדותה מופנית אל היקפה הגורף של הבקשה, המבקשת להעלים מן הציבור את עצם קיומו של ההליך ואת תוכנו כולו.</li></ol><h2>המסגרת הנורמטיבית: הפומביות כלל, החיסיון חריג</h2><ol class="para"><li><span class="num">5.</span> פומביות הדיון היא מעקרונות היסוד של השיטה: "בית משפט ידון בפומבי, זולת אם נקבע אחרת בחוק או אם בית המשפט הורה אחרת לפי חוק" (סעיף 3, מתוך חוק יסוד: השפיטה), וכך גם "בית משפט ידון בפומבי" (סעיף 68(א), מתוך חוק בתי המשפט [נוסח משולב], התשמ"ד-1984; להלן: "החוק"). משכך, סטייה מן הכלל אפשרית אך בגדר העילות שקבע המחוקק, ובמידה הנדרשת.</li><li><span class="num">6.</span> סעיף 70(ד) לחוק מונה את הטעמים שבגינם רשאי בית המשפט לאסור פרסום: הגנה על "בטחונו של בעל דין, עד או אדם אחר ששמו הוזכר בדיון"; מניעת "פגיעה חמורה בפרטיות" של מי מאלה; מניעת פגיעה בפרטיות "בשל חשיפת מידע רפואי"; ומניעת פגיעה בפרטיותו של אדם עם מוגבלות שכלית או נפשית. עוד מורה הסעיף כי האיסור יינתן "במידה שהוא רואה צורך בכך". ברי כי אי-הנוחות הנגרמת לבעל דין מעצם ניהולו של הליך פומבי אינה באה בגדר עילות אלה.</li><li><span class="num">7.</span> ברע"א 234-21 פ"ו נ' ד"ב (להלן: "עניין פ"ו") עמד בית המשפט על כך שגם מקום שבו מתקיימת עילה — ובכלל זה פגיעה בפרטיות בשל חשיפת מידע רפואי — "על האיסור להיות מידתי לאור חשיבות פומביות הדיון לעומת היקף הפגיעה", ומידתיות זו הולידה שם את התוצאה שלפיה "יש לאסור פרסום פרטים מזהים של הצדדים ואת פרטי המחלה בלבד ולא את פרטי ההליך באופן גורף".</li></ol><h2>טעמי הבקשה, אחד לאחד</h2><ol class="para"><li><span class="num">8.</span> הטעם הרפואי: אכן, חשיפת מידע רפואי אודות המבקש באה בגדר העילות שבסעיף 70(ד) לחוק — ובכך, ובכך בלבד, יש ממש. אלא שעילה זו מולידה סעד מצומצם ולא גורף: פרטיותו הרפואית של המבקש מוגנת במלואה באיסור פרסום החל על פרטי מחלתו, אשפוזו והטיפולים שהוא מקבל ועל פרטים מזהים, כפי שנעשה בעניין פ"ו, ואין בה כדי להצדיק את הסתרת עצם קיומה של התביעה, מהותה ותוצאתה. ודוק: המבקש הוא שבחר להציב את מצבו הרפואי בלב הגנתו, כהסבר לאי-הטיפול בבקשות לקוחותיו, ואין בבחירה זו כדי להרחיב את היקף האיסור מעבר לנדרש להגנה על המידע עצמו.</li><li><span class="num">9.</span> הטעם הביטחוני: הבקשה אינה מניחה תשתית כלשהי לקשר בין פרסום ההליך ובין ביטחונו של המבקש. האירוע הנטען (המוכחש) אירע לפני חודשיים, בלא שהתפרסם דבר, ומעשיו של אדם שאינו בעל דין בהליך אינם מעשיה של המשיבה. המבקש אף לא טען כי הגיש תלונה במשטרה או בקשה לצו מניעת הטרדה מאיימת, וחזקה כי לו היו בידיו אסמכתאות התומכות בחשש הנטען היה מצרפן לבקשתו. בהעדר תשתית, איסור פרסום אינו דרוש "לשם הגנה על בטחונו של בעל דין".</li><li><span class="num">10.</span> הטעם הכלכלי: פגיעה בפרנסה ובמוניטין אינה נמנית עם הטעמים שבסעיף 70(ד) לחוק, ודי בכך כדי לדחותה. מוניטין מקצועי אף אינו מצוי בגרעין הפרטיות, ואין בפרסומו של הליך אזרחי משום "פגיעה חמורה בפרטיות". ממילא, כל תביעה המוגשת נגד נותן שירות מקצועי עלולה להשליך על פרנסתו; קבלת הטענה תהפוך את החריג לכלל ותסתיר מעין הציבור כל הליך מסוג זה.</li><li><span class="num">11.</span> מנגד ניצבת חשיבותו של עקרון הפומביות, המתעצמת שעה שעניינו של ההליך באופן טיפולו של בעל רישיון בענייני לקוחותיו. איסור גורף על התביעה ועל כל פרט הקשור בה חורג בהרבה מכל אחד מן האינטרסים שעליהם מבקש המבקש להגן, ומשכך אינו מידתי כנדרש בעניין פ"ו.</li></ol><h2>הסעד החלופי</h2><ol class="para"><li><span class="num">12.</span> ככל שיסבור בית המשפט הנכבד כי קיימת הצדקה חלקית לסטייה מן הכלל, מתבקש להורות על איסור מצומצם בלבד: איסור פרסום שמות הצדדים ופרטיהם המזהים, ואיסור פרסום פרטי מחלתו, אשפוזו וטיפוליו של המבקש — באופן שעצם קיומה של התביעה ותוכן המחלוקת הביטוחית יוכלו להתפרסם בלא פרטים מזהים. בהתאם לעניין פ"ו, היקף האיסור "יצומצם או יורחב, ייבחן שנית בפסק הדין ובשים לב לתוצאתו".</li></ol><h2>לסיכום</h2><ol class="para"><li><span class="num">13.</span> אשר על כן מתבקש בית המשפט הנכבד לדחות את הבקשה לאיסור פרסום גורף; ולחלופין, ליתן את הסעד המצומצם המפורט לעיל בלבד. כן מתבקש בית המשפט לחייב את המבקש בהוצאות המשיבה ובשכר טרחת עורך דינה, שנדרשו לה בשל הצורך להשיב לבקשה רחבה ובלתי מבוססת שהוגשה בד בבד עם הגשת התביעה.</li></ol>
+
+  <div class="tail">
+    <p class="closing">תגובה זו מבוססת על טעמים משפטיים ועל המסמך המצורף לה, ומשכך לא צורף לה תצהיר.</p>
+    <div class="signature"><span class="rule">___________, עו"ד
+ב"כ המשיבה</span></div>
+  </div>
+
+  <div class="colophon">פתרון לדוגמה · נוצר אוטומטית · טיוטה לבדיקה · לשאלה <bdi dir="ltr">2022-W-Q2-F</bdi></div>
+
+</body>
+</html>

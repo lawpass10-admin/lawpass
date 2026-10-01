@@ -1,0 +1,23 @@
+LawPass — open question set generation
+finished    : 2026-10-01T13:49:10.383Z
+duration    : 24:47
+requested   : 10 set(s)
+order       : random (--pick=subject), seed 1790861063294
+execution   : 4 lane(s) in parallel
+
+9 OUT OF 10 SET(S) LOADED TO THE DATABASE
+  loaded  9   partial 0   failed 1
+
+  loaded   2021-S-Q1-B    10:09
+  loaded   2021-S-Q2-B    08:56
+  loaded   2022-W-Q2-C    07:22
+  loaded   2023-S-Q2-D    09:02
+  loaded   2022-W-Q2-D    06:00
+  loaded   2023-S-Q2-E    08:06
+  loaded   2021-S-Q1-C    08:24
+  loaded   2021-S-Q2-C    08:41
+  loaded   2022-W-Q2-E    10:11
+  FAILED   2021-S-Q2-D    07:08  at generation: rejected or failed — see generated/rejected/
+
+Every row loaded is a draft. A draft rubric grades nothing until someone reads it
+and re-runs load_rubric.mjs with --approve.

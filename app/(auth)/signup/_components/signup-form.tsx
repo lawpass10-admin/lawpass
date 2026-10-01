@@ -22,6 +22,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { NdaConsent } from "@/app/(auth)/_components/nda-consent";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
   Form,
@@ -243,6 +244,12 @@ export default function SignupForm() {
     control: form.control,
     name: "terms_accepted",
   });
+  // The submit button waits for BOTH consents — the agreement's appendix
+  // requires that the continue control stay inert until each box is ticked.
+  const ndaAccepted = useWatch({
+    control: form.control,
+    name: "nda_accepted",
+  });
 
   // Sync month + year selects → exam_date_planned form field (YYYY-MM-01 or null).
   useEffect(() => {
@@ -384,7 +391,7 @@ export default function SignupForm() {
                 <Button
                   type="submit"
                   className="ms-auto"
-                  disabled={submitting || termsAccepted !== true}
+                  disabled={submitting || termsAccepted !== true || ndaAccepted !== true}
                 >
                   {submitting ? "שולח..." : "הרשם"}
                 </Button>
@@ -492,6 +499,7 @@ function Step1({ form }: { form: UseFormReturn<SignupInput> }) {
           </FormItem>
         )}
       />
+
     </>
   );
 }
@@ -807,6 +815,25 @@ function Step3({
                   </span>
                 </Label>
               </div>
+            </FormControl>
+            <FormMessage />
+          </FormItem>
+        )}
+      />
+
+      {/* The NDA's own consent, directly under the תקנון box — the agreement
+          requires two separate boxes and forbids merging them. */}
+      <FormField
+        control={form.control}
+        name="nda_accepted"
+        render={({ field }) => (
+          <FormItem>
+            <FormControl>
+              <NdaConsent
+                id="nda_accepted"
+                checked={field.value === true}
+                onCheckedChange={field.onChange}
+              />
             </FormControl>
             <FormMessage />
           </FormItem>

@@ -14,7 +14,7 @@ import styles from "./landing.module.css";
  *
  * Server Component. Renders:
  *   - A minimal top strip: LawPass logo (→ "/") on one side, "← חזרה לדף
- *     הנחיתה" (→ "/") on the other. Both are reachable to keyboard +
+ *     הראשי" (→ "/") on the other. Both are reachable to keyboard +
  *     screen-reader users — the strip stays small + sticky-free so it
  *     doesn't compete with the document body.
  *   - The document body — a typed list of `LegalBlock`s from the copy
@@ -102,7 +102,7 @@ export function LegalPageShell({ copy }: { copy: LegalPageCopy }) {
             />
           </Link>
           <Link className={styles.legalBackLink} href="/">
-            <span aria-hidden>←</span> חזרה לדף הנחיתה
+            <span aria-hidden>←</span> חזרה לדף הראשי
           </Link>
         </div>
       </header>

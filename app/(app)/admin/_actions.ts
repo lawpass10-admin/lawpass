@@ -335,10 +335,18 @@ const adminSetQaTesterInput = z.object({
 });
 
 /**
- * Toggle profiles.is_qa_tester. The admins_update_all_profiles RLS
- * policy (Slice 1 / SPEC §9.4) already permits the UPDATE — no new
- * policy was needed for Slice 10. Audit row carries from→to so the
- * log shows who was promoted/demoted and when.
+ * Toggle profiles.is_qa_tester, through the admin_set_qa_tester RPC.
+ *
+ * NOT A DIRECT UPDATE ANY MORE. Migration 20261001000009 took the table-wide
+ * UPDATE grant off profiles and gave back only full_name and
+ * exam_date_planned, because a column grant cannot tell an admin apart from a
+ * user editing their own row — `authenticated` is both. is_qa_tester is a
+ * privilege (it carries the qa_reports insert policy, the screenshot bucket
+ * and the no-copy bypass), so it moved to a SECURITY DEFINER function that
+ * re-checks is_admin() in the database. requireAdmin() above still gates the
+ * action; the RPC is what makes the gate hold for a direct PostgREST call.
+ *
+ * Audit row carries from→to so the log shows who was promoted/demoted and when.
  */
 export async function adminSetQaTesterAction(
   input: unknown
@@ -364,10 +372,10 @@ export async function adminSetQaTesterAction(
   const prior =
     (priorRow as { is_qa_tester: boolean } | null)?.is_qa_tester ?? false;
 
-  const { error } = await supabase
-    .from("profiles")
-    .update({ is_qa_tester: isQaTester })
-    .eq("id", userId);
+  const { error } = await supabase.rpc("admin_set_qa_tester", {
+    p_user_id: userId,
+    p_value: isQaTester,
+  });
 
   if (error) {
     console.error(

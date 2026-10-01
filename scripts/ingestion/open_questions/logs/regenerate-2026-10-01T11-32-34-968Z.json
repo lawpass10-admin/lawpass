@@ -1,0 +1,109 @@
+{
+  "ran_at": "2026-10-01T12:04:43.504Z",
+  "duration": "32:08",
+  "current_prompt_version": "open-question-angle/3",
+  "mode": "parallel",
+  "lanes": [
+    {
+      "source": "2026-S-Q1",
+      "sets": 4
+    },
+    {
+      "source": "2026-S-Q2",
+      "sets": 2
+    },
+    {
+      "source": "2021-W-Q1",
+      "sets": 1
+    }
+  ],
+  "lane_workers": 2,
+  "retired": false,
+  "results": [
+    {
+      "replaced_open_question_id": "7e25c82b-53f7-4d6c-8a8c-79f3fe5ce8b4",
+      "replaced_prompt_version": "open-question-angle/2",
+      "source_external_id": "2021-W-Q1",
+      "new_angle": "C",
+      "ok": false,
+      "partial": false,
+      "at": "rubric",
+      "detail": "rejected or failed — see generated/rejected/",
+      "took": "10:43",
+      "log": "scripts\\ingestion\\open_questions\\logs\\lane-2021-W-Q1-2026-10-01T11-32-34-968Z.log"
+    },
+    {
+      "replaced_open_question_id": "39e9ba17-722e-4b0e-a044-dc78b2bc2c1f",
+      "replaced_prompt_version": "open-question-angle/2",
+      "source_external_id": "2026-S-Q1",
+      "new_angle": "I",
+      "ok": true,
+      "partial": false,
+      "at": null,
+      "detail": null,
+      "took": "09:15",
+      "log": "scripts\\ingestion\\open_questions\\logs\\lane-2026-S-Q1-2026-10-01T11-32-34-968Z.log"
+    },
+    {
+      "replaced_open_question_id": "568c9613-e5a9-4893-bc06-eb1027501cb6",
+      "replaced_prompt_version": "open-question-angle/2",
+      "source_external_id": "2026-S-Q1",
+      "new_angle": "J",
+      "ok": true,
+      "partial": false,
+      "at": null,
+      "detail": null,
+      "took": "07:52",
+      "log": "scripts\\ingestion\\open_questions\\logs\\lane-2026-S-Q1-2026-10-01T11-32-34-968Z.log"
+    },
+    {
+      "replaced_open_question_id": "36bb524f-95b7-4e42-aa8e-043b37d45330",
+      "replaced_prompt_version": "open-question-angle/2",
+      "source_external_id": "2026-S-Q2",
+      "new_angle": "D",
+      "ok": false,
+      "partial": false,
+      "at": "rubric",
+      "detail": "rejected or failed — see generated/rejected/",
+      "took": "07:32",
+      "log": "scripts\\ingestion\\open_questions\\logs\\lane-2026-S-Q2-2026-10-01T11-32-34-968Z.log"
+    },
+    {
+      "replaced_open_question_id": "ef632178-6f79-428c-ad64-c35090af75cd",
+      "replaced_prompt_version": "open-question-angle/2",
+      "source_external_id": "2026-S-Q2",
+      "new_angle": "E",
+      "ok": false,
+      "partial": false,
+      "at": "generation",
+      "detail": "rejected or failed — see generated/rejected/",
+      "took": "05:50",
+      "log": "scripts\\ingestion\\open_questions\\logs\\lane-2026-S-Q2-2026-10-01T11-32-34-968Z.log"
+    },
+    {
+      "replaced_open_question_id": "091c7882-22eb-4859-87a6-1fb5d7016d32",
+      "replaced_prompt_version": "open-question-angle/2",
+      "source_external_id": "2026-S-Q1",
+      "new_angle": "K",
+      "ok": false,
+      "partial": false,
+      "at": "rubric",
+      "detail": "rejected or failed — see generated/rejected/",
+      "took": "06:20",
+      "log": "scripts\\ingestion\\open_questions\\logs\\lane-2026-S-Q1-2026-10-01T11-32-34-968Z.log"
+    },
+    {
+      "replaced_open_question_id": "c6311aff-7e43-4209-ada4-1cb09e090e44",
+      "replaced_prompt_version": "open-question-angle/2",
+      "source_external_id": "2026-S-Q1",
+      "new_angle": "L",
+      "ok": true,
+      "partial": false,
+      "at": null,
+      "detail": null,
+      "took": "08:39",
+      "log": "scripts\\ingestion\\open_questions\\logs\\lane-2026-S-Q1-2026-10-01T11-32-34-968Z.log"
+    }
+  ],
+  "orphans": []
+}

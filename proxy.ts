@@ -26,9 +26,10 @@ const AUTH_BOUNCE_PATHS = new Set([
 // Slices 43-45 passed the `!user` check below and rendered fine, which is
 // how the latent bug went unnoticed.
 //
-// Slice 50 — added "/privacy" and "/accessibility" for the legal stub pages
-// (privacy policy + הצהרת נגישות). The future /terms slot will be added in
-// a follow-up slice once the תקנון file lands.
+// The three legal pages are public: /privacy, /accessibility and /terms. A
+// visitor reading the terms before deciding whether to register has no session
+// yet, and the catch-all below would send them to /login — which is the one
+// place a page like this must not lead.
 const PUBLIC_PATHS = new Set([
   "/",
   "/login",
@@ -40,6 +41,7 @@ const PUBLIC_PATHS = new Set([
   "/early-access",
   "/privacy",
   "/accessibility",
+  "/terms",
 ]);
 
 export async function proxy(request: NextRequest): Promise<NextResponse> {

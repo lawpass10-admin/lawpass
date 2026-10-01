@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<title>בקשה למתן פסק דין חלקי</title>
+<style>
+  @page { size: A4; margin: 20mm 20mm 16mm 20mm; }
+
+  html, body {
+    font-family: Arial, "Segoe UI", sans-serif;
+    font-size: 11pt;
+    line-height: 1.55;
+    color: #000;
+    margin: 0;
+  }
+
+  /* RULE 1 — the caption block. The court name and the case number share one
+     line ABOVE the party block, court on the right and case number on the left.
+     In the party block the party's NAME sits on the right and its role label
+     (העותר / המשיבות) on the left — house style, set by the founder. Note the
+     official Bar Association model answers do it the other way round, label
+     rightmost; do not "correct" this back without asking.
+     The page is dir="rtl", so the first child in source order renders rightmost
+     — hence court before case number, and td.main before td.side. */
+  .topline { display: flex; justify-content: space-between; margin-bottom: 4mm; }
+  .topline .court { font-weight: bold; }
+
+  table.caption { width: 100%; border-collapse: collapse; margin-bottom: 5mm; }
+  table.caption td { border: .8pt solid #000; padding: 2mm 2.5mm; vertical-align: top; }
+  table.caption td.side { width: 26%; }
+  table.caption td.mid { width: 22%; text-align: center; vertical-align: middle; }
+  table.caption td.main { width: 52%; }
+
+  .dates { margin: 4mm 0 2mm 0; }
+
+  h1 {
+    font-size: 12pt;
+    font-weight: bold;
+    text-align: center;
+    text-decoration: underline;
+    margin: 7mm 0 5mm 0;
+  }
+  h2 {
+    font-size: 11pt;
+    font-weight: bold;
+    margin: 6mm 0 2.5mm 0;
+    break-after: avoid;
+  }
+
+  p, li { text-align: justify; }
+  .opening { margin-bottom: 2mm; }
+
+  ol.para { list-style: none; padding: 0; margin: 0; }
+  ol.para li { margin-bottom: 3mm; break-inside: avoid; }
+  ol.para .num { font-weight: bold; margin-left: 1.5mm; }
+
+  /* RULE 2 — exhibit line, anchored under its paragraph */
+  .exhibit { margin: 2mm 0 0 0; }
+
+  /* Closing and signature travel together — a signature stranded alone on a
+     trailing page reads as an unfinished document. */
+  .tail { break-inside: avoid; margin-top: 6mm; }
+  .closing { margin: 0; }
+  .signature { margin-top: 10mm; text-align: left; }
+  .signature .rule { display: inline-block; border-top: .8pt solid #000; width: 55mm; padding-top: 1.5mm; }
+
+  .colophon {
+    margin-top: 12mm;
+    padding-top: 3mm;
+    border-top: .5pt solid #bbb;
+    text-align: center;
+    font-size: 8.5pt;
+    color: #666;
+  }
+</style>
+</head>
+<body>
+
+  <div class="topline">
+    <span class="court">בבית משפט השלום בתל אביב-יפו</span>
+    <span class="case">ת"א 26-01-5566
+בקשה מספר ___</span>
+  </div>
+
+  <table class="caption">
+    <tr>
+      <td class="main">איתן רוזוליו, ת.ז ___________<br>באמצעות ב"כ עו"ד ??? (מ"ר ???) מרחוב ???<br>טל': ???; פקס: ???; דוא"ל: ???</td>
+      <td class="mid"></td>
+      <td class="side"><u>התובע</u><br>המבקש</td>
+    </tr>
+    <tr>
+      <td class="main"></td>
+      <td class="mid"><b>-נגד-</b></td>
+      <td class="side"></td>
+    </tr>
+    <tr>
+      <td class="main">המכללה האקדמית הדר בע"מ, ח.פ ___________<br>באמצעות ב"כ עו"ד ??? (מ"ר ???) מרחוב ???<br>טל': ???; פקס: ???; דוא"ל: ???</td>
+      <td class="mid"></td>
+      <td class="side"><u>הנתבעת</u><br>המשיבה</td>
+    </tr>
+  </table>
+
+  
+
+  <h1>בקשה למתן פסק דין חלקי</h1>
+
+  <p class="opening">בית המשפט הנכבד מתבקש ליתן פסק דין חלקי הקובע כי הנתבעת מושתקת מלטעון כי גביית "דמי שמירת זכויות" מן התובע נעשתה כדין, וכי החיוב נגבה שלא כדין וקמה חובת השבה, באופן שבירור ההליך יוותר לשאלת שיעור ההשבה בלבד. ואלה נימוקי הבקשה:</p>
+
+  <h2>הרקע לבקשה</h2><ol class="para"><li><span class="num">1.</span> התובע נרשם ביום 1.9.2021 ללימודי עיצוב תעשייתי אצל הנתבעת, מכללה אקדמית פרטית, וחתם על טופס הרשמה ועל תקנון הלימודים (להלן: "התקנון"). בתום שנת הלימודים הראשונה יצא לשירות מילואים ממושך ודחה את המשך לימודיו.</li><li><span class="num">2.</span> בימים 3.9.2022, 3.9.2023 ו-3.9.2024 חייבה הנתבעת את התובע ב"דמי שמירת זכויות" בסך 4,300 ₪ בעבור כל שנת דחייה, ובסך הכול 12,900 ₪ (להלן: "החיוב"), והתנתה בתשלום מלוא הסכום את חידוש לימודיו ואת מסירת גיליון הציונים. התובע שילם את מלוא החיוב, והתביעה דנן עניינה בהשבתו.</li><li><span class="num">3.</span> בכתב הגנתה מיום 10.3.2026 אין הנתבעת חולקת על עצם הגבייה, על מועדיה ועל שיעורה. הגנתה נסמכת על כך שהחיוב נגבה כדין מכוח נוהל פנימי שקבע מנהל הכספים שלה (להלן: "הנוהל").</li><li><span class="num">4.</span> ביום 29.1.2026 – כחודש וחצי טרם הגשת כתב ההגנה – ניתן בבית המשפט המחוזי בתל אביב-יפו, בהרכב שלושה שופטים, פסק דין בע"א 45-12-25 המכללה האקדמית הדר בע"מ נ' שגב (להלן: "עניין שגב"), שעניינו גבייתם של אותם "דמי שמירת זכויות" עצמם מסטודנטית אחרת של הנתבעת. בית המשפט קיבל את הערעור, קבע כי הנוהל של מנהל הכספים נעדר כל עיגון בתקנון ובדין וכי החיוב נגבה שלא כדין, והורה על השבת מלוא הסכומים שנגבו. הנתבעת אינה טוענת בכתב הגנתה כי פסק הדין בוטל או עוכב.<div class="exhibit">***&#9;העתק העתק פסק הדין בעניין שגב מצ"ב <b>כנספח 1</b>.</div></li></ol><h2>הטיעון המשפטי</h2><ol class="para"><li><span class="num">5.</span> הסמכות ליתן פסק דין חלקי: כעולה מתוך תקנות סדר הדין האזרחי, התשע"ט-2018 (להלן: "התקנות"), "החלטה" כוללת גם פסק דין חלקי (תקנה 6), ובית המשפט מוסמך ליתן את החלטתו בתום הדיון בכל הליך (תקנה 129(א)). מכאן סמכותו של בית המשפט הנכבד להכריע כבר עתה בפלוגתה שבירורה מוצה.</li><li><span class="num">6.</span> הנסיבות המצדיקות הכרעה בשלב מוקדם: בע"א 23-123 דרור נ' יסעור נקבע כי מקום שלא תצמח תועלת מהמשך בירור ההליך יש להכריעו בשלב מוקדם, ואף בקדם המשפט, וכי אין הדבר מוגבל להודאת הנתבע בחלק מן התביעה אלא חל גם כאשר כתבי הטענות מעלים "מחלוקת משפטית גרידא שאינה דורשת בירור עובדתי". כזה הוא ענייננו: עובדות הגבייה אינן שנויות במחלוקת, והמחלוקת היחידה היא משפטית – האם רשאית הייתה הנתבעת לגבות את החיוב מכוח הנוהל.</li><li><span class="num">7.</span> השתק הפלוגתא המוטל על הנתבעת: ברע"א 21-456 פרפור נ' נשר (להלן: "עניין פרפור") הובהר כי בעל דין מושתק מלעורר מחדש מחלוקת שכבר הוכרעה, וכי השתק פלוגתא קם בהתקיים ארבעה תנאים מצטברים – זהות הפלוגתה, מיצוי יומו של בעל הדין ביחס אליה, קביעת ממצא פוזיטיבי, וחיוניות ההכרעה לפסק הדין. בעניין פרפור נדחתה הטענה משום ששני התנאים האחרונים לא התקיימו. בענייננו מתקיימים ארבעתם:
+א. זהות הפלוגתה – בשני ההליכים עומדת לדיון אותה שאלה ממש: חוקיות גביית "דמי שמירת זכויות" מכוח הנוהל של מנהל הכספים.
+ב. הנתבעת זכתה ליומה – הנתבעת הייתה בעלת דין בעניין שגב, התדיינה באותה שאלה עד לערכאת הערעור, וטענותיה נדחו בהרכב תלתא.
+ג. ממצא פוזיטיבי – להבדיל מעניין פרפור, שבו נקבע אך כי לא הורם נטל הראיה, בעניין שגב נקבע פוזיטיבית כי הנוהל נעדר עיגון וכי החיוב נגבה שלא כדין.
+ד. חיוניות ההכרעה – ההוראה על השבת מלוא הסכומים נשענה על קביעה זו ממש, וקביעה שהיא הבסיס לסעד שניתן אינה שולית לפסק הדין.</li><li><span class="num">8.</span> שתי טענותיה הנוספות של הנתבעת אינן מאיינות את ההשתק. ראשית, הטענה כי בעניין שגב נדון נוסח התקנון משנת 2016 בעוד התובע חתם על נוסח 2021: בעניין שגב נקבע כי הנוהל נעדר עיגון "בתקנון ובדין" – היינו גם בדין, קביעה שאינה תלויה בנוסח כזה או אחר של התקנון; ומכל מקום, הנתבעת עצמה סומכת את הגבייה בכתב הגנתה על הנוהל, ולא על אותו סעיף נטען. שנית, הטענה (המוכחשת) כי מדובר באמרת אגב אינה מתיישבת עם התוצאה שאליה הגיע בית המשפט המחוזי, כאמור לעיל.</li><li><span class="num">9.</span> מתן פסק דין חלקי עולה בקנה אחד עם עקרונות היסוד שבתקנה 5 לתקנות: הוא מבטיח דיון "צודק, מהיר ויעיל", חוסך משאבי זמן ועלויות ומונע הכרעות סותרות – שהרי בירור חוזר של חוקיות אותו נוהל עצמו, בין אותה נתבעת לסטודנט אחר, עלול להוליד הכרעה הסותרת את זו שניתנה בערעור. שיבת הנתבעת, חודש וחצי לאחר פסק הדין, על טענה שנדחתה בערכאת ערעור, מכבידה על התובע ועל המערכת שלא לצורך.</li></ol><h2>לסיכום</h2><ol class="para"><li><span class="num">10.</span> אשר על כן מתבקש בית המשפט הנכבד ליתן פסק דין חלקי הקובע כי הנתבעת מושתקת מלטעון שגביית "דמי שמירת זכויות" מן התובע נעשתה כדין, וכי החיוב בסך 12,900 ₪ נגבה שלא כדין וקמה חובת השבה – כך שיוותר לבירור שיעור ההשבה בלבד, לרבות הפרשי הצמדה וריבית; וכן לחייב את הנתבעת בהוצאות הבקשה ובשכר טרחת עו"ד.</li></ol>
+
+  <div class="tail">
+    <p class="closing">לבקשה זו לא צורף תצהיר, שכן היא מבוססת על טעמים משפטיים ועל פסק הדין בעניין שגב המצורף לה.</p>
+    <div class="signature"><span class="rule">________________, עו"ד
+ב"כ התובע/המבקש</span></div>
+  </div>
+
+  <div class="colophon">פתרון לדוגמה · נוצר אוטומטית · טיוטה לבדיקה · לשאלה <bdi dir="ltr">2026-S-Q1-J</bdi></div>
+
+</body>
+</html>

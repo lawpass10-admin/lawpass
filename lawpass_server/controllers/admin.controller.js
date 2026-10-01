@@ -162,7 +162,17 @@ async function forceSignOut(req, res) {
   return res.json({ ok: true });
 }
 
-/** POST /api/admin/qa-tester — toggle profiles.is_qa_tester + audit. */
+/**
+ * POST /api/admin/qa-tester — toggle profiles.is_qa_tester + audit.
+ *
+ * Goes through the admin_set_qa_tester RPC, not a direct UPDATE. Migration
+ * 20261001000009 narrowed the authenticated role's UPDATE grant on profiles to
+ * full_name and exam_date_planned: a column grant cannot separate an admin
+ * from a user editing their own row, so the one privilege column the UI
+ * toggles moved into a SECURITY DEFINER function that re-checks is_admin()
+ * itself. The requireAdmin middleware still gates the route; this is what
+ * holds if anything ever reaches the database without passing through it.
+ */
 async function setQaTester(req, res) {
   const { userId, isQaTester } = req.valid;
   const supabase = req.supabase;
@@ -171,12 +181,13 @@ async function setQaTester(req, res) {
   const priorRow = await getProfile(supabase, userId, "is_qa_tester");
   const prior = (priorRow && priorRow.is_qa_tester) || false;
 
-  const result = await updateProfile(supabase, userId, {
-    is_qa_tester: isQaTester,
+  const { error } = await supabase.rpc("admin_set_qa_tester", {
+    p_user_id: userId,
+    p_value: isQaTester,
   });
-  if (!result.ok) {
+  if (error) {
     console.error(
-      `[admin] set_qa_tester FAILED admin=${admin.id} target=${userId} code=${result.code || "unknown"} msg=${result.error}`
+      `[admin] set_qa_tester FAILED admin=${admin.id} target=${userId} code=${error.code || "unknown"} msg=${error.message}`
     );
     return res.json({ ok: false, error: "עדכון ההרשאה נכשל. נסה שוב" });
   }
