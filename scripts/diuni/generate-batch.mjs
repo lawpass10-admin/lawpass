@@ -5,6 +5,7 @@
 //   node scripts/diuni/generate-batch.mjs --go            # actually generate
 //   node scripts/diuni/generate-batch.mjs --target=27 --go
 //   node scripts/diuni/generate-batch.mjs --target=27 --effort=xhigh --go
+//   node scripts/diuni/generate-batch.mjs --target=27 --model=claude-opus-5 --go
 //   node scripts/diuni/generate-batch.mjs --target=27 --batch-api --go   # half price
 //
 // SAFE BY DEFAULT: without --go this reports what it would generate and what it
@@ -45,6 +46,10 @@ const GO = argv.includes("--go");
 const BATCH_API = argv.includes("--batch-api");
 const TARGET = Number(flag("target") ?? 27);
 const EFFORT = flag("effort");
+// Passed straight through to the generator, like --effort. Without this the
+// wrapper always ran whatever the params file pinned, so there was no way to
+// try a model for one batch without editing config.
+const MODEL = flag("model");
 const MAX_ROUNDS = Number(flag("max-rounds") ?? 6);
 
 if (!Number.isInteger(TARGET) || TARGET < 1) {
@@ -62,8 +67,29 @@ const draftCount = () =>
 // not from a rate card guess. Falls back to the measured figures from the
 // first 13 when the folder is empty.
 
-const RATES = { input: 5, output: 25, cacheWrite: 6.25, cacheRead: 0.5 };
+// Per-million-token list prices, keyed by model. This used to be one hardcoded
+// set of Opus 5 numbers, which quietly over-reported the bill the moment the
+// params file moved to a cheaper model — an estimate that is wrong in the
+// reassuring direction is worse than no estimate.
+const RATE_CARD = {
+  "claude-opus-5-5": { input: 4, output: 20, cacheWrite: 5, cacheRead: 0.2 },
+  "claude-opus-5": { input: 5, output: 25, cacheWrite: 6.25, cacheRead: 0.5 },
+  "claude-opus-4-8": { input: 5, output: 25, cacheWrite: 6.25, cacheRead: 0.5 },
+  "claude-sonnet-5-5": { input: 2, output: 10, cacheWrite: 2.5, cacheRead: 0.2 },
+  "claude-haiku-4-5": { input: 1, output: 5, cacheWrite: 1.25, cacheRead: 0.1 },
+};
 const EXEMPLAR_PREFIX_TOKENS = 12740; // 10 exemplars + rules + guidance
+
+/** The model this run will actually use: the flag, else the params file. */
+function modelId() {
+  if (MODEL) return MODEL;
+  return JSON.parse(readFileSync(join(here, "diuni-LLM-Params.json"), "utf8")).model.id;
+}
+
+/** Rates for that model, or null when we have no card for it. */
+function ratesFor(id) {
+  return RATE_CARD[id] ?? null;
+}
 
 function measuredAverages() {
   const rows = [];
@@ -104,9 +130,14 @@ function estimateCost(n) {
   const outTok = nV * a.verdict.out + nL * a.law.out;
 
   // The Batch API is half price on every token type.
-  const r = BATCH_API
-    ? Object.fromEntries(Object.entries(RATES).map(([k, v]) => [k, v / 2]))
-    : RATES;
+  const card = ratesFor(modelId());
+  // No card for this model: still report the mix and the token volume, but say
+  // the price is unknown instead of quoting someone else's rates for it.
+  const r = card
+    ? BATCH_API
+      ? Object.fromEntries(Object.entries(card).map(([k, v]) => [k, v / 2]))
+      : card
+    : null;
 
   // Cache accounting, and why batching makes it a range rather than a number.
   //
@@ -129,11 +160,11 @@ function estimateCost(n) {
     );
   };
 
-  const dollars = priceWith(2);
+  const dollars = r ? priceWith(2) : null;
   // Only batching can degrade to all-writes; the sequential path cannot.
-  const dollarsHigh = BATCH_API ? priceWith(n) : dollars;
+  const dollarsHigh = r ? (BATCH_API ? priceWith(n) : dollars) : null;
 
-  return { nV, nL, outTok, dollars, dollarsHigh };
+  return { nV, nL, outTok, dollars, dollarsHigh, priced: Boolean(r) };
 }
 
 // --------------------------------------------------------------- plan
@@ -144,7 +175,7 @@ const params = JSON.parse(readFileSync(join(here, "diuni-LLM-Params.json"), "utf
 
 console.log(`target new questions : ${TARGET}`);
 console.log(`drafts already on disk: ${before}  ->  ${before + TARGET} when done`);
-console.log(`model                : ${params.model.id} (effort ${EFFORT ?? params.model.effort})`);
+console.log(`model                : ${modelId()} (effort ${EFFORT ?? params.model.effort})`);
 console.log(`grounding mix        : ~${est.nV} verdict, ~${est.nL} law`);
 console.log(`selection            : ${params.selection.order} (spread across area + docket category)`);
 console.log(`exemplars            : ${params.exemplars.count}, pick=${params.exemplars.pick}`);
@@ -158,9 +189,11 @@ console.log(
 );
 console.log(
   `EST. COST            : ${
-    est.dollarsHigh > est.dollars
-      ? `$${est.dollars.toFixed(2)}–$${est.dollarsHigh.toFixed(2)}  (range = how much of the cached prefix is rewritten)`
-      : `$${est.dollars.toFixed(2)}`
+    !est.priced
+      ? `unknown — no rate card for ${modelId()}; add one to RATE_CARD in this file`
+      : est.dollarsHigh > est.dollars
+        ? `$${est.dollars.toFixed(2)}–$${est.dollarsHigh.toFixed(2)}  (range = how much of the cached prefix is rewritten)`
+        : `$${est.dollars.toFixed(2)}`
   }  (+~10% for rejected rounds)`
 );
 console.log(
@@ -196,6 +229,7 @@ for (let round = 1; round <= MAX_ROUNDS; round++) {
     join(here, "generate-diuni-set.mjs"),
     `--count=${remaining}`,
     ...(EFFORT ? [`--effort=${EFFORT}`] : []),
+    ...(MODEL ? [`--model=${MODEL}`] : []),
     ...(BATCH_API ? ["--batch-api"] : []),
   ];
   const res = spawnSync(process.execPath, args, {

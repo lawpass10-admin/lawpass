@@ -110,6 +110,7 @@ type ReviewPayload = {
 type Row = {
   question_id: string;
   created_at: string | null;
+  exam_number: number | null;
   questions: QuestionsPayload | null;
 };
 
@@ -140,16 +141,20 @@ export async function getDiuniSet(
 
   const base = supabase
     .from(TABLE)
-    .select("question_id, created_at, questions")
+    .select("question_id, created_at, exam_number, questions")
     .not("questions", "is", null);
 
   const { data, error } = questionId
     ? await base.eq("question_id", questionId).maybeSingle<Row>()
-    : // Authored papers only — see the same filter in lib/db/mahoti.ts. Custom
-      // exams share this table, and this branch answers with the newest row.
+    : // Published papers only — see the same filters in lib/db/mahoti.ts. Custom
+      // exams share this table, and this branch answers with מבחן מספר 1, the
+      // paper the picker preselects, so /diuni with no ?set= opens the same
+      // thing. Without the filters, a candidate's own exam or a freshly
+      // generated draft would silently become everyone's default paper.
       await base
+        .eq("exam_status", "prod")
         .is("built_for", null)
-        .order("created_at", { ascending: false })
+        .order("exam_number", { ascending: true })
         .limit(1)
         .maybeSingle<Row>();
 
@@ -161,7 +166,7 @@ export async function getDiuniSet(
   return {
     questionId: data.question_id,
     createdAt: data.created_at,
-    title: data.questions.exam?.title ?? "דין דיוני",
+    title: examTitle(data.exam_number, data.questions.exam?.title, "דין דיוני"),
     questions: stripAnswers(data.questions.questions),
   };
 }
@@ -185,10 +190,26 @@ export type DiuniSetSummary = {
 };
 
 /**
- * How many papers the picker offers. One, for now, matching the mahoti picker —
- * see MAHOTI_PICKER_LIMIT in lib/db/mahoti.ts for the reasoning.
+ * How many of a candidate's OWN papers the custom list offers.
+ *
+ * Only the authored list is governed by `exam_status`; a paper someone built
+ * for themselves is never published, so it needs a plain cap instead. One, as
+ * before — the custom builder overwrites rather than accumulates in practice.
  */
-export const DIUNI_PICKER_LIMIT = 1;
+export const DIUNI_CUSTOM_PICKER_LIMIT = 1;
+
+/**
+ * The name a published paper is shown under: מבחן מספר 1, מבחן מספר 2.
+ *
+ * The twin of `examTitle` in lib/db/mahoti.ts — see the note there. Derived
+ * from `exam_number` rather than read from `questions -> exam -> title`, which
+ * every generated row sets to the same "דין דיוני"; the stored title is left
+ * alone because it records what the generator produced.
+ */
+function examTitle(examNumber: number | null, storedTitle: string | undefined, fallback: string) {
+  if (examNumber !== null && examNumber !== undefined) return `מבחן מספר ${examNumber}`;
+  return storedTitle ?? fallback;
+}
 
 /** The `questions -> exam` sub-object, which is all the picker reads.
  *  Selecting the whole `questions` array to count it would pull the entire
@@ -196,6 +217,7 @@ export const DIUNI_PICKER_LIMIT = 1;
 type SummaryRow = {
   question_id: string;
   created_at: string | null;
+  exam_number: number | null;
   exam: { title?: string; question_count?: number } | null;
 };
 
@@ -219,14 +241,14 @@ type SummaryRow = {
  */
 export async function listMyCustomDiuniSets(
   userId: string,
-  limit: number = DIUNI_PICKER_LIMIT
+  limit: number = DIUNI_CUSTOM_PICKER_LIMIT
 ): Promise<DiuniSetSummary[]> {
   if (!userId) return [];
   const supabase = createAdminClient();
 
   const { data, error } = await supabase
     .from(TABLE)
-    .select("question_id, created_at, exam:questions->exam")
+    .select("question_id, created_at, exam_number, exam:questions->exam")
     .eq("built_for", userId)
     .not("questions", "is", null)
     .order("created_at", { ascending: false })
@@ -240,23 +262,39 @@ export async function listMyCustomDiuniSets(
   return (data ?? []).map((row) => ({
     questionId: row.question_id,
     createdAt: row.created_at,
-    title: row.exam?.title ?? "שאלון מותאם אישית",
+    title: examTitle(row.exam_number, row.exam?.title, "שאלון מותאם אישית"),
     questionCount: row.exam?.question_count ?? null,
   }));
 }
 
-export async function listDiuniSets(
-  limit: number = DIUNI_PICKER_LIMIT
-): Promise<DiuniSetSummary[]> {
+/**
+ * Every published paper, מבחן מספר 1 first.
+ *
+ * `exam_status = 'prod'` replaced "the newest row, capped at one": publication
+ * is now a deliberate step (scripts/diuni/publish-exam.mjs), so generating a
+ * paper no longer puts it in front of candidates by itself, and there is no
+ * longer a cap to raise when a second paper is ready. See the migration
+ * 20261004000002_diuni_exam_publication.sql.
+ *
+ * Ordered by `exam_number` ascending rather than by `created_at`: a numbered
+ * series reads 1, 2, 3, the way a candidate works through it, and the first row
+ * is the one PaperChoice preselects.
+ *
+ * `built_for IS NULL` stays, though the table now also forbids publishing a
+ * custom paper: it is the filter the other reads here use, and a read that
+ * depends on a CHECK constraint elsewhere for its authorization is harder to
+ * verify than one that states its own.
+ */
+export async function listDiuniSets(): Promise<DiuniSetSummary[]> {
   const supabase = createAdminClient();
 
   const { data, error } = await supabase
     .from(TABLE)
-    .select("question_id, created_at, exam:questions->exam")
+    .select("question_id, created_at, exam_number, exam:questions->exam")
+    .eq("exam_status", "prod")
     .is("built_for", null)
     .not("questions", "is", null)
-    .order("created_at", { ascending: false })
-    .limit(limit)
+    .order("exam_number", { ascending: true })
     .returns<SummaryRow[]>();
 
   if (error) {
@@ -266,7 +304,7 @@ export async function listDiuniSets(
   return (data ?? []).map((row) => ({
     questionId: row.question_id,
     createdAt: row.created_at,
-    title: row.exam?.title ?? "דין דיוני",
+    title: examTitle(row.exam_number, row.exam?.title, "דין דיוני"),
     questionCount: row.exam?.question_count ?? null,
   }));
 }
@@ -281,15 +319,18 @@ export async function getNextDiuniSetId(
 ): Promise<string | null> {
   const supabase = createAdminClient();
 
-  // Authored papers only. "למבחן הבא" walks this list, and custom exams belong
-  // to one candidate each — including another candidate's exam here would hand
-  // one person's private paper to everyone who finished a review.
+  // Published papers only. "למבחן הבא" walks this list in series order, so it
+  // runs מבחן מספר 1 → 2 and wraps. Custom exams belong to one candidate each —
+  // including another candidate's exam here would hand one person's private
+  // paper to everyone who finished a review — and an unpublished draft would do
+  // the same with a paper nobody has approved.
   const { data, error } = await supabase
     .from(TABLE)
     .select("question_id")
+    .eq("exam_status", "prod")
     .is("built_for", null)
     .not("questions", "is", null)
-    .order("created_at", { ascending: false });
+    .order("exam_number", { ascending: true });
 
   if (error) {
     throw new Error(`failed to read ${TABLE}: ${error.message}`);

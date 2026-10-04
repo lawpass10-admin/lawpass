@@ -10,9 +10,10 @@ import { Button } from "@/components/ui/button";
  * Which paper to sit, under the instructions on an exam start page.
  *
  * The shared paper rows (PaperList), so the choice looks and
- * behaves the same wherever it is offered. The newest paper is preselected —
- * with one paper on the list the button is a single confirm — and the button
- * opens it as `<examRoute>?set=<id>`, the parameter "למבחן הבא" already uses.
+ * behaves the same wherever it is offered. The first paper on the list is
+ * preselected — מבחן מספר 1, since the mahoti list is ordered by number — and
+ * with one paper on the list the button is a single confirm. It opens as
+ * `<examRoute>?set=<id>`, the parameter "למבחן הבא" already uses.
  *
  * `examRoute` is a string rather than a URL-building function because this is
  * rendered from a Server Component, and functions cannot cross that boundary.
@@ -55,7 +56,16 @@ export function PaperChoice({
           {emptyLabel}
         </p>
       ) : (
-        <PaperList sets={sets} selected={selected} onSelect={setSelected} label={listLabel} />
+        <PaperList
+          sets={sets}
+          selected={selected}
+          onSelect={setSelected}
+          label={listLabel}
+          // The storage namespace follows the route: "/mahoti" -> "mahoti".
+          // Derived rather than passed as its own prop, so the two can never be
+          // wired to different papers and show one list the other's progress.
+          kind={examRoute === "/mahoti" ? "mahoti" : "diuni"}
+        />
       )}
 
       <div className="flex justify-end">

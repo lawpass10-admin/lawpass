@@ -165,6 +165,7 @@ type ReviewPayload = {
 type Row = {
   question_id: string;
   created_at: string | null;
+  exam_number: number | null;
   questions: QuestionsPayload | null;
   question_notebook: Notebook | null;
 };
@@ -196,19 +197,22 @@ export async function getMahotiSet(
 
   const base = supabase
     .from(TABLE)
-    .select("question_id, created_at, questions, question_notebook")
+    .select("question_id, created_at, exam_number, questions, question_notebook")
     .not("questions", "is", null);
 
   const { data, error } = questionId
     ? await base.eq("question_id", questionId).maybeSingle<Row>()
-    : // Authored papers only. Custom exams ("שאלון מותאם אישית") live in this
+    : // Published papers only. Custom exams ("שאלון מותאם אישית") live in this
       // same table — they have to, because mahoti_answers has a foreign key
-      // onto it — and this branch answers with the NEWEST row. Without the
-      // filter, the first exam any candidate built for themselves would
-      // silently become the default paper served to everyone else.
+      // onto it — and this branch answers with מבחן מספר 1, the same paper the
+      // picker preselects, so /mahoti with no ?set= and /mahoti-start's default
+      // open the same thing. Without the filters, the first exam any candidate
+      // built for themselves, or any draft a generation run had just inserted,
+      // would silently become the default paper served to everyone else.
       await base
+        .eq("exam_status", "prod")
         .is("built_for", null)
-        .order("created_at", { ascending: false })
+        .order("exam_number", { ascending: true })
         .limit(1)
         .maybeSingle<Row>();
 
@@ -222,7 +226,7 @@ export async function getMahotiSet(
   return {
     questionId: data.question_id,
     createdAt: data.created_at,
-    title: data.questions.exam?.title ?? "דיון מהותי",
+    title: examTitle(data.exam_number, data.questions.exam?.title, "דיון מהותי"),
     questions: stripAnswers(data.questions.questions),
     notebook: data.question_notebook,
   };
@@ -246,14 +250,29 @@ export type MahotiSetSummary = {
 };
 
 /**
- * How many papers the picker offers.
+ * How many of a candidate's OWN papers the "שאלונים שבניתי" list offers.
  *
- * One, for now, on purpose: only the newest paper has been through the
- * generator's current verification pass, so the older rows are not yet content
- * anyone should be sent into. Raise this — or drop the argument entirely — once
- * the back catalogue is worth offering.
+ * Only the authored list is governed by `exam_status`; a paper someone built
+ * for themselves is never published, so it needs a plain cap instead. One, as
+ * before — the custom builder overwrites rather than accumulates in practice.
  */
-export const MAHOTI_PICKER_LIMIT = 1;
+export const MAHOTI_CUSTOM_PICKER_LIMIT = 1;
+
+/**
+ * The name a published paper is shown under: מבחן מספר 1, מבחן מספר 2.
+ *
+ * Derived from `exam_number` rather than read from `questions -> exam -> title`,
+ * which every generated row sets to the same "דיון מהותי" — a picker of papers
+ * all called the same thing is not a choice. The stored title is left alone
+ * rather than rewritten: it records what the generator produced.
+ *
+ * An unnumbered row falls back to that stored title, which is what a custom
+ * paper ("שאלון מותאם אישית") and any draft reached by its `?set=` URL use.
+ */
+function examTitle(examNumber: number | null, storedTitle: string | undefined, fallback: string) {
+  if (examNumber !== null && examNumber !== undefined) return `מבחן מספר ${examNumber}`;
+  return storedTitle ?? fallback;
+}
 
 /** The `questions -> exam` and `question_notebook -> notebook` sub-objects,
  *  which is all the picker reads. Selecting the whole `questions` array to
@@ -262,6 +281,7 @@ export const MAHOTI_PICKER_LIMIT = 1;
 type SummaryRow = {
   question_id: string;
   created_at: string | null;
+  exam_number: number | null;
   exam: { title?: string; question_count?: number } | null;
   notebook_meta: { law_count?: number } | null;
 };
@@ -292,7 +312,7 @@ type SummaryRow = {
  */
 export async function listMyCustomMahotiSets(
   userId: string,
-  limit: number = MAHOTI_PICKER_LIMIT
+  limit: number = MAHOTI_CUSTOM_PICKER_LIMIT
 ): Promise<MahotiSetSummary[]> {
   if (!userId) return [];
   const supabase = createAdminClient();
@@ -300,7 +320,7 @@ export async function listMyCustomMahotiSets(
   const { data, error } = await supabase
     .from(TABLE)
     .select(
-      "question_id, created_at, exam:questions->exam, notebook_meta:question_notebook->notebook"
+      "question_id, created_at, exam_number, exam:questions->exam, notebook_meta:question_notebook->notebook"
     )
     .eq("built_for", userId)
     .not("questions", "is", null)
@@ -316,27 +336,44 @@ export async function listMyCustomMahotiSets(
   return (data ?? []).map((row) => ({
     questionId: row.question_id,
     createdAt: row.created_at,
-    title: row.exam?.title ?? "שאלון מותאם אישית",
+    title: examTitle(row.exam_number, row.exam?.title, "שאלון מותאם אישית"),
     questionCount: row.exam?.question_count ?? null,
     lawCount: row.notebook_meta?.law_count ?? null,
   }));
 }
 
-export async function listMahotiSets(
-  limit: number = MAHOTI_PICKER_LIMIT
-): Promise<MahotiSetSummary[]> {
+/**
+ * Every published paper, מבחן מספר 1 first.
+ *
+ * `exam_status = 'prod'` replaced "the newest row, capped at one": publication
+ * is now a deliberate step (scripts/mahoti/publish-exam.mjs), so generating a
+ * paper no longer puts it in front of candidates by itself, and there is no
+ * longer a cap to raise when a second paper is ready. See the migration
+ * 20261004000001_mahoti_exam_publication.sql.
+ *
+ * Ordered by `exam_number` ASCENDING, not by `created_at` — a numbered series
+ * reads 1, 2, 3, the way a candidate works through it, and the two orders can
+ * disagree anyway (a paper published later may be numbered earlier). The first
+ * row is also the one PaperChoice preselects, so the default is מבחן מספר 1.
+ *
+ * `built_for IS NULL` stays, though the table now also forbids publishing a
+ * custom paper: it is the filter the other reads here use, and a read that
+ * depends on a CHECK constraint elsewhere for its authorization is harder to
+ * verify than one that states its own.
+ */
+export async function listMahotiSets(): Promise<MahotiSetSummary[]> {
   const supabase = createAdminClient();
 
   const { data, error } = await supabase
     .from(TABLE)
     .select(
-      "question_id, created_at, exam:questions->exam, notebook_meta:question_notebook->notebook"
+      "question_id, created_at, exam_number, exam:questions->exam, notebook_meta:question_notebook->notebook"
     )
+    .eq("exam_status", "prod")
     .is("built_for", null)
     .not("questions", "is", null)
     .not("question_notebook", "is", null)
-    .order("created_at", { ascending: false })
-    .limit(limit)
+    .order("exam_number", { ascending: true })
     .returns<SummaryRow[]>();
 
   if (error) {
@@ -346,7 +383,7 @@ export async function listMahotiSets(
   return (data ?? []).map((row) => ({
     questionId: row.question_id,
     createdAt: row.created_at,
-    title: row.exam?.title ?? "דין מהותי",
+    title: examTitle(row.exam_number, row.exam?.title, "דין מהותי"),
     questionCount: row.exam?.question_count ?? null,
     lawCount: row.notebook_meta?.law_count ?? null,
   }));
@@ -356,11 +393,11 @@ export async function listMahotiSets(
  * The paper that follows `currentId` in the table's own order — what
  * "למבחן הבא" moves to at the end of a review.
  *
- * The order is the one the screen already implies: newest first, the same
- * `created_at DESC` the default read uses, so "next" walks backwards through
- * the papers as they were generated. It wraps at the end rather than dead-
- * ending, so a candidate who reaches the oldest paper is sent round to the
- * newest instead of hitting a disabled button.
+ * The order is the one the screen already implies: `exam_number ASC`, the same
+ * order the picker lists, so "next" walks up the series — מבחן מספר 1 to מבחן
+ * מספר 2. It wraps at the end rather than dead-ending, so a candidate who
+ * finishes the last paper is sent round to the first instead of hitting a
+ * disabled button.
  *
  * Returns null when there is nothing to move to (a single paper, or none).
  * The id list is read whole because `mahoti_questions` is authoring content —
@@ -372,15 +409,17 @@ export async function getNextMahotiSetId(
 ): Promise<string | null> {
   const supabase = createAdminClient();
 
-  // Authored papers only — see the same filter in lib/db/diuni.ts. Custom exams
-  // belong to one candidate each, so listing them here would walk one person's
-  // private paper into everyone else's "next exam".
+  // Published papers only — see the same filters in `listMahotiSets`. Custom
+  // exams belong to one candidate each, so listing them here would walk one
+  // person's private paper into everyone else's "next exam"; an unpublished
+  // draft would do the same with a paper nobody has approved.
   const { data, error } = await supabase
     .from(TABLE)
     .select("question_id")
+    .eq("exam_status", "prod")
     .is("built_for", null)
     .not("questions", "is", null)
-    .order("created_at", { ascending: false });
+    .order("exam_number", { ascending: true });
 
   if (error) {
     throw new Error(`failed to read ${TABLE}: ${error.message}`);
@@ -595,6 +634,56 @@ type AttemptRow = {
     total?: number;
   } | null;
 };
+
+/**
+ * How the caller has done on each paper so far: how many times they have sat
+ * it, and their best score.
+ *
+ * What the picker needs to say "הושלם" on a row. Read through the SSR client,
+ * not the service-role one, for the same reason `getMahotiAttempt` below does:
+ * `mahoti_answers` has a students-select-own policy (20260826000001), so RLS
+ * scopes this to the caller's own rows and there is no ownership check to get
+ * wrong here. A service-role read would show one candidate another's results.
+ *
+ * NOTE WHAT THIS CANNOT SEE. A row in `mahoti_answers` is written only when a
+ * paper is SUBMITTED — the whole sitting is filed in one call at the end. A
+ * paper someone is halfway through has nothing on the server at all; its
+ * answers live in that browser's localStorage (lib/sittings/progress.ts). So
+ * this answers "finished", never "started", and "בתהליך" has to be decided in
+ * the browser. See PaperList.
+ *
+ * Keyed by `question_id`, so a caller can look up a row it already has without
+ * a second query. One row per sitting and a handful of papers, so this is tens
+ * of rows for a heavy user rather than a table scan worth paginating.
+ */
+export type MahotiSittingSummary = {
+  sittings: number;
+  /** The best score of those sittings, as a percentage. */
+  bestScore: number | null;
+};
+
+export async function getMyMahotiSittings(): Promise<Record<string, MahotiSittingSummary>> {
+  const supabase = await createClient();
+
+  const { data, error } = await supabase
+    .from("mahoti_answers")
+    .select("question_id, answer_score");
+
+  // A failure here costs the picker its badges, not its list. Throwing would
+  // take down a page that works perfectly well without this.
+  if (error || !data) return {};
+
+  const byPaper: Record<string, MahotiSittingSummary> = {};
+  for (const row of data as { question_id: string; answer_score: number | null }[]) {
+    const seen = byPaper[row.question_id] ?? { sittings: 0, bestScore: null };
+    seen.sittings += 1;
+    if (row.answer_score !== null) {
+      seen.bestScore = seen.bestScore === null ? row.answer_score : Math.max(seen.bestScore, row.answer_score);
+    }
+    byPaper[row.question_id] = seen;
+  }
+  return byPaper;
+}
 
 /**
  * One of the caller's OWN sittings, by id.

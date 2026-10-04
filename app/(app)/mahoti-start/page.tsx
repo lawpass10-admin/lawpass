@@ -7,7 +7,13 @@ import {
   INSTRUCTIONS_PREAMBLE,
 } from "@/app/(app)/_components/exam-start/exam-start-page";
 import { requireActiveSubscription } from "@/lib/auth/subscription-gate";
-import { listMahotiSets, listMyCustomMahotiSets } from "@/lib/db/mahoti";
+import {
+  getMyMahotiSittings,
+  listMahotiSets,
+  listMyCustomMahotiSets,
+  type MahotiSetSummary,
+  type MahotiSittingSummary,
+} from "@/lib/db/mahoti";
 
 /**
  * /mahoti-start — the instructions for חלק ג' of the paper, then the choice of
@@ -21,10 +27,26 @@ import { listMahotiSets, listMyCustomMahotiSets } from "@/lib/db/mahoti";
  */
 export default async function MahotiStartPage() {
   const { user } = await requireActiveSubscription();
-  const [sets, customSets] = await Promise.all([
+  const [sets, customSets, sittings] = await Promise.all([
     listMahotiSets(),
     listMyCustomMahotiSets(user.id),
+    getMyMahotiSittings(),
   ]);
+
+  /**
+   * "הושלם · 85%" on a paper this candidate has already sat.
+   *
+   * Merged here rather than inside the two list reads because those go through
+   * the service-role client (the content is admin-only under RLS) while the
+   * sittings must not — they are per-candidate, and reading them with the
+   * service role would show one person another's results. Two reads, one for
+   * content and one for the candidate, joined in the page that has both.
+   */
+  const withProgress = (list: MahotiSetSummary[]) =>
+    list.map((set) => {
+      const sat: MahotiSittingSummary | undefined = sittings[set.questionId];
+      return { ...set, sittings: sat?.sittings ?? 0, bestScore: sat?.bestScore ?? null };
+    });
 
   return (
     <ExamStartPage
@@ -38,8 +60,8 @@ export default async function MahotiStartPage() {
         INSTRUCTION_CHEATING,
         INSTRUCTION_INVIGILATORS,
       ]}
-      sets={sets}
-      customSets={customSets}
+      sets={withProgress(sets)}
+      customSets={withProgress(customSets)}
       examRoute="/mahoti"
       listLabel="מבחני דין מהותי"
       emptyLabel="אין עדיין מבחני דין מהותי זמינים."

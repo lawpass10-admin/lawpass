@@ -20,11 +20,17 @@
 // the seven least genuine-looking ones. `--pick=random` instead draws by seed,
 // for a paper whose lengths are already in range.
 //
-// THE REVIEW TRAVELS WITH THE QUESTION. A real question is only eligible once
-// scripts/diuni/generate-real-reviews.mjs has written its 360° review; this
-// refuses to draw one without it rather than leaving a question in the paper
-// that explains nothing. Run this first as a dry run, feed the ids it prints to
-// that script, then run it again with --commit.
+// THE DRAW COMES FIRST, THEN THE REVIEW. The seven are drawn at random from the
+// WHOLE pool — not from whichever questions already carry a 360° review — and
+// the swap then refuses any of them whose review has not been written, rather
+// than leaving a question in the paper that explains nothing.
+//
+// Drawing second was a sampling bug: it made the sample a function of which
+// reviews happened to exist, so a pool with seven reviewed rows produced the
+// same seven every time whatever the seed said. Run this as a dry run, feed the
+// ids it prints to scripts/diuni/generate-real-reviews.mjs, then run it again
+// with the SAME --seed and --commit. build-diuni-exam.mjs does that round trip
+// for you.
 
 import dotenv from "dotenv";
 import pg from "pg";
@@ -121,14 +127,26 @@ try {
           .sort((a, b) => String(b.fact_pattern ?? "").length - String(a.fact_pattern ?? "").length)
           .slice(0, wanted);
 
-  // The incoming ones: reviewed real questions, spread across the sittings
-  // rather than taken from one paper — a seeded shuffle over the whole pool
-  // does that on its own.
+  // The incoming ones: drawn at random from the WHOLE pool, and then required
+  // to carry a review — not drawn from whichever questions happen to have one.
+  //
+  // THE ORDER OF THOSE TWO STEPS IS THE WHOLE POINT. This used to filter
+  // `WHERE review IS NOT NULL` before shuffling, which reads like a safety check
+  // and is really a sampling bug: with 7 reviewed rows out of 226, "shuffle the
+  // eligible and take 7" returns the same 7 every time and the seed changes
+  // nothing. מבחן מספר 2 drew its real questions from 2 of the 6 sittings for
+  // exactly that reason. Drawing first and writing the reviews the draw asks for
+  // keeps the sample honest; the cost — one review per not-yet-seen question —
+  // falls away as the pool fills.
+  //
+  // It also makes the draw STABLE across the probe and the commit, which the old
+  // order was not: writing the missing reviews changed pool membership, so the
+  // second run could legitimately draw a different seven than the first one had
+  // reviews written for.
   const pool = await client.query(
     `SELECT real_question_id, paper, number, fact_pattern, stem, options,
             correct_answer, source_citation, law_id, law_name, review
        FROM public.diuni_real_questions
-      WHERE review IS NOT NULL
       ORDER BY paper, number`
   );
 
@@ -139,22 +157,36 @@ try {
   const eligible = pool.rows.filter((r) => !usedKeys.has(`${r.paper}#${r.number}`));
   const incoming = shuffle(eligible, rng(seed)).slice(0, wanted);
 
-  console.log(`\n  ${pool.rows.length} real question(s) in the pool carry a review`);
+  const reviewed = pool.rows.filter((r) => r.review !== null).length;
+  console.log(
+    `\n  pool: ${pool.rows.length} real question(s), ${reviewed} already reviewed` +
+      `\n  drawn at random with --seed=${seed}: ${incoming.length}` +
+      `\n  sittings drawn: ${[...new Set(incoming.map((r) => r.paper))].sort().join(", ")}`
+  );
 
+  // Not enough DISTINCT questions left to fill the paper — writing more reviews
+  // cannot fix this one, so it is a different failure from the one below.
   if (incoming.length < wanted) {
-    // The ids are printed so the review step can be pointed straight at them.
-    const missing = await client.query(
-      `SELECT real_question_id, paper, number FROM public.diuni_real_questions
-        WHERE review IS NULL ORDER BY paper, number`
-    );
-    const need = shuffle(missing.rows, rng(seed)).slice(0, wanted - incoming.length);
     console.error(
-      `\nonly ${incoming.length} of the ${wanted} needed real questions have a review.\n` +
-        `Write the missing ones first:\n\n` +
-        `  node scripts/diuni/generate-real-reviews.mjs --ids=${need
+      `\nthe pool holds only ${eligible.length} real question(s) not already in this paper, ` +
+        `and ${wanted} are needed.`
+    );
+    process.exit(1);
+  }
+
+  // The draw is settled; now the reviews it asks for have to exist. The ids are
+  // printed as a ready-to-run command so the review step — and
+  // build-diuni-exam.mjs, which parses this exact line — can be pointed
+  // straight at them.
+  const needReview = incoming.filter((r) => r.review === null);
+  if (needReview.length) {
+    console.error(
+      `\n${needReview.length} of the ${wanted} drawn real questions have no review yet.\n` +
+        `Write exactly those, then re-run with the SAME --seed=${seed}:\n\n` +
+        `  node scripts/diuni/generate-real-reviews.mjs --ids=${needReview
           .map((r) => r.real_question_id)
           .join(",")}\n\n` +
-        `(${need.map((r) => `${r.paper} #${r.number}`).join(", ")})`
+        `(${needReview.map((r) => `${r.paper} #${r.number}`).join(", ")})`
     );
     process.exit(1);
   }
