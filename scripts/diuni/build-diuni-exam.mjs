@@ -48,9 +48,30 @@ import { readdirSync, existsSync, mkdirSync, renameSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import dotenv from "dotenv";
+import pg from "pg";
+
+import { acquireGeneratedLock } from "./generated-lock.mjs";
+
 const here = dirname(fileURLToPath(import.meta.url));
 const appRoot = join(here, "..", "..");
 const generatedDir = join(here, "generated");
+
+dotenv.config({ path: join(appRoot, ".env.local") });
+dotenv.config({ path: join(appRoot, ".env") });
+
+/**
+ * Most times one answer letter may appear in a 40-question paper before the
+ * paper is worth a second look. Even is 10.
+ *
+ * The generator rotates its own answers, so 40 generated questions come out
+ * near-perfectly flat. The 7 real ones bring whatever letters the Bar used and
+ * nothing rebalances afterwards, so the swap can undo the rotation: the paper
+ * built on 2026-10-04 at seed 1 landed on א6 ב12 ג8 ד14, where blind-guessing
+ * ד scores 35%. 13 of 40 is 32.5% — high enough to be worth re-drawing, low
+ * enough that ordinary variation does not trip it.
+ */
+const SPREAD_MAX = 13;
 
 const argv = process.argv.slice(2);
 const flagOf = (name) => {
@@ -151,6 +172,39 @@ function missingReviewIdsFrom(output) {
 function setIdFrom(output) {
   const m = output.match(/COMMITTED\s+—\s+question_id\s+([0-9a-f-]{36})/i);
   return m ? m[1] : null;
+}
+
+/**
+ * The finished paper's answer spread, checked rather than assumed.
+ *
+ * Read from the stored row, not from the generated files: the files are what
+ * the generator rotated, and the spread that matters is the one left AFTER the
+ * real questions were swapped in.
+ */
+async function answerSpread(setId) {
+  const client = new pg.Client({
+    connectionString: process.env.DIRECT_URL || process.env.DATABASE_URL,
+  });
+  try {
+    await client.connect();
+    const { rows } = await client.query(
+      `SELECT questions FROM public.diuni_questions WHERE question_id = $1`,
+      [setId]
+    );
+    const qs = rows[0]?.questions?.questions ?? [];
+    const spread = {};
+    for (const q of qs) spread[q.correct_answer] = (spread[q.correct_answer] ?? 0) + 1;
+    const worst = Math.max(0, ...Object.values(spread));
+    const letter = Object.keys(spread).find((k) => spread[k] === worst);
+    return { spread, worst, letter, total: qs.length, flagged: worst > SPREAD_MAX };
+  } catch (err) {
+    // A failed check must not fail a paper that is otherwise built and stored —
+    // but it must not pass silently either, or a skewed paper looks checked.
+    console.log(`\n   (answer-spread check could not run: ${err.message})`);
+    return null;
+  } finally {
+    await client.end().catch(() => {});
+  }
 }
 
 /**
@@ -275,6 +329,29 @@ async function buildOne(index) {
     return { index, setId, ok: false, note: "stored, but the real-question swap failed" };
   }
 
+  // The paper is built; now say whether it is BALANCED. A skewed answer key is
+  // not a failure — the paper is correct and usable — so this reports rather
+  // than returning ok:false. Re-drawing is a judgement call, and cheap: the
+  // reviews are already written, so another --seed costs nothing.
+  const sp = await answerSpread(setId);
+  if (sp) {
+    const asText = ["א", "ב", "ג", "ד"].map((l) => `${l}${sp.spread[l] ?? 0}`).join(" ");
+    console.log(`\n   answer spread: ${asText}   (even would be ${Math.round(sp.total / 4)} each)`);
+    if (sp.flagged) {
+      console.log(
+        `   ⚠ SKEWED — '${sp.letter}' appears ${sp.worst} of ${sp.total} ` +
+          `(${Math.round((sp.worst / sp.total) * 100)}%, threshold ${SPREAD_MAX}).\n` +
+          `     Re-draw the real questions at another seed — free, the reviews exist:\n` +
+          `       node scripts/diuni/embed-real-questions.mjs --set=${setId} --count=${REAL} --seed=<n> --commit`
+      );
+    }
+    return {
+      index, setId, ok: true,
+      note: `${GENERATED} generated + ${REAL} real   spread ${asText}${sp.flagged ? "  ⚠ SKEWED" : ""}`,
+      flagged: sp.flagged,
+    };
+  }
+
   return { index, setId, ok: true, note: `${GENERATED} generated + ${REAL} real` };
 }
 
@@ -320,6 +397,16 @@ if (!commit) {
 
 // --------------------------------------------------------------- run
 
+// Taken BEFORE the first paper, because the damage starts at the archive step —
+// a second run moving this run's half-written files aside is what produced the
+// 55- and 64-question papers on 2026-10-04.
+try {
+  acquireGeneratedLock(generatedDir, `build-diuni-exam --exams=${EXAMS}`);
+} catch (err) {
+  console.error(`\n${err.message}`);
+  process.exit(1);
+}
+
 const results = [];
 for (let i = 1; i <= EXAMS; i += 1) {
   const r = await buildOne(i);
@@ -336,6 +423,16 @@ for (const r of results) {
 }
 const ok = results.filter((r) => r.ok);
 console.log(`\n${ok.length}/${results.length} paper(s) complete, stored as drafts.`);
+
+const skewed = ok.filter((r) => r.flagged);
+if (skewed.length) {
+  console.log(
+    `\n⚠ ${skewed.length} paper(s) have a skewed answer key (one letter above ${SPREAD_MAX} of 40).` +
+      `\n  They are correct and usable; re-drawing the real questions at another --seed` +
+      `\n  costs nothing, because their reviews are already written.`
+  );
+}
+
 if (ok.length) {
   console.log(`\nTo publish one:`);
   for (const r of ok) console.log(`  node scripts/diuni/publish-exam.mjs --set=${r.setId} --commit`);

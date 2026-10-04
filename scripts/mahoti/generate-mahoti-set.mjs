@@ -1086,7 +1086,19 @@ function parseBatchMessage(message) {
   if (!parsed.success) {
     throw new Error(`response did not match the schema: ${parsed.error.issues[0]?.message}`);
   }
-  return parsed.data.items;
+  // The usage travels with the items because it is the only record there will
+  // ever be: the API does not report what a call cost after the fact, so a
+  // figure dropped here is gone. Stored on the row as `generation.calls`, and
+  // read back by lib/billing/llm-spend.ts.
+  //
+  // This is per CALL, not per question — one call carries a batch of five, and
+  // splitting its tokens five ways would invent a precision the API never
+  // reported.
+  return {
+    items: parsed.data.items,
+    usage: message.usage ?? null,
+    model: message.model ?? null,
+  };
 }
 
 async function requestBatch(notebook, batchIndex, wanted, covered) {
@@ -1295,6 +1307,17 @@ function toPayloads(items, stats) {
         law_count: LAW_COUNT,
         batch_size: BATCH_SIZE,
         requested: QUESTION_COUNT,
+        // One entry per model call: {at, model, usage}. The API reports what a
+        // call cost once, in its response, and never again — so this is the
+        // only record of what the paper was billed at, and it is what
+        // lib/billing/llm-spend.ts adds up. Papers generated before
+        // 2026-10-04 have no `calls` and are invisible to that report.
+        //
+        // On a resumed run (--set-id) this holds the calls of THIS run only;
+        // the earlier run's are in whatever the row held before it was
+        // rewritten. A resumed paper therefore under-reports, which is the
+        // same direction as every other gap in that module.
+        calls: stats.calls ?? [],
       },
       validation: {
         quote_verified: questions.length,
@@ -1634,6 +1657,11 @@ async function main() {
 
   const accepted = [];
   const reasons = [];
+  // What each model call cost, in tokens. Collected for EVERY call that came
+  // back, including ones whose questions were all rejected: those were billed
+  // too, and a spend record that counts only successes understates the bill in
+  // exactly the runs that cost the most. See lib/billing/llm-spend.ts.
+  const calls = [];
   let rejected = 0;
   let batchIndex = 0;
 
@@ -1729,8 +1757,18 @@ async function main() {
         continue;
       }
 
+      // Recorded before anything is judged, so a wave that is entirely
+      // rejected still shows up in the spend report.
+      if (result.value.usage) {
+        calls.push({
+          at: new Date().toISOString(),
+          model: result.value.model ?? MODEL,
+          usage: result.value.usage,
+        });
+      }
+
       const keptItems = [];
-      for (const item of result.value) {
+      for (const item of result.value.items) {
         if (accepted.length + keptItems.length >= QUESTION_COUNT) break;
 
         const reason = rejectionReason(item, index);
@@ -1751,7 +1789,7 @@ async function main() {
       }
 
       if (!keptItems.length) {
-        console.log(`      batch ${batchNo}: 0/${result.value.length} survived verification`);
+        console.log(`      batch ${batchNo}: 0/${result.value.items.length} survived verification`);
         continue;
       }
 
@@ -1763,17 +1801,17 @@ async function main() {
       // read-modify-write window to lose a batch in.
       if (DRY_RUN) {
         console.log(
-          `      batch ${batchNo}: kept ${keptItems.length}/${result.value.length} ` +
+          `      batch ${batchNo}: kept ${keptItems.length}/${result.value.items.length} ` +
             `[dry-run, not stored]`
         );
         continue;
       }
 
       try {
-        await storePayloads(questionId, toPayloads(accepted, { rejected, reasons: summarise(reasons) }));
+        await storePayloads(questionId, toPayloads(accepted, { rejected, reasons: summarise(reasons), calls }));
         storedBatches++;
         console.log(
-          `      batch ${batchNo}: kept ${keptItems.length}/${result.value.length} — ` +
+          `      batch ${batchNo}: kept ${keptItems.length}/${result.value.items.length} — ` +
             `${storedBatches} batch${storedBatches === 1 ? "" : "es"} loaded successfully to DB ` +
             `(${accepted.length}/${QUESTION_COUNT} stored)`
         );
@@ -1823,7 +1861,7 @@ async function main() {
   );
 
   if (DRY_RUN) {
-    const payloads = toPayloads(accepted, { rejected, reasons: summarise(reasons) });
+    const payloads = toPayloads(accepted, { rejected, reasons: summarise(reasons), calls });
     console.log("\n[dry-run] would have stored:\n");
     console.log(JSON.stringify(payloads.questions.questions[0], null, 2));
     console.log(`\n… and ${accepted.length - 1} more, plus ${accepted.length} review entries.`);

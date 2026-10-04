@@ -1,0 +1,232 @@
+{
+  "version": "1.0.0",
+  "name": "diuni_and_mhuti-LLM-params",
+  "status": "draft — rules only. No converter reads this file yet.",
+  "purpose": "The contract for turning the scanned דיוני and מהותי study books into LawPass's own material at comparable scale. A sibling of LLM-text-converting.json, which governs the open-questions booklets; this file governs a different and riskier source kind, and differs where that risk requires it.",
+
+  "disclaimer": "These rules reduce risk; they are not legal advice and they are not a guarantee. Copyright turns on facts and jurisdiction. This source kind is nearer the line than anything the sibling contract covers, and it should not go to production without an Israeli copyright lawyer reading both this contract and a finished chapter.",
+
+  "principle": "Copyright protects expression, not facts or ideas. The pipeline is built so the protected layer of a source is never available to the model, rather than trusting the model to avoid imitating what it can see.",
+
+  "the_brief_and_the_problem": {
+    "the_brief": "Convert the study books, changing the text under the converter rules, WITHOUT shortening it — the output should be about as long as the original.",
+    "why_that_framing_is_the_dangerous_one": "Length is not the risk; substitution is. A work that covers the same material, in the same depth, at the same length, is the definition of a market substitute for the original — which is exactly what R6 (substantial similarity) asks about and what a court weighs most heavily. Rewriting a protected text sentence by sentence at the same length has a name in copyright law: it is a derivative work, and preparing one is reserved to the rights holder. Changing every word does not cure it; the sibling contract's own R3 note exists because paraphrase is the failure mode, not the remedy.",
+    "what_this_contract_does_instead": "It reaches comparable scale WITHOUT paraphrase, by separating the book into two layers that have completely different legal standing, and treating each correctly. The output can legitimately be as long as the source because most of the source's bulk is material nobody owns.",
+    "if_you_disagree": "The instruction to match length is honoured in the only way that is defensible: see length_policy. A straight same-length rewrite of the protected layer is not available in this contract, and adding it would make every other rule here decorative."
+  },
+
+  "source_kind": {
+    "id": "study_book",
+    "what": "A commercial bar-exam preparation book: statutory text reproduced at length, wrapped in the publisher's explanations, emphases (דגשים), worked examples, icons, chapter tables and reading-level system.",
+    "scale": "16 books, 2,309 scanned pages, ~5.2M characters, loaded into public.study_material as original_text by scripts/ingestion/load-scanned-material.mjs.",
+    "provenance_warning": "The text came from OCR (Google Vision), not from a text layer. Single-letter errors are present and expected — כ/ב and ז/ו confusions in particular. No statutory text may be taken from it; see layer_1."
+  },
+
+  "two_layers": {
+    "_why": "The single most important idea in this file. These books are not one work with one legal status — they are a protected wrapper around unprotected content, and the wrapper is the smaller part.",
+
+    "layer_1_statute": {
+      "what": "The text of laws, regulations and their section numbering — חוק העונשין, תקנות סדר הדין האזרחי, and so on. By volume this is most of what is on the page.",
+      "legal_status": "Israeli Copyright Act 5768-2007 §6 provides that there is no copyright in legislation, court rulings, or other decisions of state judicial authorities. The publisher acquired no rights by reprinting them.",
+      "so": "This layer may appear in LawPass material in full, verbatim, at any length.",
+      "but_not_from_the_scan": "It must be sourced from the official corpus we already hold — public.mahoti_laws, scraped from the Knesset by knesset_scraper — and NEVER copied from the OCR of the publisher's book. Two reasons, and the second is the one that matters: the OCR has letter errors in statutory text, where a wrong letter changes the law; and taking it from the book makes the book our source, which is precisely the relationship this contract exists to avoid. Cite the law, not the publisher.",
+      "selection_caveat": "WHICH sections a publisher chose to reprint, and in what order, can itself be a protected selection and arrangement. The chapter plan must therefore be built from the exam syllabus and from mahoti_laws, not from the book's table of contents — see R2 and check `selection_not_copied`."
+    },
+
+    "layer_2_explanation": {
+      "what": "Everything the publisher wrote: the explanations, the דגשים boxes, the worked examples, the summaries, the pedagogy (reading levels א/ב/ג, the icon system, the chapter tables).",
+      "legal_status": "Fully protected original expression. This is the part a reader pays the publisher for.",
+      "so": "None of it may be reused, translated, paraphrased, condensed, or expanded. It is replaced by LawPass's own explanation written from the facts — the same discipline the sibling contract applies to its procedure guides.",
+      "the_facts_underneath": "What a section means, which elements an offence has, what the limitation period is, which case established a doctrine — these are facts and ideas, and they are free. The publisher's way of explaining them is not."
+    }
+  },
+
+  "length_policy": {
+    "rule": "Comparable SCALE is the target, never comparable text.",
+    "what_that_means": "A chapter of LawPass material covering the same statutory ground may legitimately run as long as the publisher's chapter — because the statute is reproduced in full from the official corpus, and because LawPass's own explanation of a section can be as long as it needs to be. What it may not do is track the source paragraph for paragraph.",
+    "forbidden": "Generating output whose length is matched to a source passage, or whose structure follows it. Any instruction of the form 'rewrite this paragraph at a similar length' is banned by R9 — the model never sees the paragraph in the first place.",
+    "measured_how": "A chapter's output length is compared against the STATUTE it covers plus a per-section explanation budget (see pipeline.budget), not against the publisher's page count.",
+    "expected_outcome": "For a statute-heavy chapter, output will be similar in length to the source or longer. For an explanation-heavy chapter it will differ, and that difference is the contract working, not a defect to tune away."
+  },
+
+  "rules": [
+    {
+      "id": "R1",
+      "name": "Extract core concepts only",
+      "statement": "Take raw facts, ideas and data points. Ignore the source's sentence structure, stylistic flow and unique phrasing.",
+      "enforced_by": "mechanical",
+      "how": "The converter is given a chapter plan plus statutory text from public.mahoti_laws. It has no path to study_material.original_text. Inherited unchanged from the sibling contract."
+    },
+    {
+      "id": "R2",
+      "name": "Enforce structural transformation",
+      "statement": "Reorganise under a different organising principle. Do not follow the source's order, grouping or selection.",
+      "enforced_by": "mechanical+check",
+      "how": "The chapter plan is built from the exam syllabus and the law's own structure, not from the book's table of contents. The book's chapter order, its reading-level system (א/ב/ג) and its icon vocabulary are all part of its arrangement and none are reproduced.",
+      "sharper_here_than_in_the_sibling": "A usage guide could be regrouped by cause. A law chapter is largely ordered BY THE STATUTE, which is not the publisher's arrangement to own — so R2 bites on the layer above: which sections are grouped into a chapter, what the chapter emphasises, and what order a candidate meets them in."
+    },
+    {
+      "id": "R3",
+      "name": "Ban verbatim translation and mimicry",
+      "statement": "Do not reuse the source's vocabulary, idioms or distinctive turns of phrase.",
+      "enforced_by": "mechanical+check",
+      "how": "The source prose is withheld (R1/R9). checks.max_shared_ngram compares output against the OCR text the operator holds locally. Statutory text is excluded from that comparison — it is supposed to match, because both quote the same law."
+    },
+    {
+      "id": "R4",
+      "name": "Apply a distinct tone and voice",
+      "statement": "Write from a different stylistic perspective than the source.",
+      "enforced_by": "instruction",
+      "how": "pipeline.voice states the register and is inserted into the prompt."
+    },
+    {
+      "id": "R5",
+      "name": "Isolate unprotectable facts",
+      "statement": "Build only on objective facts, dates, numbers, statutory text and general concepts.",
+      "enforced_by": "mechanical",
+      "how": "The unprotectable core of a chapter is: the statute (layer 1), the doctrine names, the leading cases, the numbers and time limits. The explanation of each is authored, never carried across."
+    },
+    {
+      "id": "R6",
+      "name": "Prevent substantial similarity",
+      "statement": "The result must read as an independent work that happens to share a subject, not as a substitute for the source.",
+      "enforced_by": "check+human",
+      "how": "The operator's judgement remains final, and for this source kind the honest answer is harder than it was for a usage guide. Ask it in the publisher's terms: would a candidate who owns this chapter have no reason to buy that book? If the answer is yes BECAUSE the law is reproduced and LawPass explains it, that is competition on unprotected ground. If it is yes because our explanations do what theirs did, in the order theirs did, the run has failed regardless of what the checks say."
+    },
+    {
+      "id": "R7",
+      "name": "Attribution does not cure infringement",
+      "statement": "Citing a source does not make copying lawful.",
+      "enforced_by": "policy",
+      "how": "Statutory text is cited to the law. The book is never cited as a source, because it is never used as one."
+    },
+    {
+      "id": "R8",
+      "name": "Add independent value",
+      "statement": "Original analysis and framing not present in the source are what make the work independently authored.",
+      "enforced_by": "instruction",
+      "how": "Carried by: the chapter plan, the per-section explanation, the link from each section to the questions LawPass has generated on it (mahoti_questions / diuni_questions), and the exam-frequency data we hold and the publisher does not. That last one is genuinely ours and is the strongest R8 material available."
+    },
+    {
+      "id": "R9",
+      "name": "Never send the source document",
+      "statement": "The scanned book must not appear in any prompt, in whole or in part.",
+      "enforced_by": "mechanical+check",
+      "how": "The converter reads mahoti_laws and the chapter plan. study_material.original_text is not in its query. `no_source_in_prompt` re-reads the assembled prompt and fails the run if any sentence of the OCR text appears in it.",
+      "note": "This is also why the brief's 'keep the same length' cannot be implemented literally: matching a length requires seeing the thing being matched."
+    },
+    {
+      "id": "R10",
+      "name": "Statute comes from the corpus, never from the scan",
+      "statement": "Every word of quoted legislation is read from public.mahoti_laws and verified against it.",
+      "enforced_by": "mechanical+check",
+      "new_in": "1.0 (this contract)",
+      "how": "check `statute_from_corpus` fails the run if any passage presented as statutory text is not found verbatim in mahoti_laws. Protects against two different failures at once: OCR letter errors reaching a candidate as law, and the book becoming our source for the one layer we are entitled to reproduce."
+    },
+    {
+      "id": "R11",
+      "name": "No pedagogy transfer",
+      "statement": "The book's teaching apparatus is part of its expression and is not reproduced in any form.",
+      "enforced_by": "instruction+check",
+      "new_in": "1.0 (this contract)",
+      "how": "Named concretely so it cannot be waved through: the reading-level scheme (א=לדעת, ב=להכיר, ג=לדעת שזה שם), the icon vocabulary (2X past-exam marker, (+) addition marker), the chapter-table columns (שלב 1: קריאה / שלב 2: תרגול), and the דגשים box as a device. LawPass may have levels, markers and emphasis boxes — it must invent its own, and check `no_pedagogy_terms` holds the banned list."
+    }
+  ],
+
+  "quoting": {
+    "allowed": true,
+    "note": "Unlike the sibling contract, this pipeline quotes — but only legislation, and only from mahoti_laws. Quoting the publisher's prose is never permitted at any length. A quotation of any other kind must be short, in quotation marks, attributed inline, and recorded in the run's changes file."
+  },
+
+  "pipeline": {
+    "unit_of_work": "one chapter — a coherent group of statutory sections, not a page and not a book",
+    "why_not_a_page": "A page boundary is the scanner's, and page-sized units would both reproduce the book's arrangement and cut doctrines in half.",
+    "send_to_model": [
+      "chapter_plan.title",
+      "chapter_plan.law_ids and section numbers",
+      "chapter_plan.learning_points[] — bare factual statements, the analogue of the sibling's requirements file",
+      "statute[] — section text read from public.mahoti_laws"
+    ],
+    "withhold_from_model": [
+      "study_material.original_text in its entirety — sections, headings, paragraphs, warnings and OCR metadata alike",
+      "the book's table of contents",
+      "the book's reading-level and icon systems"
+    ],
+    "reorganise_by": "the order a candidate meets the doctrine under exam conditions: what the rule is, when it applies, what the exceptions are, what gets tested",
+    "voice": "Second-person, explanatory, written for a candidate revising under time pressure. Plain where the law is plain; explicit about what is binding versus what is interpretation.",
+    "add_own": [
+      "the chapter plan and what belongs in each chapter",
+      "the explanation of each section, written from the learning points",
+      "the link from each section to LawPass's own questions on it",
+      "exam-frequency notes from our own real-question corpus"
+    ],
+    "model": "claude-opus-5",
+    "max_tokens": 32000,
+    "effort": "high",
+    "budget": {
+      "explanation_words_per_section": 120,
+      "explanation_words_per_section_note": "A ceiling, not a target. It exists so output length is driven by the material rather than by a wish to match a page count.",
+      "chapter_intro_max_words": 120
+    },
+    "_not_built_yet": "No converter implements this. The chapter_plan format and the learning_points extraction are the two pieces that must be designed before any run."
+  },
+
+  "checks": [
+    {
+      "id": "no_source_in_prompt",
+      "fails_run": true,
+      "note": "Re-read the assembled prompt; fail if any sentence of study_material.original_text appears in it."
+    },
+    {
+      "id": "statute_from_corpus",
+      "fails_run": true,
+      "new_in": "1.0",
+      "note": "Every passage presented as legislation must be found verbatim in public.mahoti_laws. Catches both OCR corruption and the scan being used as a statutory source (R10)."
+    },
+    {
+      "id": "max_shared_ngram",
+      "n": 6,
+      "fails_run": true,
+      "excludes": "statutory text, which is expected to match",
+      "note": "Any run of 6+ consecutive words shared between LawPass's explanatory prose and the OCR text is a finding. Run against the local OCR, which the model never saw."
+    },
+    {
+      "id": "no_pedagogy_terms",
+      "fails_run": true,
+      "new_in": "1.0",
+      "note": "The book's teaching vocabulary must not appear: לדעת / להכיר / לדעת שזה שם as level names, the 2X and (+) markers, and שלב 1: קריאה / שלב 2: תרגול as column headings (R11)."
+    },
+    {
+      "id": "selection_not_copied",
+      "fails_run": false,
+      "new_in": "1.0",
+      "note": "Report when a chapter's section list matches the book's chapter for that topic. Not blocking — the syllabus may genuinely dictate the same grouping — but an operator should see it and be able to say why."
+    },
+    {
+      "id": "no_source_headings",
+      "fails_run": true,
+      "note": "None of the book's headings may appear as an output heading."
+    },
+    {
+      "id": "coverage",
+      "fails_run": true,
+      "note": "Every learning point supplied for a chapter must appear in the output. Silently dropping one is a content bug, not a compliance win."
+    }
+  ],
+
+  "pricing": {
+    "_note": "Anthropic first-party rates, USD per million tokens. Update when Anthropic's pricing page changes; the run records which rate it used.",
+    "_source": "https://www.anthropic.com/pricing",
+    "claude-opus-5": { "input_per_mtok": 5, "output_per_mtok": 25 },
+    "claude-sonnet-5": { "input_per_mtok": 2, "output_per_mtok": 10 },
+    "claude-haiku-4-5": { "input_per_mtok": 1, "output_per_mtok": 5 }
+  },
+
+  "cost_note": "Not estimated here, because the input is the chapter plan and the statute — not the 5.2M characters of scanned book — and the plan does not exist yet. The scanned total is the wrong basis for an estimate and would be misleading if quoted.",
+
+  "open_questions_before_this_can_run": [
+    "Where do learning_points come from? The sibling contract's answer — a human writes them from the primary source — does not scale to 2,309 pages. An extraction pass over the OCR would mean a model reading the protected text, which R9 forbids for the CONVERTER but might be permissible for a separate fact-extraction step whose output is bare statements. That distinction needs a lawyer's view before it is relied on, not a developer's.",
+    "Does mahoti_laws actually cover every law these books cover? Chapters whose statute is missing from the corpus cannot be built under R10.",
+    "Is דיוני material statute-heavy in the same way as מהותי? The procedural books lean more on case law and practice, where layer 1 is thinner and layer 2 is most of the value — which makes them the harder half, and possibly the half not worth converting at all."
+  ]
+}

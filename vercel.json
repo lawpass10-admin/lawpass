@@ -1,10 +1,16 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "regions": ["fra1"],
+  "regions": [
+    "fra1"
+  ],
   "crons": [
     {
       "path": "/api/cron/reengagement",
       "schedule": "0 6 * * *"
+    },
+    {
+      "path": "/api/cron/llm-spend-alarm",
+      "schedule": "0 7 * * *"
     }
   ]
 }

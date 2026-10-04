@@ -1,5 +1,4 @@
 import Image from "next/image";
-import Link from "next/link";
 
 import { heroCopy } from "@/app/(marketing)/_components/landing-copy";
 
@@ -33,24 +32,10 @@ export function LandingHero() {
             <HeroTypewriter lines={heroCopy.typewriterLines} />
           </p>
 
-          <div className={styles.ctaRow}>
-            <a
-              className={styles.btnGhost}
-              aria-label={heroCopy.secondaryCtaAriaLabel}
-              href={heroCopy.secondaryCtaHref}
-            >
-              {heroCopy.secondaryCtaLabel}
-            </a>
-          </div>
-
-          {/* Slice 50 — small muted disclaimer below the CTA row, linking to
-              /privacy. Hidden on mobile (≤767 px) via the @media block in
-              landing.module.css — the footer carries the same link there. */}
-          <p className={styles.heroDisclaimer}>
-            השימוש בשירות כפוף ל
-            <Link href="/privacy">מדיניות פרטיות</Link>
-            .
-          </p>
+          {/* Mirrors app/(marketing)/_components/landing-hero.tsx, which is the
+              live file: the hero's CTA and privacy line were removed there.
+              This stale copy is kept only because tsc still compiles it and it
+              imports the live copy module. */}
         </div>
 
         <div className={styles.heroFigure}>

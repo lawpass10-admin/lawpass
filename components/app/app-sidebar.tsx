@@ -107,8 +107,31 @@ const NAV_LEARNING: LearningItem[] = [
       { href: "/study-material", label: "חומר ללימוד" },
     ],
   },
-  { href: "/mahoti-start", label: "דין מהותי", Icon: BookOpen, activeFor: ["/mahoti"] },
-  { href: "/diuni-start", label: "דין דיוני", Icon: Gavel, activeFor: ["/diuni"] },
+  // The two exam subjects now open the same two-way choice מטלת כתיבה does —
+  // drill the papers, or read the material first. `activeFor` keeps the row lit
+  // across the whole subject: /mahoti-start for the instructions, /mahoti for
+  // the sitting, and /mahoti/study-material for the library, which the
+  // `startsWith` in isPathActive already covers.
+  {
+    href: "/mahoti-start",
+    label: "דין מהותי",
+    Icon: BookOpen,
+    activeFor: ["/mahoti"],
+    children: [
+      { href: "/mahoti-start", label: "תרגול דין מהותי" },
+      { href: "/mahoti/study-material", label: "חומר ללימוד" },
+    ],
+  },
+  {
+    href: "/diuni-start",
+    label: "דין דיוני",
+    Icon: Gavel,
+    activeFor: ["/diuni"],
+    children: [
+      { href: "/diuni-start", label: "תרגול דין דיוני" },
+      { href: "/diuni/study-material", label: "חומר ללימוד" },
+    ],
+  },
 ];
 
 type LibraryItem = {

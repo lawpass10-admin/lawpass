@@ -31,6 +31,8 @@ import { readFileSync, readdirSync, mkdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { acquireGeneratedLock } from "./generated-lock.mjs";
+
 const here = dirname(fileURLToPath(import.meta.url));
 const appRoot = join(here, "..", "..");
 const generatedDir = join(here, "generated");
@@ -217,6 +219,17 @@ if (!GO) {
 }
 
 // --------------------------------------------------------------- run
+
+// Only one writer in generated/ at a time. A no-op when build-diuni-exam.mjs
+// already holds it (it sets the pass-through env var for its own children);
+// this guards the case where someone runs this script directly while a build
+// is in flight.
+try {
+  acquireGeneratedLock(generatedDir, `generate-batch --target=${TARGET}`);
+} catch (err) {
+  console.error(`\n${err.message}`);
+  process.exit(1);
+}
 
 let stalls = 0;
 for (let round = 1; round <= MAX_ROUNDS; round++) {

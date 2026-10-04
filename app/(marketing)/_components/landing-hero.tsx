@@ -1,5 +1,4 @@
 import Image from "next/image";
-import Link from "next/link";
 
 import { heroCopy } from "@/app/(marketing)/_components/landing-copy";
 
@@ -33,28 +32,19 @@ export function LandingHero() {
             <HeroTypewriter lines={heroCopy.typewriterLines} />
           </p>
 
-          {/* One CTA, not two. The gold "התחילו לתרגל" asked for a decision
-              above the fold, before the page had made its case; what is left
-              moves the reader into the explanation instead. Someone who
-              arrives already decided uses the header CTA. */}
-          <div className={styles.ctaRow}>
-            <a
-              className={styles.btnGhost}
-              aria-label={heroCopy.secondaryCtaAriaLabel}
-              href={heroCopy.secondaryCtaHref}
-            >
-              {heroCopy.secondaryCtaLabel}
-            </a>
-          </div>
+          {/* No CTA and no disclaimer in the hero any more. The gold
+              "התחילו לתרגל" went first, for asking a decision above the fold
+              before the page had made its case; "איך זה עובד" followed, since
+              a link that only scrolls down is work the scroll already does.
+              The header CTA remains the one way in, for a visitor who arrives
+              already decided.
 
-          {/* Slice 50 — small muted disclaimer below the CTA row, linking to
-              /privacy. Hidden on mobile (≤767 px) via the @media block in
-              landing.module.css — the footer carries the same link there. */}
-          <p className={styles.heroDisclaimer}>
-            השימוש בשירות כפוף ל
-            <Link href="/privacy">מדיניות פרטיות</Link>
-            .
-          </p>
+              The privacy line went with them: it sat under the CTA row to
+              qualify an action, and with no action above it, it was a legal
+              notice interrupting the headline. /privacy is still linked from
+              the footer, where it was already duplicated — and the footer copy
+              is what mobile showed all along, since this one was hidden under
+              768px. */}
         </div>
 
         <div className={styles.heroFigure}>

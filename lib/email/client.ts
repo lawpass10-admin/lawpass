@@ -297,6 +297,26 @@ export async function sendEmail(
       }
 
       if (response.ok && body?.id) {
+        // ACCEPTED IS NOT DELIVERED, AND THE DIFFERENCE IS WHY THIS LOG EXISTS.
+        //
+        // Resend answers 200 with an id the moment it takes the message. What
+        // happens next — queued, delivered, bounced, or silently discarded by
+        // the receiving provider — is a separate event this process never
+        // sees. On 2026-10-04 three messages to one Gmail address sat at
+        // `last_event: "sent"` and never reached the inbox, while messages to
+        // a different Gmail address delivered normally; the only evidence was
+        // `{ok: true}` in a cron response, which could not tell the two apart.
+        //
+        // The id is what turns that into an answerable question:
+        //   curl -H "Authorization: Bearer $RESEND_API_KEY" \
+        //        https://api.resend.com/emails/<id>
+        //
+        // Address and subject are logged, body is not: it routinely carries a
+        // candidate's name or a sign-in link.
+        console.info(
+          `[email] accepted by Resend id=${body.id} to=${to.join(", ")} ` +
+            `subject=${JSON.stringify(input.subject)} attempt=${attempt}`
+        );
         return { ok: true, id: body.id, dryRun: false };
       }
 
@@ -306,6 +326,10 @@ export async function sendEmail(
       if (!isRetryableStatus(response.status)) {
         // 401 (bad key), 403 (unverified domain), 422 (bad payload) — retrying
         // changes nothing and only delays the caller.
+        console.error(
+          `[email] REJECTED status=${response.status} to=${to.join(", ")} ` +
+            `subject=${JSON.stringify(input.subject)} reason=${JSON.stringify(lastError)}`
+        );
         return { ok: false, error: lastError, status: response.status, retryable: false };
       }
     } catch (error) {

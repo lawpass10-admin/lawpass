@@ -4,6 +4,11 @@
 //   node scripts/diuni/embed-real-questions.mjs --set=<question_id>            # dry run
 //   node scripts/diuni/embed-real-questions.mjs --set=<id> --count=7 --commit
 //   node scripts/diuni/embed-real-questions.mjs --set=<id> --pick=random --seed=42
+//   node scripts/diuni/embed-real-questions.mjs --set=<id> --allow-reuse      # repeat a used one
+//
+// NO QUESTION APPEARS IN TWO PAPERS. The draw excludes every real question any
+// paper already carries, so the pool shrinks by 7 with each one — roughly 29
+// papers before the 226 run out. --allow-reuse lifts that, deliberately.
 //
 // SAFE BY DEFAULT: without --commit this reports exactly which questions would
 // leave the paper and which would replace them, and writes nothing.
@@ -53,6 +58,9 @@ const setId = flagOf("set");
 const count = Number(flagOf("count") ?? 7);
 const pick = flagOf("pick") ?? "longest";
 const seed = Number(flagOf("seed") ?? 1);
+// Escape hatch for when the 226 run dry (~29 papers at 7 each). Off by default:
+// a repeat should be a decision someone made, not something that happens.
+const allowReuse = argv.includes("--allow-reuse");
 
 if (!setId) {
   console.error("--set=<question_id> is required (the diuni_questions row to edit)");
@@ -150,16 +158,40 @@ try {
       ORDER BY paper, number`
   );
 
-  // Never the same real question twice in one paper.
-  const usedKeys = new Set(
-    already.map((q) => `${(q.sources ?? [])[0]?.paper}#${(q.sources ?? [])[0]?.number}`)
+  // Never the same real question twice — in this paper OR in any other.
+  //
+  // This used to look only at the paper being edited, which is why repeats were
+  // not merely possible but already in production: on 2026-10-04, five papers
+  // had filled 35 real-question slots with just 20 distinct questions. מבחן 1
+  // and מבחן 2 shared all seven (both drawn when the reviewed pool WAS those
+  // seven), and מבחן 3 and מבחן 4 collided on 2022-06-28 #16 by chance.
+  //
+  // Drawing from what is LEFT also retires the seed as a correctness concern.
+  // Two papers built at the same seed used to draw identically, because the
+  // pool was identical; now every paper shrinks the pool for the next one, so a
+  // repeated seed still yields a different paper. The seed goes back to being
+  // what it should be — a way to reproduce a run, not a thing to keep unique.
+  const { rows: allPapers } = await client.query(
+    `SELECT questions FROM public.diuni_questions WHERE questions IS NOT NULL`
   );
-  const eligible = pool.rows.filter((r) => !usedKeys.has(`${r.paper}#${r.number}`));
+  const usedKeys = new Set();
+  for (const p of allPapers) {
+    for (const q of p.questions?.questions ?? []) {
+      const s = (q.sources ?? [])[0];
+      if (s?.origin === "real_exam" && s.paper != null) usedKeys.add(`${s.paper}#${s.number}`);
+    }
+  }
+
+  const eligible = pool.rows.filter(
+    (r) => allowReuse || !usedKeys.has(`${r.paper}#${r.number}`)
+  );
   const incoming = shuffle(eligible, rng(seed)).slice(0, wanted);
 
   const reviewed = pool.rows.filter((r) => r.review !== null).length;
   console.log(
-    `\n  pool: ${pool.rows.length} real question(s), ${reviewed} already reviewed` +
+    `\n  pool: ${pool.rows.length} real question(s), ${reviewed} reviewed` +
+      `\n  already used in some paper: ${usedKeys.size}` +
+      `\n  available to draw: ${eligible.length}${allowReuse ? "  (--allow-reuse: used ones included)" : ""}` +
       `\n  drawn at random with --seed=${seed}: ${incoming.length}` +
       `\n  sittings drawn: ${[...new Set(incoming.map((r) => r.paper))].sort().join(", ")}`
   );
@@ -168,8 +200,11 @@ try {
   // cannot fix this one, so it is a different failure from the one below.
   if (incoming.length < wanted) {
     console.error(
-      `\nthe pool holds only ${eligible.length} real question(s) not already in this paper, ` +
-        `and ${wanted} are needed.`
+      `\nonly ${eligible.length} real question(s) have never been used in a paper, ` +
+        `and ${wanted} are needed.\n` +
+        `The pool of ${pool.rows.length} is running out — either load more sittings with ` +
+        `load-real-questions.mjs,\nor pass --allow-reuse to let this paper repeat questions ` +
+        `other papers already carry.`
     );
     process.exit(1);
   }
@@ -191,13 +226,22 @@ try {
     process.exit(1);
   }
 
+  // fact_pattern is NULLABLE on a real question, and legitimately so: 13 of the
+  // 226 are pure-knowledge questions that are only a stem ("מה עוזר משפטי אינו
+  // רשאי לעשות?"), which is why migration 20260924000001 dropped the NOT NULL.
+  // `r.fact_pattern.length` threw on the first one the draw reached — invisible
+  // while the draw was confined to reviewed questions, because only 1 of the 13
+  // had a review. Everything downstream already copes: lib/db/diuni.ts coerces
+  // `?? ""` and diuni-workspace.tsx renders the block only on `?.trim()`.
+  const chars = (s) => (s == null ? "no fact pattern" : `${s.length} chars`);
+
   console.log("\n  out (longest generated fact patterns):");
   for (const q of outgoing) {
-    console.log(`    #${String(q.number).padStart(2)}  ${String(q.fact_pattern).length} chars  ${String(q.stem).slice(0, 40)}`);
+    console.log(`    #${String(q.number).padStart(2)}  ${chars(q.fact_pattern)}  ${String(q.stem).slice(0, 40)}`);
   }
   console.log("\n  in (real questions):");
   for (const r of incoming) {
-    console.log(`    ${r.paper} #${String(r.number).padStart(3)}  ${r.fact_pattern.length} chars  ${r.stem.slice(0, 40)}`);
+    console.log(`    ${r.paper} #${String(r.number).padStart(3)}  ${chars(r.fact_pattern)}  ${String(r.stem).slice(0, 40)}`);
   }
 
   // Swap in place, keeping each question's NUMBER: the review payload aligns to
@@ -276,7 +320,16 @@ try {
     if (!nextReviews.some((r) => r.number === q.number)) {
       throw new Error(`question ${q.number} has no review`);
     }
-    if (!String(q.fact_pattern ?? "").trim()) throw new Error(`question ${q.number} lost its text`);
+    // "Lost its text" means a candidate would be shown nothing to answer. That
+    // is NOT the same as "has no fact_pattern": 13 of the 226 real questions are
+    // pure-knowledge ones carrying only a stem ("מה עוזר משפטי אינו רשאי
+    // לעשות?"), and migration 20260924000001 made the column nullable for them.
+    // Requiring a fact pattern rejected a perfectly good question. What must
+    // survive the swap is readable text and a stem to answer.
+    if (!String(q.stem ?? "").trim()) throw new Error(`question ${q.number} lost its stem`);
+    if (!`${String(q.fact_pattern ?? "")}${String(q.stem ?? "")}`.trim()) {
+      throw new Error(`question ${q.number} lost its text`);
+    }
     if ((q.options ?? []).length !== 4) throw new Error(`question ${q.number} has ${q.options?.length} options`);
   }
 

@@ -73,13 +73,12 @@ export const heroCopy = {
     "כל מסיח, כל מלכודת, כל רפרנס.",
     "כלי תרגול שיעזור להגיע מוכנים למבחן.",
   ],
-  /* The hero's gold "התחילו לתרגל" is gone, and with it the only CTA that
-     sent a visitor to signup before they had read anything. What is left is
-     "איך זה עובד", which moves them down the page — the header CTA is the way
-     in for someone who already knows they want it. */
-  secondaryCtaLabel: "איך זה עובד",
-  secondaryCtaAriaLabel: "איך זה עובד - הסבר על שיטת LawPass",
-  secondaryCtaHref: "#method",
+  /* The hero carries no CTA at all now. The gold "התחילו לתרגל" went first,
+     for asking a decision above the fold before the page had made its case,
+     and "איך זה עובד" after it — a link whose only job was to scroll down,
+     which the scroll already does. The header CTA is the way in for someone
+     who already knows they want it. The #method section they both pointed at
+     is untouched and still reached by reading on. */
   characterAlt: "ד״ר שרון נאור — שיטת ה-360° של LawPass",
 } as const;
 
