@@ -9,6 +9,7 @@
 // watching a spinner that will never stop.
 
 const db = require("../../db/grading");
+const quotas = require("../../db/open-question-grade-counts");
 const { gradeAnswer } = require("../ai/grade-answer");
 const { startSpan, secs } = require("../timing");
 const progress = require("./progress-registry");
@@ -123,6 +124,35 @@ async function gradeOne(admin, answerId, { params = {}, claim = true } = {}) {
     return { ok: false, status: "empty", detail: "the stored answer has no text" };
   }
 
+  // The quota, checked HERE and not only on the submit path.
+  //
+  // The controller refuses an over-quota submission before the answer is even
+  // stored, which is the check the student sees. This one guards the money:
+  // every route to a model call goes through gradeOne — the API, the CLI
+  // worker draining the backlog, a re-queued row — and a limit enforced in one
+  // controller is a limit the other two routes do not have.
+  //
+  // Checked before the claim, so an over-quota row is left `pending` and
+  // untouched rather than claimed and abandoned.
+  const quota = await quotas.getGradeQuota(
+    admin,
+    context.answer.user_id,
+    context.answer.open_question_id
+  );
+  if (quota.exhausted) {
+    await db.markGradingFailed(
+      admin,
+      answerId,
+      `[grade_limit] this student has already had ${quota.used} marking(s) on this task (limit ${quota.limit})`
+    );
+    return {
+      ok: false,
+      status: "grade_limit_reached",
+      category: "grade_limit",
+      detail: `quota spent: ${quota.used}/${quota.limit}`,
+    };
+  }
+
   if (claim) {
     const claimSpan = startSpan();
     const got = await db.claimForGrading(admin, answerId);
@@ -185,6 +215,32 @@ async function gradeOne(admin, answerId, { params = {}, claim = true } = {}) {
 
     const saveSpan = startSpan();
     await db.saveScore(admin, answerId, { score, rubricId: context.rubricId });
+
+    // The grade is spent only once it exists. Counting earlier — at the claim,
+    // or before the model call — would charge a student for a run that timed
+    // out and leave them with a used quota and no feedback.
+    //
+    // A counter failure does NOT fail the grading. The score is already
+    // written and the student can see it; turning a bookkeeping error into a
+    // `failed` row would hide a real grade behind an error they cannot act on.
+    // It fails open, by one grade, and says so loudly in the log.
+    try {
+      const total = await quotas.recordGrade(admin, {
+        userId: context.answer.user_id,
+        openQuestionId: context.answer.open_question_id,
+        answerId,
+      });
+      console.info(
+        `[grade] QUOTA answer=${answerId} user=${context.answer.user_id} ` +
+          `question=${context.answer.open_question_id} used=${total}/${quota.limit}`
+      );
+    } catch (quotaErr) {
+      console.error(
+        `[grade] QUOTA NOT RECORDED answer=${answerId} user=${context.answer.user_id} ` +
+          `question=${context.answer.open_question_id} — ${quotaErr?.message ?? quotaErr}`
+      );
+    }
+
     spans.save = saveSpan();
 
     spans.total = totalSpan();

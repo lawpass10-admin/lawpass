@@ -239,9 +239,15 @@ than after.
     `app/api/cron/reengagement/route.ts:79` (`===` on `CRON_SECRET`). Largely
     theoretical over HTTP; noted because the unsubscribe path next to it does
     use an HMAC verify.
-12. **6 test files contain no tests**, report as FAIL, and the run still exits 0
-    — CI stays green while `lawpass_server/lib/ai/*` and `lib/marking/*` are
-    untested. Pre-existing, carried over from 09-27.
+12. **6 test files contain no tests** and report as FAIL —
+    `lawpass_server/lib/ai/*` and `lib/marking/*` are untested. Pre-existing,
+    carried over from 09-27.
+
+    **CORRECTED 2026-10-05:** this originally said "the run still exits 0 — CI
+    stays green". That was wrong. `npx vitest run` exits **1**; the earlier
+    reading came from running it through a `grep` pipeline, which reports
+    grep's exit code rather than vitest's. So CI has been correctly failing on
+    these, not silently passing them.
 14. **A locked surface says "empty", not "locked"** — NEW, found while fixing
     finding 3, and it applies to every paid surface, not just study material.
     When content is withheld for want of a subscription, the index renders

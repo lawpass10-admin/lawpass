@@ -17,6 +17,7 @@
 // fields when it prints the candidate's paper.
 
 const db = require("../db/open-questions");
+const quotas = require("../db/open-question-grade-counts");
 const { adminClient } = require("../config/supabase");
 const { gradeOne } = require("../lib/grading/run-grading");
 const gradingProgress = require("../lib/grading/progress-registry");
@@ -258,6 +259,31 @@ async function submitAnswer(req, res) {
     });
   }
 
+  // The marking allowance, checked BEFORE the answer is stored.
+  //
+  // Refusing after storing would be the dishonest version: the student writes
+  // a full answer, gets a receipt, and then finds out it will never be marked.
+  // Asked here, the page can say so while the editor is still open.
+  //
+  // Read under the caller's own RLS client, so the policy scopes it to their
+  // counter — a forged question id reads as zero, not as someone else's quota.
+  const quota = await quotas.getGradeQuota(req.supabase, req.user.id, questionId);
+  if (quota.exhausted) {
+    console.info(
+      `[open-questions] submit REJECTED user=${req.user.id} id=${questionId} ` +
+        `reason=grade_limit used=${quota.used}/${quota.limit}`
+    );
+    return res.json({
+      ok: false,
+      error: gradeLimitNotice(quota.limit),
+      // A machine-readable reason beside the Hebrew, so the page can show the
+      // results of the earlier marking instead of only an error.
+      reason: "grade_limit",
+      grades_used: quota.used,
+      grades_limit: quota.limit,
+    });
+  }
+
   // The pages were uploaded by an earlier request and come back as plain
   // strings, so "is this ours" is asked here rather than assumed. A URL on
   // another host is refused outright: the alternative is storing a link we do
@@ -422,6 +448,24 @@ async function uploadHandwriting(req, res) {
     `[open-questions] handwriting OK user=${req.user.id} question=${questionId} pages=${pages.length}`
   );
   return res.json({ ok: true, pages });
+}
+
+/**
+ * What a student is told when the marking allowance for a task is spent.
+ *
+ * One function, used by both the submit and the regrade path, because the two
+ * are the same rule from the student's side and two wordings would read as two
+ * different rules.
+ *
+ * Phrased as the allowance ("there is currently only one marking available")
+ * rather than as a reprimand ("you already used yours"): the limit is ours, it
+ * is expected to change, and "כרגע" is what makes a later increase read as a
+ * change of policy instead of a bug they were previously hitting.
+ */
+function gradeLimitNotice(limit) {
+  return limit === 1
+    ? "כרגע יש אפשרות לבדיקה אחת בלבד של מטלת הכתיבה"
+    : `כרגע יש אפשרות ל-${limit} בדיקות בלבד של מטלת הכתיבה`;
 }
 
 /**
@@ -617,6 +661,33 @@ async function regradeAnswer(req, res) {
   // not be failed either — but if one is, the text grader has nothing to read.
   if (!(answer.answer_body?.word_count > 0)) {
     return res.json({ ok: false, error: "אין בתשובה הזו טקסט שאפשר לבדוק" });
+  }
+
+  // A failed marking never consumed the allowance, so a retry is normally free
+  // — that is the whole reason the counter tracks completed gradings. It can
+  // still be exhausted here: an earlier attempt at the SAME task was graded
+  // successfully, and this is a later attempt that happened to fail. Without
+  // this check "בדוק שוב" would be a way around the limit.
+  const quota = await quotas.getGradeQuota(
+    req.supabase,
+    req.user.id,
+    answer.open_question_id
+  );
+  if (quota.exhausted) {
+    console.info(
+      `[open-questions] regrade REJECTED user=${req.user.id} answer=${answer.answer_id} ` +
+        `reason=grade_limit used=${quota.used}/${quota.limit}`
+    );
+    return res.json({
+      ok: false,
+      // The same sentence as the submit path: from the student's side it is
+      // the same rule, and two different wordings for one rule reads as two
+      // different rules.
+      error: gradeLimitNotice(quota.limit),
+      reason: "grade_limit",
+      grades_used: quota.used,
+      grades_limit: quota.limit,
+    });
   }
 
   const moved = await gradingDb.requeueFailed(adminClient(), answer.answer_id);

@@ -1,10 +1,17 @@
 {
-  "version": "1.0.0",
+  "version": "1.1.0",
   "name": "diuni_and_mhuti-LLM-params",
-  "status": "draft — rules only. No converter reads this file yet.",
+  "status": "draft. scripts/ingestion/convert-study-book.mjs implements the pipeline; the checks are run separately by scripts/ingestion/tmp/cluster-findings.mjs and are not yet wired into the run.",
   "purpose": "The contract for turning the scanned דיוני and מהותי study books into LawPass's own material at comparable scale. A sibling of LLM-text-converting.json, which governs the open-questions booklets; this file governs a different and riskier source kind, and differs where that risk requires it.",
 
   "disclaimer": "These rules reduce risk; they are not legal advice and they are not a guarantee. Copyright turns on facts and jurisdiction. This source kind is nearer the line than anything the sibling contract covers, and it should not go to production without an Israeli copyright lawyer reading both this contract and a finished chapter.",
+
+  "what_changed_in_1_1": {
+    "summary": "max_shared_ngram became tiered by span length, and terms of art were excluded below 9 words.",
+    "why": "1.0 made any 6-word shared run a blocking failure. A full run over the eight מהותי books then produced 319 distinct shared phrases, of which 282 were 6-8 words and almost all were legal terms of art — phrases Hebrew states in one way. A rule that 282 unavoidable phrases violate is not a safeguard; it is a rule everyone learns to override, which is worse than no rule.",
+    "what_it_does_not_relax": "12+ word spans still fail the run. The 9-11 band still demands a recorded decision. The measured effect of enforcing the 20-word cap on learning points was 10 long phrases down to 2, for $1.15 — the fix was cheap because the rule had identified the right thing.",
+    "evidence": "215 chapters, 200,079 authored words, 9,907 learning points. Before the cap: 10 spans of 12+ words. After: 2, both enumerations of statutory terms."
+  },
 
   "principle": "Copyright protects expression, not facts or ideas. The pipeline is built so the protected layer of a source is never available to the model, rather than trusting the model to avoid imitating what it can see.",
 
@@ -133,6 +140,26 @@
     }
   ],
 
+  "terms_of_art": {
+    "_new_in": "1.1",
+    "what": "A phrase that states a legal rule, definition or doctrine in the settled words the field uses for it — the statutory term, the name of a tort, the standard formulation of a test.",
+    "why_excluded": "Copyright protects expression, not ideas. Where an idea admits of essentially one expression the two merge, and the expression is not protected — the doctrine is usually called merger. A prep book and LawPass will both write ”היסוד הנפשי מודעות לרכיבי היסוד העובדתי“ because that is what the doctrine is called, not because one copied the other.",
+    "the_risk_of_this_exclusion": "It is the obvious place for the whole contract to leak: call everything a term of art and the check reports nothing. The guards below are what stop that, and the length tiers matter more than the vocabulary list — a genuine term of art is short, and anything past 11 words has stopped being one.",
+    "guards": [
+      "Length first: the exclusion only applies below 9 words. A long phrase is not rescued by containing a term of art.",
+      "The phrase must be the term itself or a minimal statement of the rule — not a term wrapped in the source's explanation of it.",
+      "Recognition is recorded per run, with the phrase, so a reviewer can disagree with any single call."
+    ],
+    "recognised_vocabulary": [
+      "statutory defined terms of the law being covered, as they appear in mahoti_laws",
+      "named torts, offences and doctrines (גניבת עין, רשלנות, הרמת מסך, תום לב)",
+      "standard tests and their elements (היסוד הנפשי, היסוד העובדתי, נטל ההוכחה, אדם סביר)",
+      "institutional names (בית המשפט, לשכת עורכי הדין, רשות מקרקעי ישראל)",
+      "statutory arithmetic stated in its own terms (השבח הוא ההפרש בין שווי המכירה לשווי הרכישה)"
+    ],
+    "not_covered": "A worked example, an analogy, a mnemonic, an ordering of points, or any sentence that explains WHY a rule exists. Those are the publisher's, however short."
+  },
+
   "quoting": {
     "allowed": true,
     "note": "Unlike the sibling contract, this pipeline quotes — but only legislation, and only from mahoti_laws. Quoting the publisher's prose is never permitted at any length. A quotation of any other kind must be short, in quotation marks, attributed inline, and recorded in the run's changes file."
@@ -185,10 +212,35 @@
     },
     {
       "id": "max_shared_ngram",
-      "n": 6,
-      "fails_run": true,
-      "excludes": "statutory text, which is expected to match",
-      "note": "Any run of 6+ consecutive words shared between LawPass's explanatory prose and the OCR text is a finding. Run against the local OCR, which the model never saw."
+      "fails_run": "by tier — see tiers",
+      "new_in": "1.1",
+      "measured_on": "215 chapters, 200,079 authored words, מהותי books, 2026-10-05",
+      "excludes": [
+        "statutory text, which both sides quote from the same law",
+        "recognised terms of art — see terms_of_art"
+      ],
+      "unit": "MAXIMAL shared span, not n-gram. A 9-word run contains four overlapping 6-grams and is one phrase; counting grams inflated the first measurement from 319 phrases to 657 findings.",
+      "tiers": [
+        {
+          "words": "6-8",
+          "fails_run": false,
+          "action": "report only",
+          "why": "Measured: 282 of 319 distinct phrases fell here, and reading them they are legal terms of art — ”השבח הוא ההפרש בין שווי המכירה“, ”היסוד הנפשי מודעות לרכיבי היסוד העובדתי“. Hebrew offers no alternative phrasing for these, and forcing one would make the material less accurate without making it less similar. See terms_of_art."
+        },
+        {
+          "words": "9-11",
+          "fails_run": false,
+          "action": "operator must review and record a reason",
+          "why": "35 phrases. Long enough to be someone's sentence, short enough to be a settled formulation. This is the band where judgement is actually required, so the contract asks for a recorded decision rather than pretending a threshold can make it."
+        },
+        {
+          "words": "12+",
+          "fails_run": true,
+          "action": "rewrite before publication",
+          "why": "A run this long is a sentence, not a term. The first full run produced 10; capping learning points at 20 words (see pipeline.budget) removed 8 of them at a cost of $1.15, leaving 2 that are enumerations of statutory terms."
+        }
+      ],
+      "note": "Run against the local OCR, which the model never saw. The tiering is not a relaxation of R3 — R3 bans reusing the source's distinctive phrasing, and a term of art is by definition not distinctive to the source."
     },
     {
       "id": "no_pedagogy_terms",

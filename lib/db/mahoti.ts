@@ -22,6 +22,10 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import type { Choice, Question360 } from "@/lib/db/practice";
+import {
+  DEFAULT_PAPER_ORDER,
+  visibleToViewerFilter,
+} from "@/lib/db/paper-visibility";
 
 const TABLE = "mahoti_questions";
 
@@ -191,7 +195,8 @@ function stripAnswers(questions: StoredQuestion[]): MahotiQuestion[] {
  * simply may not be loaded yet on a given environment.
  */
 export async function getMahotiSet(
-  questionId?: string
+  questionId: string | undefined,
+  viewerId: string
 ): Promise<MahotiSet | null> {
   const supabase = createAdminClient();
 
@@ -201,7 +206,15 @@ export async function getMahotiSet(
     .not("questions", "is", null);
 
   const { data, error } = questionId
-    ? await base.eq("question_id", questionId).maybeSingle<Row>()
+    ? // THE ID COMES FROM `?set=` AND IS THEREFORE UNTRUSTED. This branch used
+      // to apply no filters at all, which let any candidate open an
+      // unpublished draft or another candidate's custom exam by URL — the
+      // reasoning two lines below was applied to the branch a URL cannot
+      // reach. See lib/db/paper-visibility.ts.
+      await base
+        .eq("question_id", questionId)
+        .or(visibleToViewerFilter(viewerId))
+        .maybeSingle<Row>()
     : // Published papers only. Custom exams ("שאלון מותאם אישית") live in this
       // same table — they have to, because mahoti_answers has a foreign key
       // onto it — and this branch answers with מבחן מספר 1, the same paper the
@@ -505,8 +518,13 @@ function toReferences(sources: MahotiSource[]): string[] {
 /**
  * The review for one generated paper — the same row `getMahotiSet` reads for
  * the same `questionId`, so the questions the candidate answered and the
- * review behind them line up. Without an id it falls back to the newest
- * paper, which is the one the study screen shows by default.
+ * review behind them line up. Without an id it falls back to the SAME default
+ * paper `getMahotiSet` falls back to, through the shared
+ * `DEFAULT_PAPER_ORDER`: מבחן מספר 1, not the most recently created row. The
+ * two readers disagreed from 20261004000001 until this was fixed — the set
+ * moved to `exam_number ASC` when publication landed and this one stayed on
+ * `created_at DESC`, so a candidate with no `?set=` could read the review of
+ * one paper beside the questions of another.
  *
  * Questions whose `correct_answer` names no option are dropped rather than
  * rendered with an empty answer banner: the panel's whole frame is built
@@ -514,7 +532,8 @@ function toReferences(sources: MahotiSource[]): string[] {
  * is worse than one question short.
  */
 export async function getMahotiReview(
-  questionId?: string
+  questionId: string | undefined,
+  viewerId: string
 ): Promise<MahotiReview | null> {
   const supabase = createAdminClient();
 
@@ -529,10 +548,24 @@ export async function getMahotiReview(
     question_review: ReviewPayload | null;
   };
 
+  // BOTH BRANCHES ARE FILTERED, and this reader needed it more than
+  // getMahotiSet did: a review carries `question_review` and the correct
+  // choice, with no stripAnswers between it and the page. Unfiltered, the
+  // by-id branch handed out the answers to any paper named in `?set=`, and
+  // the default branch answered with the newest row in the table — so a draft
+  // a generation run had just inserted, or whichever candidate had most
+  // recently built a custom exam, became the review everyone saw.
   const { data, error } = questionId
-    ? await base.eq("question_id", questionId).maybeSingle<ReviewRow>()
+    ? await base
+        .eq("question_id", questionId)
+        .or(visibleToViewerFilter(viewerId))
+        .maybeSingle<ReviewRow>()
     : await base
-        .order("created_at", { ascending: false })
+        .eq("exam_status", "prod")
+        .is("built_for", null)
+        .order(DEFAULT_PAPER_ORDER.column, {
+          ascending: DEFAULT_PAPER_ORDER.ascending,
+        })
         .limit(1)
         .maybeSingle<ReviewRow>();
 

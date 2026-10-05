@@ -114,14 +114,65 @@ const A11Y_LAUNCHER_TOP = 12;
  * when they already want them; this is an invitation, and an unlabelled icon
  * is an invitation nobody reads.
  */
-const PILL_HEIGHT = 36;
+export const PILL_HEIGHT = 36;
 
 /**
  * Pinned so the pill's CENTRE line matches the accessibility launcher's rather
  * than its top edge matching it — a taller control aligned by its top reads as
  * sitting slightly high beside a round one, even from across the page.
  */
-const PILL_TOP = A11Y_LAUNCHER_TOP - (PILL_HEIGHT - LAUNCHER_SIZE) / 2;
+export const PILL_TOP = A11Y_LAUNCHER_TOP - (PILL_HEIGHT - LAUNCHER_SIZE) / 2;
+
+/**
+ * The shape both top launchers share — everything except the fill.
+ *
+ * Shared rather than duplicated because they sit side by side: two copies that
+ * drift apart would be visible as a mismatch in the same two centimetres of
+ * screen. Positioning is NOT here — TopLaunchers places the row, so neither
+ * pill fights the other for the centre.
+ */
+const LAUNCHER_PILL_BASE = cn(
+  "inline-flex items-center gap-2 rounded-full border ps-3.5 pe-4",
+  "shadow-lg transition-[filter,border-color,background-color]",
+  // The label never wraps: a two-line pill looks broken, and both labels are
+  // short enough to stay on one line at any width.
+  "whitespace-nowrap text-sm font-semibold",
+  // Brightness rather than a scale on hover: the row is centred with a
+  // translate, and a transform-based hover is one more thing that has to
+  // compose correctly with it to avoid a jump.
+  "hover:brightness-110 hover:border-[#C9A149]",
+  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#C9A149]/60"
+);
+
+/**
+ * THE TWO PILLS ARE DELIBERATELY NOT THE SAME COLOUR.
+ *
+ * They sit adjacent, they are the same size and shape, and their actions are
+ * not interchangeable — one sends a message to us, the other opens the
+ * student's own private page. Two identical navy pills a centimetre apart is a
+ * misclick waiting to happen, and the cost of the misclick is asymmetric:
+ * opening the wrong box is nothing, but typing a private note into the
+ * feedback form sends it to us.
+ *
+ * So the solid navy fill stays with the feedback pill, and the draft pill
+ * takes a pale gold one. Same family, same gold ring, obviously different at a
+ * glance — which is the only distinction that works when someone is reaching
+ * for a control without reading it.
+ */
+export const LAUNCHER_PILL_SOLID = cn(
+  LAUNCHER_PILL_BASE,
+  // Navy fill with a gold ring — the app's own pair, so it reads as part of
+  // LawPass rather than as another debug control.
+  "border-[rgba(201,161,73,0.55)] bg-[var(--color-navy-deep,#1E3A8A)] text-[#C9A149]"
+);
+
+/** The lighter of the two. Opaque, not translucent: it floats over whatever the
+ *  page happens to be showing, and a see-through pill over a chart is unreadable. */
+export const LAUNCHER_PILL_LIGHT = cn(
+  LAUNCHER_PILL_BASE,
+  "border-[rgba(201,161,73,0.75)] bg-[#F7EFDD] text-[var(--color-navy-ink,#1E3A8A)]",
+  "hover:bg-[#FBF5E8]"
+);
 
 export function FeedbackLauncher() {
   const [open, setOpen] = React.useState(false);
@@ -136,28 +187,8 @@ export function FeedbackLauncher() {
         type="button"
         onClick={() => setOpen(true)}
         title="שלח לנו משוב"
-        style={{
-          top: `${PILL_TOP}px`,
-          height: `${PILL_HEIGHT}px`,
-        }}
-        className={cn(
-          // z-40 matches the QA launcher: above the page, below an open dialog.
-          // Centred on the viewport, not anchored to a corner — see the header.
-          "fixed left-1/2 -translate-x-1/2 z-40",
-          "inline-flex items-center gap-2 rounded-full ps-3.5 pe-4",
-          // Navy fill with a gold ring — the app's own pair, so it reads as
-          // part of LawPass rather than as another debug control.
-          "border border-[rgba(201,161,73,0.55)] bg-[var(--color-navy-deep,#1E3A8A)]",
-          "text-[#C9A149] shadow-lg transition-transform",
-          // The label never wraps: a two-line pill in the corner looks broken,
-          // and the text is short enough to stay on one line at any width.
-          "whitespace-nowrap text-sm font-semibold",
-          // Brightness rather than a scale on hover: the pill is centred with a
-          // -translate-x-1/2, and a transform-based hover effect is one more
-          // thing that has to compose correctly with it to avoid a jump.
-          "hover:brightness-110 hover:border-[#C9A149]",
-          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#C9A149]/60"
-        )}
+        style={{ height: `${PILL_HEIGHT}px` }}
+        className={LAUNCHER_PILL_SOLID}
       >
         {/* 18px to match the accessibility launcher's own icon size. */}
         <MessageSquareHeart

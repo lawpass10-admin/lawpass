@@ -25,10 +25,12 @@ export default async function MahotiPage({
 }: {
   searchParams: Promise<{ set?: string }>;
 }) {
-  await requireActiveSubscription();
+  // `user` is needed below: getMahotiSet authorises the `?set=` id against
+  // the viewer, so a draft or someone else's custom exam reads as not-found.
+  const { user } = await requireActiveSubscription();
 
   const { set: setId } = await searchParams;
-  const set = await getMahotiSet(setId);
+  const set = await getMahotiSet(setId, user.id);
 
   return (
     // One viewport-tall column that never scrolls as a page: `100dvh` less

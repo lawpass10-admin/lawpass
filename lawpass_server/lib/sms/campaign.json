@@ -1,0 +1,15 @@
+{
+  "campaignId": "launch-2026-10",
+
+  "sender": "LawPass",
+
+  "message": "מתמחים, LawPass – אפליקציה למבחן הלשכה: אלפי שאלות, סימולציות ומעקב התקדמות.\nלקישור: וואטסאפ 054-2040110.",
+
+  "optOutLine": "להסרה השיבו הסר",
+
+  "recipientsFile": "recipients.csv",
+
+  "maxPerRun": 500,
+  "concurrency": 4,
+  "pauseMs": 250
+}

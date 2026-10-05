@@ -40,6 +40,18 @@ export type StudyGroup = {
 export type StudySection = {
   id: string;
   heading: string;
+  /**
+   * 1 for a chapter, 2 for something inside one. Optional, and absent means 1 —
+   * every document written before this existed is a flat list of chapters.
+   *
+   * It exists because the contents rail and the page need different answers to
+   * "what is a section here". The converted law books have ~27 chapters each,
+   * and under every chapter one entry per statutory provision: 381 sections in
+   * מהותי 1 alone. Listing all of them made the rail a transcript of the
+   * document rather than an index of it. The rail now takes level 1; the page
+   * still renders level 2 as a heading, just a quieter one.
+   */
+  level?: 1 | 2;
   paragraphs: string[];
   tables: { columns: string[] | null; rows: (string[] | Record<string, string>)[] }[];
 };
@@ -156,7 +168,10 @@ function asSection(value: unknown, at: number): StudySection | null {
 
   // A heading with nothing under it is a page artefact, not a section.
   if (!heading && paragraphs.length === 0 && tables.length === 0) return null;
-  return { id: `s${at}`, heading, paragraphs, tables };
+  // Anything that is not an explicit 2 is a chapter, so a document stored
+  // before `level` existed keeps behaving exactly as it did.
+  const level = v.level === 2 ? 2 : 1;
+  return { id: `s${at}`, heading, level, paragraphs, tables };
 }
 
 function asRule(value: unknown, at: number): StudyRule | null {
@@ -273,9 +288,53 @@ function counts(doc: StudyDoc): { groupCount: number; itemCount: number } {
  *
  * paper_id comes from the source document's filename, so it carries the
  * underscores a filename needs and a reader does not.
+ *
+ * It also carries the part and the ordinal — "מהותי 1 - אתיקה מקצועית",
+ * "דיוני 9-מערכת בתי המשפט". Both are already on screen wherever this is
+ * shown: the list numbers its own rows, and each part has its own route and
+ * breadcrumb. Printed again in the title they read as a third number nobody
+ * asked for, so they come off here.
+ *
+ * STRIPPED FOR DISPLAY ONLY. paper_id still matches the scanned file and is
+ * what the loader keys on; renaming the rows would break that link for the
+ * sake of a heading.
  */
+const FILE_ORDINAL = /^(מהותי|דיוני)\s*\d+\s*[-–—]?\s*/;
+
+/**
+ * Typos in the source filenames, corrected on the way to the screen.
+ *
+ * The topic PDFs in דיוני-כחול were named by hand and two are misspelled:
+ * "סדר תין הפלילי" for הדין, and "דינה משפחה" for דיני. paper_id has to keep
+ * matching the file it came from — the loader and every re-publish key on it —
+ * so the correction belongs here, where the name is prepared for a reader.
+ *
+ * A list, not a cleverness. Each entry is a specific known mistake in a
+ * specific filename; nothing guesses at spelling, because a guess that
+ * "corrected" a real legal term would be worse than the typo.
+ */
+const NAME_FIXES: [string, string][] = [
+  ["סדר תין הפלילי", "סדר הדין הפלילי"],
+  ["דינה משפחה", "דיני משפחה"],
+];
+
 export function documentName(paperId: string): string {
-  return paperId.replace(/[_]+/g, " ").replace(/\s+/g, " ").trim();
+  let name = paperId
+    .replace(FILE_ORDINAL, "")
+    .replace(/[_]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  // Plain substrings, not regexes with \b. JavaScript defines \b against ASCII
+  // word characters, so every Hebrew letter counts as a non-word character and
+  // the boundary matches in the wrong places — \bסדר תין הפלילי\b silently
+  // matched nothing at all.
+  for (const [wrong, right] of NAME_FIXES) name = name.replace(wrong, right);
+
+  // "המשפט ,דיני" — the filename put the comma before the space, which in RTL
+  // reads as a comma glued to the start of the next word. Normalised to a
+  // comma then one space.
+  return name.replace(/\s*,\s*/g, ", ");
 }
 
 /**

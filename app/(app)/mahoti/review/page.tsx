@@ -52,7 +52,9 @@ export default async function MahotiReviewPage({
     given?: string;
   }>;
 }) {
-  await requireActiveSubscription();
+  // See the note in /mahoti: the viewer id authorises the `?set=` id. It
+  // matters more here — a review carries the correct answers.
+  const { user } = await requireActiveSubscription();
 
   const { answers, set, attempt: attemptId, given: givenParam } = await searchParams;
 
@@ -62,7 +64,7 @@ export default async function MahotiReviewPage({
 
   // The paper is the one the sitting was filed against; `?set=` only decides
   // it when there is no attempt to ask.
-  const review = await getMahotiReview(attempt?.questionId ?? set);
+  const review = await getMahotiReview(attempt?.questionId ?? set, user.id);
 
   // Which paper "למבחן הבא" leads to. Resolved from the row actually being
   // reviewed, so it does not depend on the `set` parameter being present.

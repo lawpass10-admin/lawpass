@@ -11,7 +11,8 @@
     "generate:open-question": "node scripts/generate-open-question.js",
     "generate:open-answer": "node scripts/generate-open-answer.js",
     "render:open-question": "node scripts/render-open-question-pdf.js",
-    "render:open-answer": "node scripts/render-open-answer-pdf.js"
+    "render:open-answer": "node scripts/render-open-answer-pdf.js",
+    "sms:campaign": "node scripts/send-sms-campaign.js"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.115.0",

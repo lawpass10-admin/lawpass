@@ -84,6 +84,13 @@ export function HeaderStrip({ fullName }: Props) {
   const greeting = getHebrewGreeting();
   const dateLine = formatDateHeLong(new Date());
 
+  /**
+   * `full_name` is whatever the profile holds, and a profile can be saved
+   * without one. Trimmed and checked so a blank name greets the candidate with
+   * "בוקר טוב, ." rather than "בוקר טוב."
+   */
+  const name = fullName?.trim() ?? "";
+
   return (
     <div
       className="flex flex-col md:flex-row md:items-end md:justify-between gap-6 md:gap-6"
@@ -101,16 +108,20 @@ export function HeaderStrip({ fullName }: Props) {
         >
           {dateLine}
         </div>
+        {/* THE NAME IS SHOWN AT EVERY WIDTH.
+            It used to be `hidden md:inline`, with a bare comma standing in for
+            it below md — so a phone read "בוקר טוב," : no name, and a comma
+            left pointing at nothing. Whatever the original width worry was, a
+            dangling comma is worse than a second line, and `text-balance`
+            splits a long greeting evenly rather than leaving one orphan word. */}
         <h1
-          className="font-heebo font-extrabold tracking-tight text-[28px] md:text-[40px]"
+          className="font-heebo font-extrabold tracking-tight text-[28px] text-balance md:text-[40px]"
           style={{
             lineHeight: 1.15,
             color: "var(--color-navy-ink)",
           }}
         >
-          {greeting}
-          <span className="hidden md:inline">, {fullName}.</span>
-          <span className="md:hidden">,</span>
+          {name ? `${greeting}, ${name}.` : `${greeting}.`}
         </h1>
       </div>
       {/* The CTA cluster that sat here — "תרגול חופשי" → /practice and

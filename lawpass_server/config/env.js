@@ -53,6 +53,28 @@ function required(name) {
   return value;
 }
 
+/**
+ * A tuning knob that must be a whole number of at least 1.
+ *
+ * Anything else — a typo, an empty string, a decimal, a zero — falls back to
+ * the default with a warning rather than taking effect. A quota that reads as
+ * NaN and compares false against every count is a quota that silently does not
+ * exist, and the way you find out is the bill.
+ */
+function positiveInt(name, fallback) {
+  const raw = process.env[name];
+  if (raw === undefined || String(raw).trim() === "") return fallback;
+
+  const value = Number(raw);
+  if (!Number.isInteger(value) || value < 1) {
+    console.warn(
+      `[env] ${name}="${raw}" is not a whole number >= 1 — using ${fallback} instead.`
+    );
+    return fallback;
+  }
+  return value;
+}
+
 const env = {
   // Absolute path of the .env that was loaded (null if none) — logged at
   // startup for transparency. Never contains a secret value.
@@ -84,6 +106,41 @@ const env = {
     apiSecret: process.env.CLOUDINARY_API_SECRET || "",
     // Root folder for uploads; per-user/per-question subfolders hang off it.
     folder: process.env.CLOUDINARY_FOLDER || "lawpass/handwriting",
+  },
+
+  // Writing tasks (מטלת כתיבה).
+  openQuestions: {
+    // How many COMPLETED markings one student may have on one task. Each one
+    // is a model call we pay for, and nothing else bounds how many times the
+    // same task can be submitted.
+    //
+    // Here rather than in the database on purpose: this is the number most
+    // likely to be tuned once there is real usage, and it should be tunable by
+    // editing .env.local and restarting — not by writing a migration.
+    //
+    // Only a grading that WROTE A SCORE counts, so a failed marking stays
+    // retryable and never consumes the allowance. See
+    // supabase/migrations/20261005000001_open_question_grades_counts.sql.
+    maxGradesPerQuestion: positiveInt("OPEN_QUESTION_MAX_GRADES", 1),
+  },
+
+  // SMS — the outbound campaign gateway (lib/sms).
+  //
+  // NOT `required()`, for the same reason as Cloudinary: the API has no SMS
+  // endpoint, so a missing credential must not keep the server from booting.
+  // The provider defaults to "mock", which prints instead of sending — a
+  // half-configured environment reaches nobody rather than quietly messaging
+  // hundreds of real people. `sms4free` is opted into explicitly.
+  sms: {
+    provider: process.env.SMS_PROVIDER || "mock",
+    // Fallback only. The campaign's own sender lives in
+    // lib/sms/campaign.json, next to the message text it belongs with.
+    sender: process.env.SMS_SENDER || "",
+    sms4free: {
+      key: process.env.SMS4FREE_KEY || "",
+      user: process.env.SMS4FREE_USER || "",
+      password: process.env.SMS4FREE_PASSWORD || "",
+    },
   },
 
   // Comma-separated allowed CORS origins (the Next.js frontend).

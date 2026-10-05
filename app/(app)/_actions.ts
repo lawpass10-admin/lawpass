@@ -301,3 +301,66 @@ export async function submitUserFeedbackAction(
   // safely in the table invites them to type the whole thing again.
   return screenshotFailed ? { ok: true, warning: SCREENSHOT_WARNING } : { ok: true };
 }
+
+// ---------------------------------------------------------------------------
+// דף טיוטה — the candidate's own scratch page
+// ---------------------------------------------------------------------------
+
+/** Matches the CHECK on user_drafts.text (migration 20261005000002). */
+const DRAFT_MAX_CHARS = 20_000;
+
+const saveDraftSchema = z.object({
+  text: z.string().trim().min(1).max(DRAFT_MAX_CHARS),
+});
+
+/**
+ * Save a draft.
+ *
+ * A SERVER ACTION, NOT AN API ROUTE. The house rule is "Server Actions for
+ * mutations; API Routes only for webhooks" (CLAUDE.md), and this is a mutation
+ * made by a signed-in person from their own browser — the same shape as the
+ * feedback box beside it. "Server API" in the sense that matters is satisfied:
+ * the write happens on the server, under the caller's session, and the browser
+ * never touches the table.
+ *
+ * ON THE CALLER'S OWN CLIENT, never the service role. user_drafts has
+ * students-own-row policies and `user_id` is pinned to auth.uid() by the INSERT
+ * policy's CHECK, so this cannot write a draft into somebody else's name even
+ * if it tried. The authorization is the database's.
+ *
+ * NO SUBSCRIPTION GATE. A lapsed student's notes are still their notes, and
+ * locking someone out of their own writing is not a thing a paywall should do.
+ */
+export async function saveUserDraftAction(
+  input: { text: string }
+): Promise<ActionResult> {
+  const parsed = saveDraftSchema.safeParse(input);
+  if (!parsed.success) {
+    return { ok: false, error: "לא ניתן לשמור טיוטה ריקה" };
+  }
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false, error: "לא מחובר" };
+
+  const { error } = await supabase.from("user_drafts").insert({
+    user_id: user.id,
+    text: parsed.data.text,
+  });
+
+  if (error) {
+    // TODO(slice-7): replace with structured logger.
+    console.error(
+      `[drafts] insert FAILED user=${user.id} code=${
+        (error as { code?: string }).code ?? "unknown"
+      } message=${error.message}`
+    );
+    return { ok: false, error: "השמירה נכשלה. נסו שוב בעוד רגע" };
+  }
+
+  // TODO(slice-7): replace with structured logger.
+  console.info(`[drafts] insert OK user=${user.id} chars=${parsed.data.text.length}`);
+  return { ok: true };
+}

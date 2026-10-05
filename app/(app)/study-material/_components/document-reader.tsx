@@ -69,6 +69,33 @@ function leafLabel(heading: string, stem: string): string {
 /** A stage of the authored guide: "שלב 3: …" belongs with what precedes it. */
 const STAGE = /^שלב\s*\d/;
 
+/** "פרק ראשון", "פרק א׳", "פרק ג" — the marker, not the title after it. */
+const CHAPTER_MARKER = /^(.*?)(פרק\s+[^\s:,־–—]+)(.*)$/;
+
+/**
+ * A rail entry with its chapter marker picked out.
+ *
+ * Only the marker darkens. The whole line in ink was the first attempt and it
+ * was wrong: thirty bold dark lines are as flat as thirty gold ones, and the
+ * thing a reader scans a contents list for is the numbering. So "פרק ראשון"
+ * carries the weight and the title after it stays in the link colour.
+ *
+ * Returns the text untouched when there is no marker — the open-questions
+ * booklets have headings like "דברי הסבר" that this must not touch.
+ */
+function ChapterLabel({ text }: { text: string }) {
+  const match = text.match(CHAPTER_MARKER);
+  if (!match) return <>{text}</>;
+  const [, before, marker, after] = match;
+  return (
+    <>
+      {before}
+      <span style={{ color: "var(--color-navy-ink)", fontWeight: 700 }}>{marker}</span>
+      {after}
+    </>
+  );
+}
+
 /**
  * How many leading words two neighbouring titles must share before they are
  * treated as one subject.
@@ -227,6 +254,12 @@ export function DocumentReader({
       numbered.filter(
         (s) =>
           s.heading &&
+          // Chapters only. A converted law book carries one level-2 section per
+          // statutory provision — 381 of them in מהותי 1 — and listing those
+          // turned the rail into a transcript of the document instead of an
+          // index of it. Documents without levels are all level 1, so nothing
+          // that worked before changes.
+          (s.level ?? 1) === 1 &&
           !RAIL_SKIP.has(s.heading.trim()) &&
           (s.paragraphs.length > 0 || s.tables.length > 0)
       ),
@@ -314,27 +347,49 @@ export function DocumentReader({
                 className="mb-3 break-inside-avoid"
                 style={{ breakInside: "avoid" }}
               >
-                {group.items.length === 1 ? (
+                {/* A single-chapter law still gets the parent/child shape, so
+                    the rail reads the same way down its whole length: 12 of the
+                    43 laws in the מהותי books have one chapter, and as plain
+                    lines they sat visually outside the structure everything
+                    else was in.
+
+                    The exception is a heading that is ALL stem — "דברי הסבר" in
+                    the open-questions booklets, where leafLabel has nothing to
+                    strip. Those stay a plain link; giving them a parent would
+                    mean a heading above its own duplicate. */}
+                {group.items.length === 1 &&
+                leafLabel(group.items[0].heading, group.stem) === group.items[0].heading ? (
                   <a
                     href={`#${group.items[0].id}`}
                     className="font-heebo transition-colors hover:underline"
                     style={{ fontSize: 13.5, color: "var(--color-gold-deep)" }}
                   >
-                    {group.items[0].heading}
+                    <ChapterLabel text={group.items[0].heading} />
                   </a>
                 ) : (
                   <>
                     {/* The stem in ink, not gold: it names the group and is not
-                        itself somewhere to go. Only the parts are links. */}
+                        itself somewhere to go. Only the parts are links.
+                        Gold rule beneath it, so a law reads as the parent of
+                        the chapters indented under it rather than as another
+                        line in the same list. */}
                     <p
                       className="font-heebo font-bold"
-                      style={{ fontSize: 13.5, color: "var(--color-navy-ink)" }}
+                      style={{
+                        fontSize: 13.5,
+                        color: "var(--color-navy-ink)",
+                        paddingBottom: 3,
+                        borderBottom: "1px solid var(--color-gold, #C9A149)",
+                      }}
                     >
                       {group.stem}
                     </p>
+                    {/* Gold border on the indent, matching the rule above: the
+                        two together draw the bracket that says these belong to
+                        that. The grey border was invisible at this size. */}
                     <ul
-                      className="mt-1 space-y-1 border-s ps-3"
-                      style={{ borderColor: "var(--color-border)" }}
+                      className="mt-1.5 space-y-1 border-s ps-3"
+                      style={{ borderColor: "var(--color-gold, #C9A149)", borderInlineStartWidth: 2 }}
                     >
                       {group.items.map((item) => (
                         <li key={item.id}>
@@ -343,7 +398,7 @@ export function DocumentReader({
                             className="font-heebo transition-colors hover:underline"
                             style={{ fontSize: 13, color: "var(--color-gold-deep)" }}
                           >
-                            {leafLabel(item.heading, group.stem)}
+                            <ChapterLabel text={leafLabel(item.heading, group.stem)} />
                           </a>
                         </li>
                       ))}
@@ -396,7 +451,7 @@ function textDir(text: string): "rtl" | "ltr" {
 function Section({ section }: { section: StudySection }) {
   return (
     <section id={section.id} className="scroll-mt-24 space-y-3">
-      {section.heading ? (
+      {section.heading && (section.level ?? 1) === 1 ? (
         // The rule under the heading is where a section STARTS. In a document
         // of 118 sections whose headings repeat — ten "הוראות הדין", nine
         // "דגשים" — the words alone do not tell a reader they have crossed into
@@ -415,6 +470,18 @@ function Section({ section }: { section: StudySection }) {
         >
           {section.heading}
         </h2>
+      ) : null}
+
+      {section.heading && (section.level ?? 1) === 2 ? (
+        // Inside a chapter. Still a heading a reader scans for — one statutory
+        // provision — but it must not compete with the chapter rule above it,
+        // so no gold divider and a smaller, quieter type.
+        <h3
+          className="font-heebo font-semibold"
+          style={{ fontSize: 16, color: "var(--color-navy-ink)", lineHeight: 1.4, marginTop: 4 }}
+        >
+          {section.heading}
+        </h3>
       ) : null}
 
       {section.paragraphs.map((text, at) => (

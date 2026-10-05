@@ -30,10 +30,11 @@ export default async function DiuniPage({
 }: {
   searchParams: Promise<{ set?: string }>;
 }) {
-  await requireActiveSubscription();
+  // See the note in /mahoti: the viewer id authorises the `?set=` id.
+  const { user } = await requireActiveSubscription();
 
   const { set: setId } = await searchParams;
-  const set = await getDiuniSet(setId);
+  const set = await getDiuniSet(setId, user.id);
 
   return (
     // One viewport-tall column that never scrolls as a page: `100dvh` less the

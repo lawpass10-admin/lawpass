@@ -1,0 +1,12 @@
+# The real recipient list is a file of real people's phone numbers — personal
+# data under the Privacy Protection Law, and a list nobody on it agreed to be
+# on a GitHub repo. Only the example file is committed.
+recipients.csv
+recipients.xlsx
+recipients.xls
+recipients.txt
+*.local.csv
+!recipients.example.csv
+
+# The sent log holds the same numbers plus who was messaged and when.
+logs/

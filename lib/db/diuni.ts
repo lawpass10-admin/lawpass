@@ -22,6 +22,10 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import type { Choice, Question360 } from "@/lib/db/practice";
+import {
+  DEFAULT_PAPER_ORDER,
+  visibleToViewerFilter,
+} from "@/lib/db/paper-visibility";
 
 const TABLE = "diuni_questions";
 
@@ -135,7 +139,8 @@ function stripAnswers(questions: StoredQuestion[]): DiuniQuestion[] {
  * that may simply not be loaded yet on a given environment.
  */
 export async function getDiuniSet(
-  questionId?: string
+  questionId: string | undefined,
+  viewerId: string
 ): Promise<DiuniSet | null> {
   const supabase = createAdminClient();
 
@@ -145,7 +150,12 @@ export async function getDiuniSet(
     .not("questions", "is", null);
 
   const { data, error } = questionId
-    ? await base.eq("question_id", questionId).maybeSingle<Row>()
+    ? // The id comes from `?set=` and is untrusted — same fix, same reasoning
+      // as lib/db/mahoti.ts. See lib/db/paper-visibility.ts.
+      await base
+        .eq("question_id", questionId)
+        .or(visibleToViewerFilter(viewerId))
+        .maybeSingle<Row>()
     : // Published papers only — see the same filters in lib/db/mahoti.ts. Custom
       // exams share this table, and this branch answers with מבחן מספר 1, the
       // paper the picker preselects, so /diuni with no ?set= opens the same
@@ -483,7 +493,8 @@ async function getJudgmentAreas(
  * than one question short.
  */
 export async function getDiuniReview(
-  questionId?: string
+  questionId: string | undefined,
+  viewerId: string
 ): Promise<DiuniReview | null> {
   const supabase = createAdminClient();
 
@@ -498,10 +509,20 @@ export async function getDiuniReview(
     question_review: ReviewPayload | null;
   };
 
+  // Both branches filtered, and the default now shares getDiuniSet's ordering
+  // so the review and the questions are the same paper — see the fuller note
+  // on getMahotiReview in lib/db/mahoti.ts.
   const { data, error } = questionId
-    ? await base.eq("question_id", questionId).maybeSingle<ReviewRow>()
+    ? await base
+        .eq("question_id", questionId)
+        .or(visibleToViewerFilter(viewerId))
+        .maybeSingle<ReviewRow>()
     : await base
-        .order("created_at", { ascending: false })
+        .eq("exam_status", "prod")
+        .is("built_for", null)
+        .order(DEFAULT_PAPER_ORDER.column, {
+          ascending: DEFAULT_PAPER_ORDER.ascending,
+        })
         .limit(1)
         .maybeSingle<ReviewRow>();
 

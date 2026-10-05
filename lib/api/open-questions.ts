@@ -264,8 +264,12 @@ export type AnswerState = {
  * the score: the insert policy requires it to arrive NULL. Nor is the attempt
  * number: the database counts the student's earlier submissions and stamps it.
  *
- * Calling this again for the same question is allowed and files another row —
- * nothing rejects a re-sitting.
+ * Re-sitting the same question files another row, but only while the student
+ * has marking allowance left on it: the server refuses the submit once
+ * OPEN_QUESTION_MAX_GRADES completed markings have been spent on that task,
+ * answering `{ ok: false, reason: "grade_limit", grades_used, grades_limit }`.
+ * The refusal happens BEFORE the answer is stored, so a student is never left
+ * holding a receipt for something that will not be marked.
  */
 export async function submitAnswer(
   questionId: string,

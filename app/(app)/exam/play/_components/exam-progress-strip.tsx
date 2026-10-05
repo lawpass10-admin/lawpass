@@ -1,5 +1,8 @@
 "use client";
 
+import * as React from "react";
+
+import { useIsMobile } from "@/hooks/use-mobile";
 import { cn } from "@/lib/utils";
 
 /**
@@ -39,6 +42,12 @@ type Props = {
    * numbering is meant to be a whole paper you take in at a glance, and a strip
    * that scrolls hides the far end of it. With `fit` the cells give up their
    * minimum width and compress instead — a row you can always see end to end.
+   *
+   * IGNORED ON PHONES. Compressing assumes there is width to share out. At
+   * 375px, 40 cells and their gaps leave about 7px each — narrower than the
+   * two-digit number inside them, so the row became an unreadable smear and
+   * the taps landed on the wrong question. Below the mobile breakpoint the
+   * strip scrolls instead, which is the trade /exam already makes.
    */
   fit?: boolean;
   /** Merged last, so a caller can override the strip's own padding —
@@ -77,6 +86,26 @@ export function ExamProgressStrip({
   fit = false,
   className,
 }: Props) {
+  // See `fit` above: compressing needs width to share, and a phone has none.
+  const isMobile = useIsMobile();
+  const compress = fit && !isMobile;
+
+  /**
+   * Keep the current cell on screen while the strip scrolls.
+   *
+   * Without this the scrolling mode is only half a fix: answering forward from
+   * question 12 leaves the strip showing 1–12 and the cell you are actually on
+   * off the right edge, so the one thing the strip is for — where am I in the
+   * paper — is the one thing it stops saying. `nearest` rather than `center`
+   * so it only moves when it has to, and `inline` because the row is
+   * horizontal; `block: "nearest"` keeps it from dragging the page vertically.
+   */
+  const currentRef = React.useRef<HTMLButtonElement | null>(null);
+  React.useEffect(() => {
+    if (compress) return; // nothing scrolls, nothing to bring into view
+    currentRef.current?.scrollIntoView({ inline: "nearest", block: "nearest" });
+  }, [current, compress]);
+
   return (
     <div
       className={cn(
@@ -87,8 +116,15 @@ export function ExamProgressStrip({
     >
       <div
         className={cn(
-          "flex justify-between gap-1",
-          fit ? "overflow-x-hidden" : "overflow-x-auto"
+          "flex gap-1",
+          // Spread across the row only when the cells are sharing it. A
+          // scrolling row has no spare space, and `justify-between` on an
+          // overflowing flex container pushes the first cell out of reach in
+          // RTL — the row could not be scrolled back to question 1.
+          compress ? "justify-between overflow-x-hidden" : "justify-start overflow-x-auto",
+          // Momentum scrolling on iOS, and no rubber-banding of the page
+          // behind the strip while the finger is on it.
+          !compress && "[-webkit-overflow-scrolling:touch] overscroll-x-contain"
         )}
       >
         {Array.from({ length: total }).map((_, i) => {
@@ -97,6 +133,7 @@ export function ExamProgressStrip({
           return (
             <button
               key={i}
+              ref={i === current ? currentRef : undefined}
               type="button"
               onClick={() => !disabled && onJump(i)}
               disabled={disabled}
@@ -106,7 +143,7 @@ export function ExamProgressStrip({
                 "h-6 rounded font-mono text-[10px] font-semibold tabular-nums transition-all",
                 // Fixed 24px and never shrinking by default; under `fit` the
                 // cell drops its floor and shares the row instead.
-                fit ? "min-w-0 flex-1 basis-0" : "w-6 min-w-6 shrink-0",
+                compress ? "min-w-0 flex-1 basis-0" : "w-6 min-w-6 shrink-0",
                 "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-300",
                 status === "current" &&
                   "bg-white text-[#0a2624] outline outline-2 outline-amber-400 ring-2 ring-amber-300",

@@ -15,6 +15,7 @@ import {
   YAxis,
 } from "recharts";
 
+import { useIsMobile } from "@/hooks/use-mobile";
 import type { TopicStat } from "@/lib/dashboard/topic-stat";
 
 /**
@@ -64,6 +65,21 @@ const OTHER = "אחר";
  * "משפט חוקתי ומנהלי" — without truncation.
  */
 const LABEL_GUTTER = 220;
+
+/**
+ * The same gutter on a phone.
+ *
+ * 220 is most of a 375px screen: the card's inner width there is about 300px,
+ * so the label column was taking three quarters of it and the bars were drawn
+ * into the ~80px left over — unreadable, and the longest names overflowed the
+ * card. 112 leaves roughly 190px of plot, which is enough for a bar to show a
+ * length worth comparing. The names are shortened to match (SHORT_LABEL_MOBILE).
+ */
+const LABEL_GUTTER_MOBILE = 112;
+
+/** How many characters of a bucket name survive, by screen. */
+const SHORT_LABEL_DESKTOP = 26;
+const SHORT_LABEL_MOBILE = 14;
 
 /**
  * The pass line drawn across the score chart.
@@ -146,19 +162,25 @@ function CategoryTick(props: {
   x?: number;
   y?: number;
   payload?: { value?: string };
+  /** Phone widths: a narrower gutter, so the name has to be cut to match. */
+  compact?: boolean;
 }) {
-  const { x = 0, y = 0, payload } = props;
+  const { x = 0, y = 0, payload, compact = false } = props;
+  const text = payload?.value ?? "";
   return (
     <text
-      x={x + 10}
+      x={x + (compact ? 6 : 10)}
       y={y}
       dy={4}
       textAnchor="start"
-      fontSize={13}
+      fontSize={compact ? 11.5 : 13}
       fill="var(--color-ink-dim)"
       style={{ unicodeBidi: "plaintext" }}
     >
-      {payload?.value ?? ""}
+      {/* Cut HERE as well as in shortLabel: the pie's legend and this axis get
+          different amounts of room, and a name that fits one can overrun the
+          other. Without this the long names simply drew past the card edge. */}
+      {compact ? shortLabel(text, SHORT_LABEL_MOBILE) : text}
     </text>
   );
 }
@@ -342,6 +364,24 @@ export function TopicCharts({
   /** What `scoreRows` are grouped by, for that card's heading. */
   scoreDimensionLabel?: string;
 }) {
+  /**
+   * PHONES GET DIFFERENT NUMBERS, NOT A SMALLER COPY.
+   *
+   * recharts sizes its plot from pixel values, so the parts that were fixed —
+   * the pie's radii and the bar's label gutter — did not shrink with the card
+   * and were simply clipped by it. `width="100%"` on the container makes the
+   * BOX responsive; what is drawn inside it still has to be told.
+   *
+   * ABOVE THE EMPTY-STATE RETURN, because hooks cannot be called conditionally
+   * — this sat next to the other chart measurements below and tripped
+   * react-hooks/rules-of-hooks, which would have been a real crash the first
+   * time a tab went from having rows to having none.
+   *
+   * SSR-safe: false on the server, so the first paint is the desktop layout
+   * and it corrects on hydration.
+   */
+  const isMobile = useIsMobile();
+
   if (rows.length === 0) {
     return (
       <div
@@ -422,7 +462,16 @@ export function TopicCharts({
   // legend to nine visible entries out of thirteen — the chart was hiding its
   // own data. 30px a row is the floor at which a Hebrew label stays legible.
   const barHeight = Math.max(300, drawn.length * 30 + 40);
-  const pieHeight = Math.max(320, pieData.length * 26 + 90);
+  // On a phone the legend moves below the pie instead of beside it, so the box
+  // has to be tall enough for both: the circle plus a row per entry.
+  const pieHeight = isMobile
+    ? Math.max(300, 210 + pieData.length * 22)
+    : Math.max(320, pieData.length * 26 + 90);
+
+  // The circle itself. 104 is a 208px diameter, which on a 375px screen left
+  // nothing for the legend beside it and overflowed the card.
+  const pieOuter = isMobile ? 76 : 104;
+  const pieInner = isMobile ? 44 : 58;
 
   // The bar shows real laws only, best-scoring first so the weakest sit at the
   // bottom where the eye finishes.
@@ -473,9 +522,11 @@ export function TopicCharts({
                 dataKey="questions"
                 nameKey="topic"
                 cx="50%"
-                cy="50%"
-                innerRadius={58}
-                outerRadius={104}
+                // With the legend underneath, the circle sits in the upper part
+                // of the box rather than the middle of it.
+                cy={isMobile ? 105 : "50%"}
+                innerRadius={pieInner}
+                outerRadius={pieOuter}
                 paddingAngle={1.5}
                 stroke={surface ?? "var(--card)"}
                 strokeWidth={2}
@@ -491,15 +542,25 @@ export function TopicCharts({
                 contentStyle={TOOLTIP_STYLE}
                 formatter={(value, name) => [`${asNumber(value)} שאלות`, String(name)]}
               />
+              {/* BESIDE THE PIE ON DESKTOP, UNDER IT ON A PHONE. A vertical
+                  legend to the left takes horizontal space the circle needs;
+                  at 375px the two together were wider than the card and the
+                  pie was cut off. Stacked, each has the full width. */}
               <Legend
-                layout="vertical"
-                align="left"
-                verticalAlign="middle"
+                layout={isMobile ? "horizontal" : "vertical"}
+                align={isMobile ? "center" : "left"}
+                verticalAlign={isMobile ? "bottom" : "middle"}
                 iconType="circle"
                 iconSize={10}
                 formatter={(value: string) => (
-                  <span style={{ fontSize: 13, color: "var(--color-ink-dim)", lineHeight: 1.7 }}>
-                    {shortLabel(value, 26)}
+                  <span
+                    style={{
+                      fontSize: isMobile ? 12 : 13,
+                      color: "var(--color-ink-dim)",
+                      lineHeight: 1.7,
+                    }}
+                  >
+                    {shortLabel(value, isMobile ? SHORT_LABEL_MOBILE : SHORT_LABEL_DESKTOP)}
                   </span>
                 )}
               />
@@ -572,8 +633,8 @@ export function TopicCharts({
                 type="category"
                 dataKey="label"
                 orientation="right"
-                width={LABEL_GUTTER}
-                tick={<CategoryTick />}
+                width={isMobile ? LABEL_GUTTER_MOBILE : LABEL_GUTTER}
+                tick={<CategoryTick compact={isMobile} />}
                 axisLine={false}
                 tickLine={false}
               />
