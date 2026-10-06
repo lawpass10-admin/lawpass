@@ -3,6 +3,8 @@
 import { Search, X } from "lucide-react";
 import { useMemo, useState } from "react";
 
+import { useIsNarrow } from "@/app/(app)/_components/use-is-narrow";
+
 import type { StudyDoc, StudySection } from "@/lib/db/study-material";
 
 /** The verbatim half of the union — sections of prose, not groups of pairs. */
@@ -69,8 +71,16 @@ function leafLabel(heading: string, stem: string): string {
 /** A stage of the authored guide: "שלב 3: …" belongs with what precedes it. */
 const STAGE = /^שלב\s*\d/;
 
-/** "פרק ראשון", "פרק א׳", "פרק ג" — the marker, not the title after it. */
-const CHAPTER_MARKER = /^(.*?)(פרק\s+[^\s:,־–—]+)(.*)$/;
+/**
+ * "פרק ראשון", "פרק א׳", "פרק ג" — the marker, not the title after it.
+ *
+ * "סעיפים כלליים" counts as one. It is what load-converted-material.mjs calls
+ * the sections a law files under no chapter, and there are 34 of them across
+ * the sixteen books. Without it those rows alone had nothing to bold and
+ * nothing to lead with on a phone, so they sat out of line with every other
+ * entry in the same list — which is the one thing a contents list must not do.
+ */
+const CHAPTER_MARKER = /^(.*?)(פרק\s+[^\s:,־–—]+|סעיפים כלליים)(.*)$/;
 
 /**
  * A rail entry with its chapter marker picked out.
@@ -84,13 +94,43 @@ const CHAPTER_MARKER = /^(.*?)(פרק\s+[^\s:,־–—]+)(.*)$/;
  * booklets have headings like "דברי הסבר" that this must not touch.
  */
 function ChapterLabel({ text }: { text: string }) {
+  const narrow = useIsNarrow();
   const match = text.match(CHAPTER_MARKER);
   if (!match) return <>{text}</>;
   const [, before, marker, after] = match;
+  const markerEl = (
+    <span style={{ color: "var(--color-navy-ink)", fontWeight: 700 }}>{marker}</span>
+  );
+
+  // ON A PHONE THE MARKER LEADS.
+  //
+  // `leafLabel` strips only the part of the law name the group heading already
+  // shows, so what is left in front of the chapter is the REST of that name —
+  // "(אתיקה מקצועית), התשמ״ו — פרק א׳: פרשנות". On a wide rail that reads
+  // fine. On a 360px column every entry wraps to two or three lines and the
+  // one word distinguishing them, "פרק א׳", lands somewhere in the middle of
+  // the second line. Scanning the list means reading all of it.
+  //
+  // Leading with the marker puts the thing you are looking for at the start of
+  // every row — the inline-start edge, which in RTL is the right — and demotes
+  // the law's tail to the end, where it is context rather than an obstacle.
+  if (narrow && before.trim()) {
+    // The dash belonged between the law and the chapter; moving the chapter in
+    // front of it would leave it dangling at the start.
+    const tail = before.replace(/\s*[—–-]\s*$/, "").trim();
+    return (
+      <>
+        {markerEl}
+        {after}
+        {tail ? <span className="text-muted-foreground"> — {tail}</span> : null}
+      </>
+    );
+  }
+
   return (
     <>
       {before}
-      <span style={{ color: "var(--color-navy-ink)", fontWeight: 700 }}>{marker}</span>
+      {markerEl}
       {after}
     </>
   );

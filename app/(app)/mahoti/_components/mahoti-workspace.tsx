@@ -43,15 +43,21 @@ const FIT: FitBounds = { maxPx: 15, minPx: 13, answersMinPx: 10 };
 /**
  * The same question on a phone, where this screen is far tighter than /diuni.
  *
- * The notebook sits ABOVE the question on a narrow viewport (flex-col-reverse)
- * and takes 40% of the height, so the question and its four options share what
- * is left of a phone screen. At the desktop floors the options were not merely
- * small — they were off the bottom of a clipped box, with no way to reach them.
+ * ── Why the floors are nearly the desktop's, not far below them ────────────
+ * They used to be 8.5 / 8. The idea was to keep shrinking until the four
+ * options fit without a scrollbar, and on a phone that is a race the type
+ * loses: a long fact pattern drove the options down to a size nobody reads,
+ * and the box scrolled anyway once even 8px would not fit.
  *
- * Lower floors plus a scrollbar on the question column, which is the fix asked
- * for: the notebook keeps its share, and the options are always reachable.
+ * The phone now does the opposite, deliberately (PM request): the question
+ * column gets LESS of the screen, holds a readable size, and SCROLLS for the
+ * rest — see the notebook's share below. So the floors here are about staying
+ * legible, not about avoiding a scrollbar, which is why 12 and 11 rather than
+ * 8.5 and 8. Scrolling to compare the four options is the accepted cost; it is
+ * the trade the desktop still refuses, where the fit pass is what keeps the
+ * whole question in one look.
  */
-const FIT_NARROW: FitBounds = { maxPx: 14, minPx: 8.5, answersMinPx: 8 };
+const FIT_NARROW: FitBounds = { maxPx: 14, minPx: 12, answersMinPx: 11 };
 
 /**
  * The דיון מהותי study screen: the paper on the left, the notebook it was
@@ -263,11 +269,22 @@ export function MahotiWorkspace({ set }: { set: MahotiSet }) {
             disagree with it by a header's worth of pixels. */}
         <aside
           aria-label="מחברת החקיקה"
-          // 40% of a phone screen for the notebook left the question and its
-          // four options sharing the other 60% — which is where the options
-          // went. The notebook is reference material and scrolls in place; the
-          // question is the thing being answered, so it gets the larger share.
-          className="min-h-0 shrink-0 basis-[32%] lg:h-full lg:w-[calc(50%-0.5rem)] lg:basis-auto"
+          // ON A PHONE THE NOTEBOOK TAKES THE LARGER SHARE (55%), which is the
+          // reverse of what this was. It went 40% → 32% on the reasoning that
+          // the question is the thing being answered, so it should get the
+          // room — but in practice a 32% notebook on a phone shows about four
+          // lines of statute, which is too little to read a section in, and the
+          // candidate ends up scrolling a tiny window the whole sitting.
+          //
+          // Both panes scroll in place, so neither is ever cut off; the only
+          // question is which one you scroll MORE. A statute is read in long
+          // passages and a question is read once and then compared against four
+          // short options, so the long-form reading gets the bigger window.
+          //
+          // One number to tune: basis-[55%]. It must stay a literal class —
+          // Tailwind scans source text, so an interpolated value compiles to
+          // nothing. lg: is untouched; the desktop split is still even.
+          className="min-h-0 shrink-0 basis-[55%] lg:h-full lg:w-[calc(50%-0.5rem)] lg:basis-auto"
         >
           {/* Sibling of the question column, not a child of it, so the
               notebook's own page state survives moving between questions —
@@ -295,11 +312,17 @@ export function MahotiWorkspace({ set }: { set: MahotiSet }) {
             ) : null}
           </div>
 
-          {/* No scrollbar by design — `useFitToBox` above steps the type down
-              until the fact pattern and all four options clear this box, so
-              the whole question is readable in one look. `overflow-hidden` is
-              the backstop for the case where even the 13px floor is not
-              enough; the strip's question numbers remain the way out. */}
+          {/* DESKTOP: no scrollbar by design — `useFitToBox` above steps the
+              type down until the fact pattern and all four options clear this
+              box, so the whole question is readable in one look.
+              `overflow-hidden` is the backstop for the case where even the
+              13px floor is not enough; the strip's question numbers remain the
+              way out.
+
+              PHONE: the opposite. This box is now the smaller of the two panes
+              and scrolls at a readable size instead of shrinking to fit — see
+              FIT_NARROW. The fit pass still runs, but between 14px and 12px it
+              is trimming rather than cramming. */}
           <div
             ref={fitRef}
             // Scrolls on a phone, clips on a desktop — see diuni-workspace.tsx
