@@ -1,13 +1,23 @@
 /**
  * The candidate's own filed exams, for /exam-archive — one list per subject.
  *
- * TWO CLIENTS, AND WHICH ONE READS WHAT IS THE AUTHORIZATION.
+ * TWO CLIENTS, AND EVERY READ IS SCOPED TO THE CALLER BY ID.
  *
- *   * The answer rows are read through the SSR client. mahoti_answers,
- *     diuni_answers and open_question_answers all carry a
- *     students-select-own policy, so RLS scopes every read to
- *     `user_id = auth.uid()` — there is no user id parameter here, and there
- *     must never be one.
+ *   * The answer rows are read through the SSR client AND filtered by
+ *     `user_id`. RLS alone is not enough here: mahoti_answers, diuni_answers
+ *     and open_question_answers each carry a students-select-own policy *and*
+ *     an `admins_select USING is_admin()` policy, and policies are OR-ed. For
+ *     an admin the first one therefore stops narrowing anything and an
+ *     unfiltered read returns THE ENTIRE COHORT.
+ *
+ *     That is exactly what happened: an admin opening /exam-archive was shown
+ *     every candidate's sittings as their own — 8 מהותי and 7 דיוני against a
+ *     user with none — with every row linking into another candidate's review
+ *     page. The dashboard, which filters by user_id, correctly showed zero,
+ *     and the mismatch between the two screens is how it surfaced.
+ *
+ *     The filter narrows, never widens: it is the signed-in caller's own id,
+ *     so a non-admin sees exactly what RLS would have given them anyway.
  *   * Writing-task TITLES are read through the service-role client. That read
  *     is keyed only by ids taken from the caller's own rows, and only a title
  *     comes back — so it can reach no task the candidate has not sat, and
@@ -96,6 +106,7 @@ function percent(score: number): string {
  * newest row is always number `count`, whatever the cap cut off below it.
  */
 async function listMcq(
+  userId: string,
   answersTable: "mahoti_answers" | "diuni_answers",
   route: "/mahoti/review" | "/diuni/review",
   subject: string
@@ -104,6 +115,10 @@ async function listMcq(
   const { data, error, count } = await supabase
     .from(answersTable)
     .select("answer_id, question_id, attempts, answer_score, created_at", { count: "exact" })
+    // See the header: the admins_select policy makes RLS alone insufficient,
+    // and `count: "exact"` below counts what the filter leaves, so the sitting
+    // numbers are the candidate's own history rather than the cohort's.
+    .eq("user_id", userId)
     .order("created_at", { ascending: false })
     .limit(PER_SUBJECT)
     .returns<McqAnswerRow[]>();
@@ -124,11 +139,15 @@ async function listMcq(
   }));
 }
 
-async function listWriting(): Promise<ArchiveEntry[]> {
+async function listWriting(userId: string): Promise<ArchiveEntry[]> {
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("open_question_answers")
     .select("answer_id, open_question_id, attempt_number, grading_status, score, created_at")
+    // Same reason as listMcq: open_question_answers carries an admins_select
+    // policy too, so without this an admin's archive listed 47 writing tasks
+    // against the 14 they had actually filed.
+    .eq("user_id", userId)
     .order("created_at", { ascending: false })
     .limit(PER_SUBJECT)
     .returns<WritingAnswerRow[]>();
@@ -187,27 +206,23 @@ type ExamSessionArchiveRow = {
 /**
  * Completed runs of the timed simulation.
  *
- * THE ONE READ IN THIS FILE THAT FILTERS BY USER ID, and deliberately so.
- * Everywhere else RLS is the whole authorization story, but `exam_sessions`
- * carries a second policy — `admins_view_exam_sessions` grants an admin
- * SELECT over every row. Without the filter an admin opening their own
- * archive would be handed the entire cohort's sittings. The filter is scoped
- * to the signed-in caller's id, so it narrows, never widens.
+ * This read was the ONLY one here that filtered by user id, because
+ * `exam_sessions` was the only table whose admin policy anyone had noticed —
+ * `admins_view_exam_sessions` grants an admin SELECT over every row. The same
+ * was true of the other three tables all along; see the header for what that
+ * cost. The reasoning written here was right, it was just not applied widely
+ * enough, and now every read in this file carries the filter.
  *
  * Only completed sittings appear: an abandoned or still-running one has no
  * result to show, and a live one belongs in the player, not the archive.
  */
-async function listSimulations(): Promise<ArchiveEntry[]> {
+async function listSimulations(userId: string): Promise<ArchiveEntry[]> {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return [];
 
   const { data, error, count } = await supabase
     .from("exam_sessions")
     .select("id, mode, final_score, completed_at", { count: "exact" })
-    .eq("user_id", user.id)
+    .eq("user_id", userId)
     .eq("status", "completed")
     .order("completed_at", { ascending: false })
     .limit(PER_SUBJECT)
@@ -238,13 +253,33 @@ async function listSimulations(): Promise<ArchiveEntry[]> {
   });
 }
 
-/** Every sitting the signed-in candidate has filed, newest first, per subject. */
+/** An archive with nothing in it — what a caller with no session gets. */
+const EMPTY: ExamArchive = { mahoti: [], diuni: [], writing: [], simulation: [] };
+
+/**
+ * Every sitting the signed-in candidate has filed, newest first, per subject.
+ *
+ * The caller is resolved ONCE here and handed to each lister, rather than each
+ * one asking for itself. That is what makes "scoped to the caller" checkable
+ * by reading this function: there is exactly one place the id comes from, it
+ * comes from the session and never from an argument, and no lister can be
+ * added later that forgets to ask.
+ */
 export async function getMyExamArchive(): Promise<ExamArchive> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  // The page is behind the (app) layout's auth gate, so this should not
+  // happen. Returning an empty archive rather than throwing keeps a session
+  // that expired between the gate and this read from becoming an error page.
+  if (!user) return EMPTY;
+
   const [mahoti, diuni, writing, simulation] = await Promise.all([
-    listMcq("mahoti_answers", "/mahoti/review", "דין מהותי"),
-    listMcq("diuni_answers", "/diuni/review", "דין דיוני"),
-    listWriting(),
-    listSimulations(),
+    listMcq(user.id, "mahoti_answers", "/mahoti/review", "דין מהותי"),
+    listMcq(user.id, "diuni_answers", "/diuni/review", "דין דיוני"),
+    listWriting(user.id),
+    listSimulations(user.id),
   ]);
   return { mahoti, diuni, writing, simulation };
 }

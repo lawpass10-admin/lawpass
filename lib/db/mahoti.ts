@@ -698,9 +698,21 @@ export type MahotiSittingSummary = {
 export async function getMyMahotiSittings(): Promise<Record<string, MahotiSittingSummary>> {
   const supabase = await createClient();
 
+  // Scoped by user_id, NOT by RLS alone. `mahoti_answers` carries
+  // `mahoti_answers_admins_select USING is_admin()` beside the students-own
+  // policy, and policies are OR-ed — so for an admin the students-own one
+  // stops narrowing anything and this returned every candidate's sittings,
+  // badging the paper picker with other people's scores. Same root cause as
+  // the /exam-archive bug; see lib/db/exam-archive.ts.
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return {};
+
   const { data, error } = await supabase
     .from("mahoti_answers")
-    .select("question_id, answer_score");
+    .select("question_id, answer_score")
+    .eq("user_id", user.id);
 
   // A failure here costs the picker its badges, not its list. Throwing would
   // take down a page that works perfectly well without this.
@@ -722,11 +734,15 @@ export async function getMyMahotiSittings(): Promise<Record<string, MahotiSittin
  * One of the caller's OWN sittings, by id.
  *
  * Read through the SSR client, not the service-role client the rest of this
- * module uses — and that difference is the authorization. `mahoti_answers` has
- * a students-select-own policy (20260826000001), so RLS scopes this to
- * `user_id = auth.uid()`: someone else's answer id simply returns no row. That
- * is why there is no ownership check in this function, and why there must not
- * be a service-role read here.
+ * module uses, AND filtered by user_id.
+ *
+ * The filter is not belt-and-braces here. This used to rely on the
+ * students-select-own policy alone, on the reasoning that someone else's
+ * answer id simply returns no row — which is true for a candidate and false
+ * for an admin, because `mahoti_answers_admins_select USING is_admin()` sits
+ * beside it and policies are OR-ed. The id arrives from the query string, so
+ * without the filter an admin could open any candidate's marked paper by
+ * pasting an id — and /exam-archive was handing them those ids.
  *
  * Null covers every miss — no such id, a malformed one, or a row belonging to
  * another candidate — on purpose: a caller probing ids learns nothing about
@@ -738,10 +754,16 @@ export async function getMahotiAttempt(
 ): Promise<MahotiAttempt | null> {
   const supabase = await createClient();
 
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return null;
+
   const { data, error } = await supabase
     .from("mahoti_answers")
     .select("answer_id, question_id, attempts, answer_score, answer_body")
     .eq("answer_id", answerId)
+    .eq("user_id", user.id)
     .maybeSingle<AttemptRow>();
 
   // A malformed uuid is a Postgres cast error rather than an empty result.

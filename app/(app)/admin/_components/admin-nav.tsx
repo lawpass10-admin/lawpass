@@ -9,6 +9,7 @@ const NAV_ITEMS = [
   { href: "/admin", label: "תוכן" },
   { href: "/admin/users", label: "משתמשים" },
   { href: "/admin/qa", label: "QA" },
+  { href: "/admin/usage", label: "שימוש" },
 ] as const;
 
 /**

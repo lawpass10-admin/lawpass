@@ -511,7 +511,7 @@ const { describeStoredFailure } = require("../lib/ai/diagnose-error");
  * borrowed id is simply "not found".
  */
 async function getAnswer(req, res) {
-  const answer = await db.getAnswerForUser(req.supabase, req.params.id);
+  const answer = await db.getAnswerForUser(req.supabase, req.params.id, req.user.id);
   if (!answer) {
     console.info(`[open-questions] answer MISS user=${req.user.id} id=${req.params.id}`);
     return res.json({ ok: false, error: "התשובה לא נמצאה" });
@@ -575,7 +575,7 @@ async function getAnswer(req, res) {
 const MARKING_FINISHED = new Set(["graded", "failed"]);
 
 async function getSolution(req, res) {
-  const answer = await db.getAnswerForUser(req.supabase, req.params.id);
+  const answer = await db.getAnswerForUser(req.supabase, req.params.id, req.user.id);
   if (!answer) {
     console.info(
       `[open-questions] solution MISS user=${req.user.id} id=${req.params.id}`
@@ -633,7 +633,7 @@ const gradingDb = require("../db/grading");
  * status rather than an error, so a double click or a stale tab just resumes.
  */
 async function regradeAnswer(req, res) {
-  const answer = await db.getAnswerForUser(req.supabase, req.params.id);
+  const answer = await db.getAnswerForUser(req.supabase, req.params.id, req.user.id);
   if (!answer) {
     console.info(`[open-questions] regrade MISS user=${req.user.id} id=${req.params.id}`);
     return res.json({ ok: false, error: "התשובה לא נמצאה" });

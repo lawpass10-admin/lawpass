@@ -1,6 +1,7 @@
-import { NextResponse, type NextRequest } from "next/server";
+import { NextResponse, type NextFetchEvent, type NextRequest } from "next/server";
 
 import { updateSession } from "@/lib/supabase/middleware";
+import { deviceOf, normalisePath, recordUsage } from "@/lib/usage/record";
 
 // Auth-group routes an authenticated user should be bounced away from.
 // /onboarding/complete-profile is excluded — an authed user with no profile
@@ -44,9 +45,33 @@ const PUBLIC_PATHS = new Set([
   "/terms",
 ]);
 
-export async function proxy(request: NextRequest): Promise<NextResponse> {
+export async function proxy(
+  request: NextRequest,
+  event?: NextFetchEvent
+): Promise<NextResponse> {
   const { user, response } = await updateSession(request);
   const { pathname } = request.nextUrl;
+
+  // COUNTED HERE BECAUSE THIS IS THE ONE PLACE EVERY REQUEST PASSES.
+  //
+  // `event.waitUntil` keeps the count off the response's critical path: the
+  // redirect or the page goes out immediately and the POST finishes after. The
+  // `event` argument is optional so the existing tests, which call proxy() with
+  // a request alone, keep working — without it the count is simply skipped
+  // rather than awaited, because a page must never wait on analytics.
+  //
+  // The matcher below already excludes _next/static, images and the other
+  // asset extensions, so what reaches here is pages and route handlers — which
+  // is exactly what "which endpoints are used" means.
+  if (event) {
+    event.waitUntil(
+      recordUsage({
+        surface: "web",
+        device: deviceOf(request.headers.get("user-agent")),
+        path: normalisePath(pathname),
+      })
+    );
+  }
 
   if (user && AUTH_BOUNCE_PATHS.has(pathname)) {
     const url = request.nextUrl.clone();

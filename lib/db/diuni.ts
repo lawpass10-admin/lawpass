@@ -621,20 +621,33 @@ type AttemptRow = {
  * One of the caller's OWN sittings, by id.
  *
  * Read through the SSR client, not the service-role client the rest of this
- * module uses — and that difference is the authorization. `diuni_answers` has a
- * students-select-own policy, so RLS scopes this to `user_id = auth.uid()`:
- * someone else's answer id simply returns no row. Null covers every miss on
- * purpose, so a caller probing ids learns nothing about which ones exist.
+ * module uses, AND filtered by user_id.
+ *
+ * The filter is not belt-and-braces here. This used to rely on the
+ * students-select-own policy alone, on the reasoning that someone else's
+ * answer id simply returns no row — true for a candidate, false for an admin,
+ * because `diuni_answers_admins_select USING is_admin()` sits beside it and
+ * policies are OR-ed. The id arrives from the query string, so without the
+ * filter an admin could open any candidate's marked paper by pasting an id.
+ *
+ * Null covers every miss on purpose, so a caller probing ids learns nothing
+ * about which ones exist.
  */
 export async function getDiuniAttempt(
   answerId: string
 ): Promise<DiuniAttempt | null> {
   const supabase = await createClient();
 
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return null;
+
   const { data, error } = await supabase
     .from("diuni_answers")
     .select("answer_id, question_id, attempts, answer_score, answer_body")
     .eq("answer_id", answerId)
+    .eq("user_id", user.id)
     .maybeSingle<AttemptRow>();
 
   // A malformed uuid is a Postgres cast error rather than an empty result. It

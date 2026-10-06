@@ -1,6 +1,8 @@
 "use strict";
 
 const express = require("express");
+
+const { usageTracking } = require("./middleware/usage");
 const cors = require("cors");
 
 const { env } = require("./config/env");
@@ -21,6 +23,10 @@ app.use((req, _res, next) => {
   console.info(`[server] :${env.port} ${req.method} ${req.originalUrl}`);
   next();
 });
+
+// Counts each request by device and endpoint, after the response is sent.
+// See middleware/usage.js — it never delays or fails a request.
+app.use(usageTracking);
 
 // Liveness probe — unauthenticated.
 app.get("/health", (_req, res) =>

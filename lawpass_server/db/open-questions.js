@@ -177,17 +177,21 @@ async function insertAnswer(
 /**
  * One of the caller's own submissions, with its grading state and score.
  *
- * Runs under the caller's RLS client on purpose: open_question_answers_students_select
- * scopes to `user_id = auth.uid()`, so a student polling someone else's answer id
- * gets nothing back and learns nothing about whether it exists. There is no
- * ownership check in this file for the same reason there is none in the others —
- * the database is doing it.
+ * Runs under the caller's RLS client AND filters by user_id.
+ *
+ * The filter is load-bearing, not defence in depth. This used to rely on
+ * open_question_answers_students_select_own alone, so that someone polling
+ * another candidate's answer id got nothing back — true for a student, false
+ * for an admin: `open_question_answers_admins_select USING is_admin()` sits
+ * beside it, and RLS policies are OR-ed. The id comes straight off the URL, so
+ * without this an admin could read any candidate's submission and its marking
+ * through /answers/:id — and re-queue it through /answers/:id/regrade.
  *
  * `answer_body` is returned so the results screen can show what was submitted
  * beside the marking; `grading_error` is NOT — a model error message is
  * diagnostics for us, not feedback for a student.
  */
-async function getAnswerForUser(supabase, answerId) {
+async function getAnswerForUser(supabase, answerId, userId) {
   const { data, error } = await supabase
     .from("open_question_answers")
     .select(
@@ -197,6 +201,7 @@ async function getAnswerForUser(supabase, answerId) {
       "answer_id, open_question_id, attempt_number, answer_body, hand_writing, score, grading_status, grading_error, created_at, graded_at"
     )
     .eq("answer_id", answerId)
+    .eq("user_id", userId)
     .maybeSingle();
 
   if (error) throw error;
