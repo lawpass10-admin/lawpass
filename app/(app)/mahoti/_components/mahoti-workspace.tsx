@@ -50,14 +50,20 @@ const FIT: FitBounds = { maxPx: 15, minPx: 13, answersMinPx: 10 };
  * and the box scrolled anyway once even 8px would not fit.
  *
  * The phone now does the opposite, deliberately (PM request): the question
- * column gets LESS of the screen, holds a readable size, and SCROLLS for the
- * rest — see the notebook's share below. So the floors here are about staying
- * legible, not about avoiding a scrollbar, which is why 12 and 11 rather than
- * 8.5 and 8. Scrolling to compare the four options is the accepted cost; it is
- * the trade the desktop still refuses, where the fit pass is what keeps the
- * whole question in one look.
+ * column gets LESS of the screen — about a third of it — holds a readable
+ * size, and SCROLLS for the rest. See the notebook's share below.
+ *
+ * So on a phone this pass barely does anything, and that is the point. It
+ * steps 14 → 13 and stops; the two-stage shrink that lets the options go
+ * smaller than the question is switched off by setting both floors to 13,
+ * because shrinking the options buys nothing once the box is scrolling
+ * anyway — it only makes the thing you are comparing harder to read.
+ *
+ * Scrolling to compare the four options is the accepted cost here. It is the
+ * trade the desktop still refuses, where the fit pass earns its keep by
+ * keeping the whole question in one look.
  */
-const FIT_NARROW: FitBounds = { maxPx: 14, minPx: 12, answersMinPx: 11 };
+const FIT_NARROW: FitBounds = { maxPx: 14, minPx: 13, answersMinPx: 13 };
 
 /**
  * The דיון מהותי study screen: the paper on the left, the notebook it was
@@ -281,10 +287,15 @@ export function MahotiWorkspace({ set }: { set: MahotiSet }) {
           // passages and a question is read once and then compared against four
           // short options, so the long-form reading gets the bigger window.
           //
-          // One number to tune: basis-[55%]. It must stay a literal class —
+          // 68% after two rounds of looking at it on a real handset: 32% was
+          // the original, 55% was still not enough statute on screen to read a
+          // section without scrolling the window itself. The notebook is now
+          // roughly where the question column used to be, and vice versa.
+          //
+          // One number to tune: basis-[68%]. It must stay a literal class —
           // Tailwind scans source text, so an interpolated value compiles to
           // nothing. lg: is untouched; the desktop split is still even.
-          className="min-h-0 shrink-0 basis-[55%] lg:h-full lg:w-[calc(50%-0.5rem)] lg:basis-auto"
+          className="min-h-0 shrink-0 basis-[68%] lg:h-full lg:w-[calc(50%-0.5rem)] lg:basis-auto"
         >
           {/* Sibling of the question column, not a child of it, so the
               notebook's own page state survives moving between questions —

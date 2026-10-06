@@ -3,8 +3,6 @@
 import { Search, X } from "lucide-react";
 import { useMemo, useState } from "react";
 
-import { useIsNarrow } from "@/app/(app)/_components/use-is-narrow";
-
 import type { StudyDoc, StudySection } from "@/lib/db/study-material";
 
 /** The verbatim half of the union — sections of prose, not groups of pairs. */
@@ -94,7 +92,6 @@ const CHAPTER_MARKER = /^(.*?)(פרק\s+[^\s:,־–—]+|סעיפים כלליי
  * booklets have headings like "דברי הסבר" that this must not touch.
  */
 function ChapterLabel({ text }: { text: string }) {
-  const narrow = useIsNarrow();
   const match = text.match(CHAPTER_MARKER);
   if (!match) return <>{text}</>;
   const [, before, marker, after] = match;
@@ -102,36 +99,49 @@ function ChapterLabel({ text }: { text: string }) {
     <span style={{ color: "var(--color-navy-ink)", fontWeight: 700 }}>{marker}</span>
   );
 
-  // ON A PHONE THE MARKER LEADS.
+  // BOTH ORDERS IN THE MARKUP, ONE SHOWN AT A TIME BY CSS.
   //
-  // `leafLabel` strips only the part of the law name the group heading already
-  // shows, so what is left in front of the chapter is the REST of that name —
-  // "(אתיקה מקצועית), התשמ״ו — פרק א׳: פרשנות". On a wide rail that reads
-  // fine. On a 360px column every entry wraps to two or three lines and the
-  // one word distinguishing them, "פרק א׳", lands somewhere in the middle of
-  // the second line. Scanning the list means reading all of it.
+  // This started as a `useIsNarrow()` branch and did not take effect on a real
+  // phone, while the CSS-only changes shipped in the same batch did. Whatever
+  // the cause — a stale client bundle, hydration timing — a layout rule that
+  // only works once JavaScript has run and agreed with the stylesheet is the
+  // wrong mechanism for something the stylesheet can decide by itself.
   //
-  // Leading with the marker puts the thing you are looking for at the start of
-  // every row — the inline-start edge, which in RTL is the right — and demotes
-  // the law's tail to the end, where it is context rather than an obstacle.
-  if (narrow && before.trim()) {
-    // The dash belonged between the law and the chapter; moving the chapter in
-    // front of it would leave it dangling at the start.
-    const tail = before.replace(/\s*[—–-]\s*$/, "").trim();
+  // `hidden`/`md:inline` is display:none, so the copy that is not shown is not
+  // read by a screen reader either; the duplication costs a few bytes of markup
+  // and nothing else.
+  if (!before.trim()) {
     return (
       <>
         {markerEl}
         {after}
-        {tail ? <span className="text-muted-foreground"> — {tail}</span> : null}
       </>
     );
   }
 
+  // The dash belonged between the law and the chapter. Moving the chapter in
+  // front of it would leave it dangling at the start of the row.
+  const tail = before.replace(/\s*[—–-]\s*$/, "").trim();
+
   return (
     <>
-      {before}
-      {markerEl}
-      {after}
+      {/* Phone: the marker leads, so every row starts with the one thing that
+          tells it apart — at the inline-start edge, which in RTL is the right.
+          `leafLabel` leaves the REST of the law name in front of the chapter,
+          and at 360px that pushed "פרק א׳" into the middle of a wrapped line. */}
+      <span className="md:hidden">
+        {markerEl}
+        {after}
+        {tail ? <span className="text-muted-foreground"> — {tail}</span> : null}
+      </span>
+
+      {/* Desktop: unchanged. The rail is wide enough there that the law tail
+          reads as context rather than as an obstacle. */}
+      <span className="hidden md:inline">
+        {before}
+        {markerEl}
+        {after}
+      </span>
     </>
   );
 }
