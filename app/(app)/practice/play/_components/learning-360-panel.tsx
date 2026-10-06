@@ -123,8 +123,12 @@ export function Learning360Panel({
     <div
       className={
         bypassNoCopy
-          ? "rounded-xl border border-border bg-card p-6 shadow-sm"
-          : "no-copy-content rounded-xl border border-border bg-card p-6 shadow-sm"
+          // p-4 on a phone, p-6 from md. 24px each side is 13% of a 360px
+          // screen spent on nothing, and this panel is dense Hebrew prose in
+          // boxes that each add their own padding inside it — the analysis
+          // ended up reading in a column barely wider than half the device.
+          ? "rounded-xl border border-border bg-card p-4 shadow-sm md:p-6"
+          : "no-copy-content rounded-xl border border-border bg-card p-4 shadow-sm md:p-6"
       }
       onCopy={bypassNoCopy ? undefined : (e) => e.preventDefault()}
       onCut={bypassNoCopy ? undefined : (e) => e.preventDefault()}
@@ -137,7 +141,7 @@ export function Learning360Panel({
       </header>
 
       {/* 1. Correct answer banner */}
-      <div className="mb-6 flex items-start gap-3 rounded-lg border border-emerald-500/50 bg-emerald-50 p-4 dark:bg-emerald-950/30">
+      <div className="mb-6 flex items-start gap-3 rounded-lg border border-emerald-500/50 bg-emerald-50 p-3 dark:bg-emerald-950/30 md:p-4">
         <span
           className="flex size-7 shrink-0 items-center justify-center rounded-full bg-emerald-500 text-white"
           aria-hidden
@@ -187,7 +191,7 @@ export function Learning360Panel({
         title="מלכודת נפוצה"
         accent="danger"
       >
-        <div className="rounded-md border border-destructive/30 bg-destructive/5 p-4 dark:bg-destructive/10">
+        <div className="rounded-md border border-destructive/30 bg-destructive/5 p-3 dark:bg-destructive/10 md:p-4">
           <p dir="auto" className="whitespace-pre-wrap">
             {question.common_pitfall}
           </p>
@@ -448,7 +452,7 @@ function QuickThinking360({ text }: { text: string }) {
   // content-column width again; the Slice 20 inline-row layout and
   // outline reveal Button stay.
   const CARD_CLASSES =
-    "rounded-md border-s-[3px] border-amber-500 bg-amber-50 p-4 text-[15px] leading-relaxed dark:bg-amber-950/30";
+    "rounded-md border-s-[3px] border-amber-500 bg-amber-50 p-3 text-[15px] leading-relaxed dark:bg-amber-950/30 md:p-4";
 
   if (parsed.kind === "fallback") {
     return (

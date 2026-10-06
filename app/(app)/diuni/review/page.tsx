@@ -72,7 +72,7 @@ export default async function DiuniReviewPage({
 
   if (!review) {
     return (
-      <div className="mx-auto w-full max-w-3xl py-10">
+      <div className="mx-auto w-full max-w-3xl px-3 py-10 md:px-0">
         <p className="rounded-xl border border-dashed border-border bg-card p-10 text-center text-sm text-muted-foreground">
           אין עדיין תוכן בדיקה לשאלות האלה.
         </p>
@@ -143,7 +143,7 @@ export default async function DiuniReviewPage({
       : [];
 
   return (
-    <div className="mx-auto w-full max-w-3xl space-y-6 py-2">
+    <div className="mx-auto w-full max-w-3xl space-y-6 px-3 py-2 md:px-0">
       <header className="space-y-2">
         {/* The way out, at the TOP as well as in the footer: the footer's
             "חזרה לתפריט ראשי" sits below the whole review, which on a 40-question
@@ -342,7 +342,7 @@ function QuestionReview({
         )}
       </div>
 
-      <div className="rounded-xl border border-border bg-card p-6 shadow-sm">
+      <div className="rounded-xl border border-border bg-card p-4 shadow-sm md:p-6">
         <p dir="auto" className="whitespace-pre-wrap text-[17px] leading-relaxed">
           {text}
         </p>

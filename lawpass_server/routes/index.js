@@ -17,6 +17,7 @@ const openQuestionsRoutes = require("./open-questions.routes");
 const mahotiRoutes = require("./mahoti.routes");
 const diuniRoutes = require("./diuni.routes");
 const customExamRoutes = require("./custom-exam.routes");
+const draftsRoutes = require("./drafts.routes");
 
 const router = Router();
 
@@ -44,5 +45,9 @@ router.use("/diuni", diuniRoutes);
 
 // שאלון מותאם אישית — building an exam from questions that already exist.
 router.use("/custom-exam", customExamRoutes);
+
+// הטיוטות שלי — reading back the student's own scratch pages. The only
+// domain here with no subscription gate; see drafts.routes.js.
+router.use("/drafts", draftsRoutes);
 
 module.exports = router;

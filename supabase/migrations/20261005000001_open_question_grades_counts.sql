@@ -138,10 +138,17 @@ ALTER TABLE public.open_question_grades_counts ENABLE ROW LEVEL SECURITY;
 -- INSERT, UPDATE or DELETE policy for students: a quota a student can write is
 -- not a quota. Every write goes through the function above, under the service
 -- role.
+-- DROP ... IF EXISTS before each CREATE: CREATE POLICY is not idempotent, and
+-- a migration that cannot be re-run is one you cannot re-apply after a partial
+-- failure without editing it first.
+DROP POLICY IF EXISTS open_question_grades_counts_students_select_own
+  ON public.open_question_grades_counts;
 CREATE POLICY open_question_grades_counts_students_select_own
   ON public.open_question_grades_counts FOR SELECT TO authenticated
   USING (user_id = (SELECT auth.uid()));
 
+DROP POLICY IF EXISTS open_question_grades_counts_admins_select
+  ON public.open_question_grades_counts;
 CREATE POLICY open_question_grades_counts_admins_select
   ON public.open_question_grades_counts FOR SELECT TO authenticated
   USING (public.is_admin());

@@ -10,6 +10,7 @@ import { CheckAnsweredButton } from "@/app/(app)/_components/check-answered-butt
 import styles from "@/app/(app)/_components/fit-to-box/question-fit.module.css";
 import { useFitToBox, type FitBounds } from "@/app/(app)/_components/fit-to-box/use-fit-to-box";
 import { NoCopyText } from "@/app/(app)/_components/no-copy-text";
+import { useIsNarrow } from "@/app/(app)/_components/use-is-narrow";
 import { Choice } from "@/app/(app)/practice/play/_components/choice";
 import {
   ExamProgressStrip,
@@ -38,6 +39,19 @@ import { NotebookPane } from "./notebook-pane";
  * options only fit at 9px is one the layout genuinely cannot hold.
  */
 const FIT: FitBounds = { maxPx: 15, minPx: 13, answersMinPx: 10 };
+
+/**
+ * The same question on a phone, where this screen is far tighter than /diuni.
+ *
+ * The notebook sits ABOVE the question on a narrow viewport (flex-col-reverse)
+ * and takes 40% of the height, so the question and its four options share what
+ * is left of a phone screen. At the desktop floors the options were not merely
+ * small — they were off the bottom of a clipped box, with no way to reach them.
+ *
+ * Lower floors plus a scrollbar on the question column, which is the fix asked
+ * for: the notebook keeps its share, and the options are always reachable.
+ */
+const FIT_NARROW: FitBounds = { maxPx: 14, minPx: 8.5, answersMinPx: 8 };
 
 /**
  * The דיון מהותי study screen: the paper on the left, the notebook it was
@@ -183,7 +197,9 @@ export function MahotiWorkspace({ set }: { set: MahotiSet }) {
 
   // Re-fit whenever the question changes: the next fact pattern is a
   // different length, so the size that fit the last one means nothing.
-  useFitToBox(fitRef, position, FIT);
+  // The viewport joins the re-fit key — see the note in diuni-workspace.tsx.
+  const narrow = useIsNarrow();
+  useFitToBox(fitRef, `${position}:${narrow}`, narrow ? FIT_NARROW : FIT);
 
   return (
     // The whole screen is one non-scrolling column: the page itself never
@@ -247,7 +263,11 @@ export function MahotiWorkspace({ set }: { set: MahotiSet }) {
             disagree with it by a header's worth of pixels. */}
         <aside
           aria-label="מחברת החקיקה"
-          className="min-h-0 shrink-0 basis-[40%] lg:h-full lg:w-[calc(50%-0.5rem)] lg:basis-auto"
+          // 40% of a phone screen for the notebook left the question and its
+          // four options sharing the other 60% — which is where the options
+          // went. The notebook is reference material and scrolls in place; the
+          // question is the thing being answered, so it gets the larger share.
+          className="min-h-0 shrink-0 basis-[32%] lg:h-full lg:w-[calc(50%-0.5rem)] lg:basis-auto"
         >
           {/* Sibling of the question column, not a child of it, so the
               notebook's own page state survives moving between questions —
@@ -282,7 +302,9 @@ export function MahotiWorkspace({ set }: { set: MahotiSet }) {
               enough; the strip's question numbers remain the way out. */}
           <div
             ref={fitRef}
-            className={cn("min-h-0 flex-1 overflow-hidden", styles.fit)}
+            // Scrolls on a phone, clips on a desktop — see diuni-workspace.tsx
+            // for why the desktop must not scroll.
+            className={cn("min-h-0 flex-1 overflow-y-auto md:overflow-hidden", styles.fit)}
           >
             {/* Sized by --fit-q-font, not a fixed value: at half the row a
                 long fact pattern at 19px pushed the choices below the fold,

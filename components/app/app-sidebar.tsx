@@ -8,6 +8,7 @@ import {
   Gavel,
   Gauge,
   LogOut,
+  NotebookPen,
   Settings,
   Shield,
 } from "lucide-react";
@@ -154,6 +155,10 @@ type LibraryItem = {
 //   { href: "/notes", label: "הערות שלי", Icon: Pencil, countKey: "notes" },
 const NAV_LIBRARY: LibraryItem[] = [
   { href: "/exam-archive", label: "משוב מפורט על מבחנים שעשיתי", Icon: Archive },
+  // The reading side of the scratch pad. The pad itself is a dialog reachable
+  // from every screen (_components/draft-launcher.tsx), which until now could
+  // only WRITE — a student filed a draft and had no way back to it.
+  { href: "/drafts", label: "הטיוטות שלי", Icon: NotebookPen },
 ];
 
 function isPathActive(pathname: string, href: string): boolean {

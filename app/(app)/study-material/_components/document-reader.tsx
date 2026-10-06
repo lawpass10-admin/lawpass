@@ -332,7 +332,11 @@ export function DocumentReader({
       ) : titled.length > 1 ? (
         <nav
           aria-label="תוכן המסמך"
-          className="rounded-2xl border p-5"
+          // p-3.5 on a phone. At p-5 the rail lost 40px of a 360px screen to
+          // padding, and these entries are long law names that then wrapped
+          // after two or three words — a contents list that is mostly ragged
+          // half-lines is harder to scan than the document it indexes.
+          className="rounded-2xl border p-3.5 md:p-5"
           style={{ borderColor: "var(--color-border)", background: "var(--color-card, #fff)" }}
         >
           {/* COLUMNS, NOT A GRID. A grid fills row by row, which cuts a group
@@ -340,7 +344,7 @@ export function DocumentReader({
               next line. Multi-column flows top to bottom and `break-inside`
               keeps a group whole, so a document type and its parts stay
               together — which is the whole point of grouping them. */}
-          <ul className="columns-1 gap-x-8 sm:columns-2 lg:columns-3">
+          <ul className="columns-1 gap-x-6 sm:columns-2 lg:columns-3 lg:gap-x-8">
             {groups.map((group) => (
               <li
                 key={group.items[0].id}
@@ -388,7 +392,7 @@ export function DocumentReader({
                         two together draw the bracket that says these belong to
                         that. The grey border was invisible at this size. */}
                     <ul
-                      className="mt-1.5 space-y-1 border-s ps-3"
+                      className="mt-1.5 space-y-1 border-s ps-2 md:ps-3"
                       style={{ borderColor: "var(--color-gold, #C9A149)", borderInlineStartWidth: 2 }}
                     >
                       {group.items.map((item) => (

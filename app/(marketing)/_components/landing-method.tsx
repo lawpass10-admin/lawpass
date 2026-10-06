@@ -31,14 +31,19 @@ export function LandingMethod() {
         <div className={styles.pillars}>
           {methodCopy.pillars.map((pillar) => (
             <div
-              key={pillar.num}
+              key={pillar.title}
               className={styles.pillar}
               data-pillar=""
             >
               <div className={styles.pillarIcon}>
                 <PillarVideo src={pillar.videoSrc} />
               </div>
-              <div className={styles.pillarNum}>{pillar.num}</div>
+              {/* The 01…06 numerals are gone. They implied an order the six
+                  pillars do not have — they are facets of one analysis, not
+                  steps through it — and on the card they competed with the
+                  title for the eye. The gold bar stays as the divider they
+                  were sitting above. `num` remains in landing-copy.ts as the
+                  pillars' stable identity. */}
               <div className={styles.pillarBar} />
               <h3 className={styles.pillarT}>{pillar.title}</h3>
               <p className={styles.pillarD}>{pillar.desc}</p>

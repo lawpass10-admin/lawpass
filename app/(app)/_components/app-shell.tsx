@@ -7,6 +7,7 @@ import { AppSidebar } from "@/components/app/app-sidebar";
 import { MobileTopBar } from "@/components/app/mobile-top-bar";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 
+import { EnrollmentReminder } from "./enrollment-reminder";
 import { TopLaunchers } from "./top-launchers";
 import { QaFloatingWidget } from "./qa-floating-widget";
 
@@ -91,6 +92,7 @@ export function AppShell({
             the same launcher as everywhere else. Fixed-position, so JSX
             placement is irrelevant; it mirrors the QA widget's convention. */}
         <TopLaunchers />
+        <EnrollmentReminder />
         <QaFloatingWidget isQaTester={isQaTester} />
       </>
     );
@@ -108,6 +110,7 @@ export function AppShell({
         <AppFooter />
       </SidebarInset>
       <TopLaunchers />
+      <EnrollmentReminder />
       <QaFloatingWidget isQaTester={isQaTester} />
     </SidebarProvider>
   );

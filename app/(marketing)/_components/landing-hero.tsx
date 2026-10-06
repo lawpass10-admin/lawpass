@@ -32,6 +32,15 @@ export function LandingHero() {
             <HeroTypewriter lines={heroCopy.typewriterLines} />
           </p>
 
+          {/* Under the running line, where the hero used to carry a CTA.
+              These two dates are the most perishable thing on the page and the
+              most looked-for, and in the footer they sat below everything a
+              visitor reads last. */}
+          <p className={styles.examNotice}>
+            <span className={styles.examNoticeDate}>{heroCopy.examNotice.date}</span>
+            <span className={styles.examNoticeReg}>{heroCopy.examNotice.registration}</span>
+          </p>
+
           {/* No CTA and no disclaimer in the hero any more. The gold
               "התחילו לתרגל" went first, for asking a decision above the fold
               before the page had made its case; "איך זה עובד" followed, since

@@ -15,6 +15,7 @@ import { CheckAnsweredButton } from "@/app/(app)/_components/check-answered-butt
 import styles from "@/app/(app)/_components/fit-to-box/question-fit.module.css";
 import { useFitToBox, type FitBounds } from "@/app/(app)/_components/fit-to-box/use-fit-to-box";
 import { NoCopyText } from "@/app/(app)/_components/no-copy-text";
+import { useIsNarrow } from "@/app/(app)/_components/use-is-narrow";
 import { Choice } from "@/app/(app)/practice/play/_components/choice";
 import {
   ExamProgressStrip,
@@ -52,6 +53,21 @@ import { cn } from "@/lib/utils";
  * there is no notebook here.
  */
 const FIT: FitBounds = { maxPx: 17, minPx: 11, answersMinPx: 10 };
+
+/**
+ * The same question on a phone.
+ *
+ * A 980px column at 11px has room for a fact pattern and four options; a 360px
+ * one does not, and the floors above are reached while the fourth option is
+ * still below the fold. `overflow-hidden` then CLIPS it — the option is not
+ * merely small, it is not on the screen at all, which is how a candidate
+ * answers a four-option question having seen three.
+ *
+ * Lower floors buy roughly two more lines, which is usually the difference.
+ * The backstop for when it is not is the scroll on the box itself: see the
+ * reading column's className.
+ */
+const FIT_NARROW: FitBounds = { maxPx: 15, minPx: 8.5, answersMinPx: 8 };
 
 /**
  * The דין דיוני study screen.
@@ -109,7 +125,10 @@ export function DiuniWorkspace({ set }: { set: DiuniSet }) {
     saveAnswers("diuni", set.questionId, answers);
   }, [answers, set.questionId]);
 
-  useFitToBox(fitRef, position, FIT);
+  // `position` alone was the re-fit key; the viewport has to be in it too, or
+  // rotating a phone leaves the type sized for the width it no longer has.
+  const narrow = useIsNarrow();
+  useFitToBox(fitRef, `${position}:${narrow}`, narrow ? FIT_NARROW : FIT);
 
   const total = set.questions.length;
   const question = set.questions[position];
@@ -258,7 +277,12 @@ export function DiuniWorkspace({ set }: { set: DiuniSet }) {
         <div
           ref={fitRef}
           className={cn(
-            "mx-auto min-h-0 w-full max-w-[980px] flex-1 overflow-hidden px-5 py-3",
+            // Scrolls on a phone, clips on a desktop. The desktop behaviour is
+            // deliberate and documented above — the fit hook guarantees the
+            // question fits, so a scrollbar there would be a bug made visible.
+            // On a phone the floors can genuinely run out, and a reachable
+            // fourth option beats a tidy box.
+            "mx-auto min-h-0 w-full max-w-[980px] flex-1 overflow-y-auto px-5 py-3 md:overflow-hidden",
             styles.fit,
           )}
         >

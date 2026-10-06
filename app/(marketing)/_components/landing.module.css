@@ -1401,3 +1401,33 @@
   line-height: 1.65;
 }
 .legalProse li::marker { color: var(--gold-deep); }
+
+/* ─── Exam dates, under the hero's running line ─── */
+/* On the hero's pale ground now, not the navy footer — so navy ink rather than
+   gold, with the gold reserved for the date itself. Stacked on a phone and on
+   one line from 640px: two dates side by side at 360px wrap into four ragged
+   lines. */
+.examNotice {
+  display: flex;
+  flex-direction: column;
+  /* .heroCopy is text-align:center, but this is a FLEX container and
+     text-align does not reach flex children — without align-items the two
+     dates sat hard against the inline-start edge while the headline above
+     them was centred. */
+  align-items: center;
+  gap: 2px;
+  margin-top: 18px;
+  font-family: "Heebo", Arial, sans-serif;
+}
+.examNoticeDate {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--gold-deep);
+}
+.examNoticeReg {
+  font-size: 13.5px;
+  color: var(--ink-muted);
+}
+@media (min-width: 640px) {
+  .examNotice { flex-direction: row; align-items: baseline; justify-content: center; gap: 14px; }
+}

@@ -15,12 +15,19 @@ import { NoCopyBypassProvider } from "./_components/no-copy-bypass-provider";
 // payment details (Phase 6 placeholder; Tranzila iframe in Slice 4),
 // /onboarding to see the welcome screen between mock-payment and dashboard,
 // and /account/* to manage profile + subscription even after expiry (SPEC 7.4).
+// /drafts is exempt for a different reason from the rest: it is not a step on
+// the way to paying, it is the student's own writing. The save path states the
+// rule outright — "a lapsed student's notes are still their notes, and locking
+// someone out of their own writing is not a thing a paywall should do"
+// (saveUserDraftAction) — and gating the reader would mean a student can file
+// drafts they are not allowed to read back.
 const SUBSCRIPTION_EXEMPT_PREFIXES = [
   "/pricing",
   "/checkout",
   "/onboarding",
   "/account",
   "/admin",
+  "/drafts",
 ];
 
 function isSubscriptionExempt(pathname: string): boolean {
