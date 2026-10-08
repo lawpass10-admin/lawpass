@@ -94,7 +94,6 @@ export default async function DashboardPage() {
       {/* 1. Header strip — streams */}
       <Suspense fallback={<HeaderStripSkeleton />}>
         <HeaderStripAsync
-          userId={user.id}
           fullName={profile.full_name}
           examDate={examDate}
           daysToExam={examDays}
@@ -128,7 +127,7 @@ export default async function DashboardPage() {
         className="grid grid-cols-1 gap-[18px] md:[grid-template-columns:1.6fr_1fr]"
       >
         <Suspense fallback={<MasteryCardSkeleton />}>
-          <MasteryCardAsync userId={user.id} />
+          <MasteryCardAsync />
         </Suspense>
         <Suspense fallback={<TrendCardSkeleton />}>
           <TrendCardAsync userId={user.id} />

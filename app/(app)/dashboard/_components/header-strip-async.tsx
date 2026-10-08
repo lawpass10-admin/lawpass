@@ -1,24 +1,21 @@
 import { HeaderStrip } from "@/app/(app)/dashboard/_components/header-strip";
-import {
-  getMasteryByChapter,
-  getStatusContext,
-} from "@/app/(app)/dashboard/_lib/queries";
+import { getStatusContext } from "@/app/(app)/dashboard/_lib/queries";
 
 type Props = {
-  userId: string;
   fullName: string;
   examDate: Date | null;
   daysToExam: number | null;
 };
 
 export async function HeaderStripAsync({
-  userId,
   fullName,
   examDate,
   daysToExam,
 }: Props) {
-  const mastery = await getMasteryByChapter(userId);
-  const status = await getStatusContext(userId, mastery);
+  // The mastery read that used to sit here is gone: it existed only to be
+  // passed into getStatusContext, and /api/dashboard/overview now derives
+  // status from mastery server-side. See _lib/queries.
+  const status = await getStatusContext();
   return (
     <HeaderStrip
       fullName={fullName}

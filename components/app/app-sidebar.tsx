@@ -471,11 +471,17 @@ export function AppSidebar({
             </SidebarGroupLabel>
             <SidebarMenu className="gap-1.5">
               {(() => {
+                // Still lit for the whole /admin area — only the destination
+                // moved. It used to open /admin (the "תוכן" screen), whose tab
+                // was removed from the admin strip; landing there now would
+                // mean arriving on a page the tab bar does not list. The first
+                // tab that remains is משתמשים. Put this back to "/admin" if
+                // the תוכן tab is restored — see admin/_components/admin-nav.tsx.
                 const active = isPathActive(pathname, "/admin");
                 return (
                   <SidebarMenuItem className="relative">
                     <SidebarMenuButton
-                      render={<Link href="/admin" />}
+                      render={<Link href="/admin/users" />}
                       isActive={active}
                       className={NAV_BUTTON_CLS}
                     >

@@ -5,12 +5,27 @@ import { usePathname } from "next/navigation";
 
 import { cn } from "@/lib/utils";
 
-const NAV_ITEMS = [
-  { href: "/admin", label: "תוכן" },
+// "תוכן" (/admin) and "QA" (/admin/qa) were removed from this strip on PM
+// request — not in use for now. Only the TABS are gone: both routes, their
+// pages and everything behind them are untouched and still reachable by URL,
+// and the QA badge code below is kept too. Put either entry back here to
+// restore its tab, badge and all:
+//
+//   { href: "/admin", label: "תוכן" },
+//   { href: "/admin/qa", label: "QA" },
+//
+// Note the knock-on: /admin was the admin area's landing page, so the
+// sidebar's "ניהול" link now points at /admin/users instead — otherwise the
+// first thing an admin saw was a page with no tab selected and no way back to
+// it. See components/app/app-sidebar.tsx.
+// Typed rather than `as const`: the literal union from `as const` would now be
+// just the two hrefs below, and the "/admin" and "/admin/qa" comparisons kept
+// alive further down would be compile errors against it. Widening is what lets
+// that restore code stay in place and still typecheck.
+const NAV_ITEMS: ReadonlyArray<{ href: string; label: string }> = [
   { href: "/admin/users", label: "משתמשים" },
-  { href: "/admin/qa", label: "QA" },
   { href: "/admin/usage", label: "שימוש" },
-] as const;
+];
 
 /**
  * Tabs strip under the admin header. usePathname (rather than threading

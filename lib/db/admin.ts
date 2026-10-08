@@ -225,6 +225,64 @@ export async function getAdminStats(
   };
 }
 
+/** The two counters above the /admin/users table. */
+export type UserCounts = {
+  total: number;
+  /** Signed up in the last 24 hours. */
+  joinedLast24h: number;
+  /** Signed up in the last 7 days — INCLUDES the last 24 hours. */
+  joinedLast7Days: number;
+};
+
+/**
+ * How many candidates there are, and how many are new.
+ *
+ * ── Rolling hours, not calendar days ───────────────────────────────────────
+ * "24 hours" here means `created_at > now() - 24h`, not "since midnight".
+ * A calendar-day count reads as a collapse every morning and recovers by
+ * evening, which is the wrong signal from a number an admin glances at. The
+ * trade-off is that it never lines up exactly with the usage page's "היום",
+ * which IS calendar-based — different questions, different windows, and the
+ * labels say which.
+ *
+ * ── The 7-day number CONTAINS the 24-hour one ──────────────────────────────
+ * Deliberately overlapping rather than "1–7 days ago". Someone reading
+ * "3 / 11" wants the week's total, not the week minus today, and a
+ * non-overlapping pair makes the two impossible to add up in your head.
+ *
+ * Three head-only counts, in parallel — no rows cross the wire, just the
+ * numbers. Counted on `profiles.created_at`, the same column the table's
+ * "הצטרפות" column shows, so the counters and the rows below can never
+ * disagree about when someone joined.
+ */
+export async function getUserCounts(
+  supabase: SupabaseSsrClient
+): Promise<UserCounts> {
+  const since = (hours: number) =>
+    new Date(Date.now() - hours * 60 * 60 * 1000).toISOString();
+
+  const [totalRes, dayRes, weekRes] = await Promise.all([
+    supabase.from("profiles").select("id", { count: "exact", head: true }),
+    supabase
+      .from("profiles")
+      .select("id", { count: "exact", head: true })
+      .gt("created_at", since(24)),
+    supabase
+      .from("profiles")
+      .select("id", { count: "exact", head: true })
+      .gt("created_at", since(24 * 7)),
+  ]);
+
+  // A failed count is reported as 0, matching getAdminStats above: this strip
+  // sits over a table that renders perfectly well without it, and throwing
+  // would take the page down over a number.
+  return {
+    total: totalRes.count ?? 0,
+    joinedLast24h: dayRes.count ?? 0,
+    joinedLast7Days: weekRes.count ?? 0,
+  };
+}
+
 // =============================================================================
 // Public API — content table
 // =============================================================================

@@ -227,11 +227,22 @@ Read-only analytics aggregates — each returns `{ ok: true, <name> }`.
 
 | Method | Path | Returns |
 |--------|------|---------|
+| GET | `/overview` | **`mastery` + `status` + `subjects` + `topics` in one response** — what the dashboard calls |
 | GET | `/kpi` | KPI cards: attempts/accuracy/durations/exam scores/counts + 7-day sparkline + 12-week bars |
 | GET | `/mastery` | per-chapter accuracy rows (ordered by `display_order`, incl. zero-attempt chapters) |
 | GET | `/status` | header-strip status pill + focus chapter (derives mastery internally, then evaluates) |
 | GET | `/trend` | 12-week Sunday–Saturday accuracy trend + personal-high + streak |
 | GET | `/hero` | resumable practice session for the hero card, or `null` if none/stale (>24h) |
+
+> **`/overview` replaced four separate calls.** `/mastery`, `/status`,
+> `/subject-stats` and `/topic-stats` were always fetched together — usage
+> showed identical hit counts — so one dashboard render cost four round trips
+> and four token verifications. Two of them also overlapped: `/status`
+> recomputed the mastery aggregate for itself, so every load ran that query
+> twice. `/overview` computes mastery once and derives status from it.
+>
+> The four single-surface endpoints stay mounted, unchanged. They cost nothing
+> idle and they are the way back if `/overview` ever needs backing out.
 
 > **First read-heavy domain ported.** Unlike the other domains (whose
 > read aggregations stay in Next.js), the dashboard is *entirely* reads,

@@ -13,6 +13,11 @@ const router = Router();
 // requireActiveSubscription gate; RLS is defense-in-depth). GET endpoints,
 // one per dashboard surface — the header strip derives its status from
 // mastery inside the /status handler.
+// The four analytic surfaces in one response. Declared first because it is
+// the one the dashboard actually calls; the four below are what it replaced
+// and stay mounted as the way back if it ever needs backing out.
+router.get("/overview", authenticate, requireSubscription, asyncHandler(c.overview));
+
 router.get("/kpi", authenticate, requireSubscription, asyncHandler(c.kpi));
 router.get("/mastery", authenticate, requireSubscription, asyncHandler(c.mastery));
 router.get("/status", authenticate, requireSubscription, asyncHandler(c.status));

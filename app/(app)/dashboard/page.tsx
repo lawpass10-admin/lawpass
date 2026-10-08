@@ -65,7 +65,6 @@ export default async function DashboardPage() {
       {/* 1. Header strip — streams */}
       <Suspense fallback={<HeaderStripSkeleton />}>
         <HeaderStripAsync
-          userId={user.id}
           fullName={profile.full_name}
           examDate={examDate}
           daysToExam={examDays}

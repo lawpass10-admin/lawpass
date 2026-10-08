@@ -93,8 +93,8 @@ mid-session while a gated page is open.
 
 | # | Flow | Hits |
 |---|---|---|
-| D1 | Dashboard first paint | `GET /api/dashboard/kpi`, `/mastery`, `/status`, `/trend`, `/hero` |
-| D2 | Subject / topic breakdown | `GET /api/dashboard/subject-stats`, `/topic-stats` |
+| D1 | Dashboard first paint | `GET /api/dashboard/overview`, `/kpi`, `/trend`, `/hero` |
+| D2 | Subject / topic breakdown | part of `GET /api/dashboard/overview` (was `/subject-stats` + `/topic-stats`) |
 | D3 | Hero "resume" card continues the last session | leads into practice/exam play |
 | D4 | Sidebar bookmark + mistake counts | Next.js page query |
 

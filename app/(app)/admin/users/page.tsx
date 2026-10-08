@@ -3,6 +3,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import {
   ADMIN_USERS_PAGE_SIZE,
+  getUserCounts,
   getUsersListPage,
   type SortableColumn,
   type SortDir,
@@ -12,6 +13,7 @@ import {
   type UsersListSubscriptionFilter,
 } from "@/lib/db/admin";
 
+import UsersCounters from "./_components/users-counters";
 import UsersFiltersBar from "./_components/users-filters-bar";
 import UsersTable from "./_components/users-table";
 import UsersPager from "./_components/users-pager";
@@ -102,11 +104,18 @@ export default async function AdminUsersPage({
 
   const supabase = await createClient();
   const adminClient = createAdminClient();
-  const { rows, hasMore, perPage } = await getUsersListPage(
-    supabase,
-    adminClient,
-    { page, perPage: ADMIN_USERS_PAGE_SIZE, filters, sort, dir }
-  );
+  // In parallel with the list: the counters describe the whole cohort and the
+  // list describes one filtered page of it, so neither waits on the other.
+  const [{ rows, hasMore, perPage }, counts] = await Promise.all([
+    getUsersListPage(supabase, adminClient, {
+      page,
+      perPage: ADMIN_USERS_PAGE_SIZE,
+      filters,
+      sort,
+      dir,
+    }),
+    getUserCounts(supabase),
+  ]);
 
   return (
     <div className="space-y-4">
@@ -118,6 +127,10 @@ export default async function AdminUsersPage({
           לחיצה על שורה פותחת את פרטי המשתמש.
         </p>
       </header>
+      {/* Above the filters on purpose: these count the WHOLE cohort, not the
+          filtered page below, so they must not read as a summary of the
+          table's current contents. */}
+      <UsersCounters counts={counts} />
       <UsersFiltersBar
         currentSub={filters.subscriptionStatus ?? null}
         currentPlan={filters.planType ?? null}
