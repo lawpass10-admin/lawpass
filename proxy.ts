@@ -52,6 +52,26 @@ const PUBLIC_PATHS = new Set([
 /**
  * Paths that stay reachable while the app is locked to admins.
  *
+ * ── /login IS ON THIS LIST, and leaving it off locked the admins out ──────
+ * The gate can only tell an admin from anyone else once there IS a session.
+ * A visitor who has not signed in yet is indistinguishable from a blocked
+ * user — `allowed` is false for both — so with /login gated, an admin
+ * arriving signed-out was redirected to /maintenance before the sign-in form
+ * ever rendered. There was no way back in: the lock locked out the only
+ * people who could unlock it.
+ *
+ * So the sign-in DOOR stays open and the gate judges what is behind it. A
+ * blocked user can still reach the form and still sign in successfully —
+ * they are bounced to /maintenance on the very next request, which is the
+ * intended behaviour and costs nothing.
+ *
+ * /forgot-password and /reset-password are here for the same reason: an admin
+ * who cannot remember their password during a lockdown must not be stranded.
+ * Resetting it gives a non-admin a session and nothing else.
+ *
+ * /signup and /verify-email are deliberately NOT here. Registration is what
+ * the lockdown is meant to stop, and an admin account already exists.
+ *
  * The maintenance page itself, or the redirect below loops. The legal pages,
  * because a published privacy policy going 404 during a maintenance window is
  * its own problem. `/api/cron/*` is NOT here and does not need to be — the
@@ -59,6 +79,9 @@ const PUBLIC_PATHS = new Set([
  */
 const LOCKDOWN_ALLOWED_PATHS = new Set([
   "/maintenance",
+  "/login",
+  "/forgot-password",
+  "/reset-password",
   "/privacy",
   "/accessibility",
   "/terms",
