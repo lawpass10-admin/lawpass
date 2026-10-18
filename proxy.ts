@@ -129,7 +129,10 @@ export async function proxy(
   // bounced to /login — which would tell them to sign in to an app that is
   // about to refuse them.
   if (!LOCKDOWN_ALLOWED_PATHS.has(pathname)) {
-    const gate = await readLoginGate(supabase);
+    // `user` comes from the getUser() call updateSession has already made, so
+    // it is verified. Handing it over beats having the SQL function re-derive
+    // it from the JWT — which is exactly what failed in production.
+    const gate = await readLoginGate(supabase, user?.id ?? null);
     if (!gate.allowed) {
       const url = request.nextUrl.clone();
       url.pathname = "/maintenance";

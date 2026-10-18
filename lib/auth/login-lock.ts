@@ -54,14 +54,22 @@ let cached: { at: number; gate: LoginGate } | null = null;
  * gate for itself.
  */
 export async function readLoginGate(
-  supabase: SupabaseClient
+  supabase: SupabaseClient,
+  userId?: string | null
 ): Promise<LoginGate> {
   if (cached && Date.now() - cached.at < TTL_MS && !cached.gate.locked) {
     return cached.gate;
   }
 
   try {
-    const { data, error } = await supabase.rpc("login_gate");
+    // THE USER ID IS PASSED IN, not re-derived from the JWT inside the
+    // function. The caller has just verified it with getUser(); asking
+    // Postgres to work it out again from request.jwt.claims adds a way for
+    // this to fail, and it did — in production an admin's JWT was not
+    // reaching the RPC, auth.uid() came back NULL, and the gate refused them.
+    const { data, error } = await supabase.rpc("login_gate", {
+      p_user_id: userId ?? null,
+    });
     if (error) return OPEN;
 
     // The function returns a single row; PostgREST hands back an array.
