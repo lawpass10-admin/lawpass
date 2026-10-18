@@ -82,3 +82,8 @@ __pycache__/
 next-env.d.ts
 
 /lib/generated/prisma
+
+# Generated OCR inspection pages (scripts/inspect-study-material.mjs).
+# Each one is a full copy of a licensed book's scanned text, and they run to
+# hundreds of KB. Regenerate on demand; never commit one.
+study-material-*.html

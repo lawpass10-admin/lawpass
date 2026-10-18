@@ -1,5 +1,6 @@
 import { NextResponse, type NextFetchEvent, type NextRequest } from "next/server";
 
+import { readLoginGate } from "@/lib/auth/login-lock";
 import { updateSession } from "@/lib/supabase/middleware";
 import { deviceOf, normalisePath, recordUsage } from "@/lib/usage/record";
 
@@ -43,13 +44,31 @@ const PUBLIC_PATHS = new Set([
   "/privacy",
   "/accessibility",
   "/terms",
+  // The page the lockdown sends people to. Public by necessity: it is shown
+  // to visitors with no session, and to users whose session is being refused.
+  "/maintenance",
+]);
+
+/**
+ * Paths that stay reachable while the app is locked to admins.
+ *
+ * The maintenance page itself, or the redirect below loops. The legal pages,
+ * because a published privacy policy going 404 during a maintenance window is
+ * its own problem. `/api/cron/*` is NOT here and does not need to be — the
+ * matcher at the bottom of this file already excludes it.
+ */
+const LOCKDOWN_ALLOWED_PATHS = new Set([
+  "/maintenance",
+  "/privacy",
+  "/accessibility",
+  "/terms",
 ]);
 
 export async function proxy(
   request: NextRequest,
   event?: NextFetchEvent
 ): Promise<NextResponse> {
-  const { user, response } = await updateSession(request);
+  const { supabase, user, response } = await updateSession(request);
   const { pathname } = request.nextUrl;
 
   // COUNTED HERE BECAUSE THIS IS THE ONE PLACE EVERY REQUEST PASSES.
@@ -71,6 +90,29 @@ export async function proxy(
         path: normalisePath(pathname),
       })
     );
+  }
+
+  // THE LOCKDOWN, and it is checked here because this is the one place every
+  // request passes. Gating the sign-in action instead would leave three other
+  // doors open — Google OAuth, the Express API, and every session issued
+  // before the lock went on. Here, how a session was obtained does not matter.
+  //
+  // Read from the database (app_settings.login_locked), so locking and
+  // unlocking is one SQL UPDATE rather than a deploy. The reading is cached
+  // for a few seconds while unlocked, so the normal path costs nothing; see
+  // lib/auth/login-lock.ts.
+  //
+  // Ahead of the two redirects below so a locked-out user is never first
+  // bounced to /login — which would tell them to sign in to an app that is
+  // about to refuse them.
+  if (!LOCKDOWN_ALLOWED_PATHS.has(pathname)) {
+    const gate = await readLoginGate(supabase);
+    if (!gate.allowed) {
+      const url = request.nextUrl.clone();
+      url.pathname = "/maintenance";
+      url.search = "";
+      return NextResponse.redirect(url);
+    }
   }
 
   if (user && AUTH_BOUNCE_PATHS.has(pathname)) {
