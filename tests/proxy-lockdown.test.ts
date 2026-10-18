@@ -62,8 +62,16 @@ describe("lockdown", () => {
   it("sends a blocked user to the maintenance page", async () => {
     gate.value = BLOCKED;
     expect((await go("/dashboard")).to).toBe("/maintenance");
-    expect((await go("/")).to).toBe("/maintenance");
     expect((await go("/mahoti")).to).toBe("/maintenance");
+    expect((await go("/writing-task")).to).toBe("/maintenance");
+  });
+
+  it("leaves the marketing landing page up", async () => {
+    // The bare domain is what everyone types, including an admin. Gating it
+    // turned the front door into a maintenance notice before any page
+    // rendered. It reads no user data, so there is nothing to protect.
+    gate.value = BLOCKED;
+    expect((await go("/")).to).toBe(null);
   });
 
   it("keeps registration shut — that is what the lock is for", async () => {
@@ -95,7 +103,6 @@ describe("lockdown", () => {
 
   it("changes nothing when the app is unlocked", async () => {
     gate.value = OPEN;
-    expect((await go("/")).to).toBe(null);
     expect((await go("/login")).to).toBe(null);
     // Still the ordinary signed-out behaviour, not the maintenance page.
     expect((await go("/dashboard")).to).toBe("/login");

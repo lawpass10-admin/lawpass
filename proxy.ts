@@ -79,6 +79,13 @@ const PUBLIC_PATHS = new Set([
  */
 const LOCKDOWN_ALLOWED_PATHS = new Set([
   "/maintenance",
+  // The marketing landing page. It lives in the (marketing) group, reads no
+  // user data and shows nothing a signed-out visitor could not already see —
+  // the same category as the legal pages below, and it should never have been
+  // gated. Turning the bare domain into a maintenance notice also hid the
+  // front door: typing lawpass.onrender.com, which is what everyone does,
+  // bounced even an admin before any page rendered.
+  "/",
   "/login",
   "/forgot-password",
   "/reset-password",
