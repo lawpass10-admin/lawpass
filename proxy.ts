@@ -137,7 +137,25 @@ export async function proxy(
       const url = request.nextUrl.clone();
       url.pathname = "/maintenance";
       url.search = "";
-      return NextResponse.redirect(url);
+      const blocked = NextResponse.redirect(url);
+      // WHY THE REDIRECT HAPPENED, on the redirect itself.
+      //
+      // This took two wrong diagnoses to find, because from outside the
+      // response for "the app is locked and you are not an admin" and for
+      // "the middleware could not see your session at all" are the same 307
+      // to the same page. They need completely different fixes.
+      //
+      // Three booleans, no ids and no token — safe to read from a terminal
+      // and enough to tell those two cases apart:
+      //   session=0 → updateSession saw no user. A cookie problem, not a
+      //               lock problem; the lock is working as designed.
+      //   session=1 admin=0 → the session is fine and the admin lookup is
+      //               what is failing.
+      blocked.headers.set(
+        "x-lockdown",
+        `locked=${gate.locked ? 1 : 0};session=${user ? 1 : 0};admin=${gate.isAdmin ? 1 : 0}`
+      );
+      return blocked;
     }
   }
 
