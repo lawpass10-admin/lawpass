@@ -94,6 +94,16 @@ const LOCKDOWN_ALLOWED_PATHS = new Set([
   "/terms",
 ]);
 
+/**
+ * Creating an account. Blocked for the whole lockdown, signed in or not.
+ *
+ * These are the one group where "cannot identify the caller" is not a reason
+ * to let them through: an admin never needs to register, so there is nobody
+ * here to misidentify, and leaving them open would mean anyone could still
+ * open an account while the app is closed.
+ */
+const REGISTRATION_PATHS = new Set(["/signup", "/verify-email"]);
+
 export async function proxy(
   request: NextRequest,
   event?: NextFetchEvent
@@ -140,10 +150,45 @@ export async function proxy(
     // it is verified. Handing it over beats having the SQL function re-derive
     // it from the JWT — which is exactly what failed in production.
     const gate = await readLoginGate(supabase, user?.id ?? null);
-    if (!gate.allowed) {
+
+    // TWO DIFFERENT RULES, because a missing session means two different
+    // things depending on the path.
+    //
+    // Registration is blocked on the lock ALONE. No admin needs to sign up —
+    // they already have an account — so there is no one to misidentify, and
+    // an anonymous visitor must not be able to register during a lockdown.
+    //
+    // Everywhere else, only a user the middleware can POSITIVELY identify as
+    // a non-admin is turned away. If it cannot resolve the session it says
+    // nothing: the rule below sends a genuinely signed-out visitor to /login,
+    // and the (app) layout — which has a verified user and the profile row —
+    // judges anyone who does have one.
+    //
+    // That asymmetry is the lockout that cost three rounds. An admin whose
+    // session the middleware failed to see looked exactly like an anonymous
+    // visitor, so the gate read them as a non-admin and refused them. Now the
+    // worst a missed session can do is ask someone to sign in again.
+    const blockedHere = REGISTRATION_PATHS.has(pathname)
+      ? gate.locked
+      : Boolean(user) && !gate.allowed;
+
+    if (blockedHere) {
       const url = request.nextUrl.clone();
       url.pathname = "/maintenance";
       url.search = "";
+      // ALSO IN THE URL, not just the header below.
+      //
+      // "locked and not an admin" and "the middleware never saw your session"
+      // produce the same redirect to the same page, and they need opposite
+      // fixes. The header carries that, but reading it means opening DevTools;
+      // the query string is visible in the address bar and survives a
+      // screenshot, which is how this actually gets reported.
+      //
+      // Three digits, no ids, nothing secret: locked-session-admin.
+      url.searchParams.set(
+        "d",
+        `${gate.locked ? 1 : 0}${user ? 1 : 0}${gate.isAdmin ? 1 : 0}`
+      );
       const blocked = NextResponse.redirect(url);
       // WHY THE REDIRECT HAPPENED, on the redirect itself.
       //

@@ -94,3 +94,40 @@ export async function readLoginGate(
 export function resetLoginGateCache(): void {
   cached = null;
 }
+
+/**
+ * Is the app locked? Just the switch — nothing about who is asking.
+ *
+ * ── Why this exists alongside readLoginGate ───────────────────────────────
+ * The middleware's reading of the gate depends on it being able to see the
+ * session, and that is precisely what proved unreliable in production: an
+ * admin was refused because the middleware resolved no user and the gate
+ * therefore read them as a non-admin.
+ *
+ * The (app) layout does not have that problem. By the time it runs it has a
+ * verified user AND the `profiles` row — including `is_admin` — from a query
+ * that has always worked in production. So the layout asks the cheaper
+ * question, "is the app locked", and supplies the admin half itself.
+ *
+ * That makes the layout the AUTHORITATIVE gate and the middleware a fast
+ * path. A middleware that wrongly lets someone through is caught here before
+ * any page renders; the reverse can no longer lock an admin out of the whole
+ * product.
+ *
+ * Reads the same `app_settings` row, needs no session, and fails open for
+ * the same reason readLoginGate does.
+ */
+export async function isAppLocked(supabase: SupabaseClient): Promise<boolean> {
+  try {
+    const { data, error } = await supabase
+      .from("app_settings")
+      .select("value")
+      .eq("key", "login_locked")
+      .maybeSingle();
+
+    if (error || !data) return false;
+    return data.value === true || String(data.value) === "true";
+  } catch {
+    return false;
+  }
+}

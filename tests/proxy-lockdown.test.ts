@@ -59,11 +59,27 @@ describe("lockdown", () => {
     expect((await go("/reset-password")).to).toBe(null);
   });
 
-  it("sends a blocked user to the maintenance page", async () => {
+  it("sends a blocked user it can identify to the maintenance page", async () => {
     gate.value = BLOCKED;
+    session.user = { id: "u1" };
     expect((await go("/dashboard")).to).toBe("/maintenance");
     expect((await go("/mahoti")).to).toBe("/maintenance");
     expect((await go("/writing-task")).to).toBe("/maintenance");
+  });
+
+  it("does NOT block when it cannot see a session", async () => {
+    // The lockout that cost three rounds: an admin whose session the
+    // middleware failed to resolve looked exactly like an anonymous visitor,
+    // so the gate read them as a non-admin and refused them — permanently,
+    // because /maintenance offers no way back.
+    //
+    // Now an unidentifiable caller gets the ordinary signed-out treatment and
+    // the (app) layout, which has a verified user and the profile row, makes
+    // the real decision. The worst a missed session can do is ask for a
+    // second sign-in.
+    gate.value = BLOCKED;
+    session.user = null;
+    expect((await go("/dashboard")).to).toBe("/login");
   });
 
   it("leaves the marketing landing page up", async () => {
@@ -74,8 +90,13 @@ describe("lockdown", () => {
     expect((await go("/")).to).toBe(null);
   });
 
-  it("keeps registration shut — that is what the lock is for", async () => {
+  it("keeps registration shut even for a caller it cannot identify", async () => {
+    // The one group where "no session" is not a reason to let someone past:
+    // an admin never needs to register, so nobody here can be misidentified,
+    // and an open /signup during a lockdown means anyone can still get an
+    // account.
     gate.value = BLOCKED;
+    session.user = null;
     expect((await go("/signup")).to).toBe("/maintenance");
     expect((await go("/verify-email")).to).toBe("/maintenance");
   });

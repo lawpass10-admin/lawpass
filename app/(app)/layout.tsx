@@ -2,6 +2,7 @@ import type { User } from "@supabase/supabase-js";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 
+import { isAppLocked } from "@/lib/auth/login-lock";
 import { SUBSCRIPTION_GATE_ENABLED } from "@/lib/auth/subscription-gate";
 import { getActiveBookmarkAndMistakeCounts } from "@/lib/db/practice";
 import { createClient } from "@/lib/supabase/server";
@@ -81,6 +82,24 @@ export default async function AppLayout({
   ]);
   const profile = profileResult.data;
   const subscription = subscriptionResult.data;
+
+  // THE AUTHORITATIVE LOCKDOWN GATE.
+  //
+  // The middleware checks this too, as a fast path, but its answer depends on
+  // it resolving the session — and in production that is what failed: an
+  // admin was read as having no session, therefore as not an admin, and was
+  // sent to /maintenance by the very switch meant to let them in.
+  //
+  // Here there is nothing to resolve. `user` is verified and `profile` is the
+  // row that was just read, so `is_admin` is simply known. The only question
+  // left is whether the switch is on, which needs no session at all.
+  //
+  // Runs after the profile load so it costs one small read and reuses the
+  // admin flag already in hand. /maintenance lives outside this group, so
+  // there is no redirect loop.
+  if (profile && !profile.is_admin && (await isAppLocked(supabase))) {
+    redirect("/maintenance");
+  }
 
   if (!profile) {
     // /onboarding/complete-profile is the Google-OAuth completion route
